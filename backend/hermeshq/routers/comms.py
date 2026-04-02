@@ -20,6 +20,11 @@ async def send_message(
 ) -> MessageRead:
     message = await request.app.state.comms_router.send_message(payload)
     if payload.message_type == "delegate" and message.task_id:
+        async with request.app.state.supervisor.session_factory() as session:
+            agent = await session.get(Agent, payload.to_agent_id)
+            should_start = bool(agent and agent.status != "running")
+        if should_start:
+            await request.app.state.supervisor.start_agent(payload.to_agent_id)
         await request.app.state.supervisor.submit_task(message.task_id)
     return MessageRead.model_validate(message)
 
@@ -67,4 +72,3 @@ async def topology(
             for message in messages
         ],
     }
-

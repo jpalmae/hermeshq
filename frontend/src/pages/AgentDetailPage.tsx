@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { useAgent, useAgentAction, useDeleteAgent, useUpdateAgent } from "../api/agents";
 import { useLogs } from "../api/logs";
@@ -244,6 +244,9 @@ export function AgentDetailPage() {
             <button className="panel-button-secondary" onClick={() => stopAgent.mutate(agent.id)}>
               Stop runtime
             </button>
+            <Link className="panel-button-secondary" to={`/schedules?agentId=${agent.id}`}>
+              Schedules
+            </Link>
             <button
               className="panel-button-secondary border-[var(--accent)] text-[var(--accent)]"
               onClick={onDelete}

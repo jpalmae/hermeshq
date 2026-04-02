@@ -3,6 +3,10 @@ import { FormEvent, useMemo, useState } from "react";
 import { useAgents } from "../api/agents";
 import { useBroadcast, useCommsHistory, useCommsTopology, useSendMessage } from "../api/comms";
 
+function agentLabel(agent: { friendly_name: string | null; name: string }) {
+  return agent.friendly_name || agent.name;
+}
+
 export function CommsPage() {
   const { data: agents } = useAgents();
   const { data: history } = useCommsHistory();
@@ -50,18 +54,23 @@ export function CommsPage() {
         <div className="space-y-3">
           <p className="panel-label">Comms router</p>
           <h2 className="text-3xl text-[var(--text-display)]">Inter-agent exchange</h2>
+          <p className="text-sm leading-6 text-[var(--text-secondary)]">
+            <code>Delegate</code> dispatches a one-off task to another agent. It does not create a recurring
+            schedule even if the message says “cada 15 minutos”. For recurring execution use{" "}
+            <code>Settings &gt; Timed tasks</code>.
+          </p>
         </div>
         <div className="mt-8 space-y-5">
           <label className="panel-field">
             <span className="panel-label">From</span>
             <select value={fromAgentId} onChange={(event) => setFromAgentId(event.target.value)}>
-              <option value="">Select source</option>
-              {(agents ?? []).map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name}
-                </option>
-              ))}
-            </select>
+                <option value="">Select source</option>
+                {(agents ?? []).map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agentLabel(agent)}
+                  </option>
+                ))}
+              </select>
           </label>
           <label className="panel-field">
             <span className="panel-label">Mode</span>
@@ -83,7 +92,7 @@ export function CommsPage() {
                 <option value="">Select target</option>
                 {(agents ?? []).map((agent) => (
                   <option key={agent.id} value={agent.id}>
-                    {agent.name}
+                    {agentLabel(agent)}
                   </option>
                 ))}
               </select>

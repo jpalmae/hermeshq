@@ -12,6 +12,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NodesPage } from "./pages/NodesPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { ScheduledTasksPage } from "./pages/ScheduledTasksPage";
 import { TasksPage } from "./pages/TasksPage";
 
 export default function App() {
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="/agents" element={<AgentsPage />} />
         <Route path="/agents/:agentId" element={<AgentDetailPage />} />
         <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/schedules" element={<ScheduledTasksPage />} />
         <Route path="/nodes" element={<NodesPage />} />
         <Route path="/comms" element={<CommsPage />} />
         <Route path="/settings" element={<SettingsPage />} />

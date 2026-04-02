@@ -1,7 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import { useAgents } from "../api/agents";
-import { useCreateScheduledTask, useScheduledTasks } from "../api/scheduledTasks";
 import { useCreateSecret, useSecrets } from "../api/secrets";
 import { resolveAssetUrl, useDeleteBrandAsset, useSettings, useUpdateSettings, useUploadBrandAsset } from "../api/settings";
 import { useCreateTemplate, useTemplates } from "../api/templates";
@@ -10,11 +9,9 @@ export function SettingsPage() {
   const { data: agents } = useAgents();
   const { data: secrets } = useSecrets();
   const { data: templates } = useTemplates();
-  const { data: schedules } = useScheduledTasks();
   const { data: settings } = useSettings();
   const createSecret = useCreateSecret();
   const createTemplate = useCreateTemplate();
-  const createScheduledTask = useCreateScheduledTask();
   const updateSettings = useUpdateSettings();
   const uploadLogo = useUploadBrandAsset("logo");
   const uploadFavicon = useUploadBrandAsset("favicon");
@@ -35,11 +32,6 @@ export function SettingsPage() {
 
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
-
-  const [scheduleAgentId, setScheduleAgentId] = useState("");
-  const [scheduleName, setScheduleName] = useState("");
-  const [cronExpression, setCronExpression] = useState("*/15 * * * *");
-  const [schedulePrompt, setSchedulePrompt] = useState("");
 
   useEffect(() => {
     setAppName(settings?.app_name ?? "");
@@ -81,18 +73,6 @@ export function SettingsPage() {
     });
     setTemplateName("");
     setTemplateDescription("");
-  }
-
-  async function submitSchedule(event: FormEvent) {
-    event.preventDefault();
-    await createScheduledTask.mutateAsync({
-      agent_id: scheduleAgentId || agents?.[0]?.id,
-      name: scheduleName,
-      cron_expression: cronExpression,
-      prompt: schedulePrompt,
-    });
-    setScheduleName("");
-    setSchedulePrompt("");
   }
 
   async function submitBranding(event: FormEvent) {
@@ -326,39 +306,6 @@ export function SettingsPage() {
             </button>
           </div>
         </form>
-
-        <form className="panel-frame p-6" onSubmit={submitSchedule}>
-          <p className="panel-label">Scheduler</p>
-          <h2 className="mt-2 text-2xl text-[var(--text-display)]">Timed tasks</h2>
-          <div className="mt-6 space-y-4">
-            <label className="panel-field">
-              <span className="panel-label">Agent</span>
-              <select value={scheduleAgentId} onChange={(event) => setScheduleAgentId(event.target.value)}>
-                <option value="">Select runtime</option>
-                {(agents ?? []).map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="panel-field">
-              <span className="panel-label">Name</span>
-              <input value={scheduleName} onChange={(event) => setScheduleName(event.target.value)} />
-            </label>
-            <label className="panel-field">
-              <span className="panel-label">Cron</span>
-              <input value={cronExpression} onChange={(event) => setCronExpression(event.target.value)} />
-            </label>
-            <label className="panel-field">
-              <span className="panel-label">Prompt</span>
-              <textarea rows={4} value={schedulePrompt} onChange={(event) => setSchedulePrompt(event.target.value)} />
-            </label>
-            <button className="panel-button-primary w-full" type="submit">
-              Create schedule
-            </button>
-          </div>
-        </form>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-3">
@@ -402,19 +349,6 @@ export function SettingsPage() {
                 <p className="mt-2 text-sm text-[var(--text-display)]">{String(template.name)}</p>
                 <p className="mt-1 text-sm text-[var(--text-secondary)]">
                   {String(template.description ?? "")}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="panel-frame p-6">
-          <p className="panel-label">Active schedules</p>
-          <div className="mt-4 space-y-3">
-            {(schedules ?? []).map((schedule) => (
-              <div key={String(schedule.id)} className="border-b border-[var(--border)] pb-3">
-                <p className="mt-2 text-sm text-[var(--text-display)]">{String(schedule.name)}</p>
-                <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                  {String(schedule.cron_expression)}
                 </p>
               </div>
             ))}

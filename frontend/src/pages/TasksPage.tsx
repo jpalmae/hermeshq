@@ -13,6 +13,10 @@ function statusTone(status: string) {
   return "text-[var(--text-secondary)]";
 }
 
+function agentLabel(agent: { friendly_name: string | null; name: string }) {
+  return agent.friendly_name || agent.name;
+}
+
 export function TasksPage() {
   const { data: agents } = useAgents();
   const { data: tasks } = useTasks();
@@ -63,7 +67,7 @@ export function TasksPage() {
                 <option value="">Select runtime</option>
                 {(agents ?? []).map((agent) => (
                   <option key={agent.id} value={agent.id}>
-                    {agent.name}
+                    {agentLabel(agent)}
                   </option>
                 ))}
               </select>

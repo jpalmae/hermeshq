@@ -11,6 +11,7 @@ const navItems = [
   { to: "/", label: "Overview" },
   { to: "/agents", label: "Agents" },
   { to: "/tasks", label: "Tasks" },
+  { to: "/schedules", label: "Schedules" },
   { to: "/nodes", label: "Nodes" },
   { to: "/comms", label: "Comms" },
   { to: "/settings", label: "Settings" },

@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 import { useAgentAction, useAgents, useCreateAgent, useDeleteAgent } from "../api/agents";
 import { useNodes } from "../api/nodes";
 import { useSettings } from "../api/settings";
-import { AgentOrgChart } from "../components/AgentOrgChart";
 
 const emptyForm = {
   node_id: "",
@@ -107,19 +106,6 @@ export function AgentsPage() {
 
   return (
     <div className="grid gap-6">
-      <section className="panel-frame p-6">
-        <div className="border-b border-[var(--border)] pb-4">
-          <p className="panel-label">Org chart</p>
-          <h2 className="mt-2 text-3xl text-[var(--text-display)]">Agent hierarchy</h2>
-          <p className="mt-3 max-w-[48rem] text-sm leading-6 text-[var(--text-secondary)]">
-            Arrange reporting lines visually and assign a supervisor per agent. Root agents stay at the top level.
-          </p>
-        </div>
-        <div className="mt-6">
-          <AgentOrgChart agents={agents ?? []} />
-        </div>
-      </section>
-
       <div className="grid gap-6 xl:grid-cols-[0.72fr_1.28fr]">
       <section className="panel-frame p-6">
         <div className="space-y-3">

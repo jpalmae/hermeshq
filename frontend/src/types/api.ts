@@ -86,6 +86,19 @@ export interface Task {
   metadata: Record<string, unknown>;
 }
 
+export interface ScheduledTask {
+  id: string;
+  agent_id: string;
+  name: string;
+  cron_expression: string;
+  prompt: string;
+  enabled: boolean;
+  last_run: string | null;
+  next_run: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DashboardOverview {
   stats: {
     total_agents: number;
