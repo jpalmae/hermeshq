@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { useAgent, useAgentAction, useDeleteAgent, useUpdateAgent } from "../api/agents";
@@ -15,6 +15,16 @@ function statusTone(status: string) {
   return "text-[var(--warning)]";
 }
 
+function slugify(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    || "agent";
+}
+
 export function AgentDetailPage() {
   const { agentId } = useParams();
   const navigate = useNavigate();
@@ -26,6 +36,13 @@ export function AgentDetailPage() {
   const deleteAgent = useDeleteAgent();
   const updateAgent = useUpdateAgent();
   const createTask = useCreateTask();
+  const [identityForm, setIdentityForm] = useState({
+    friendly_name: "",
+    name: "",
+    slug: "",
+  });
+  const [nameTouched, setNameTouched] = useState(false);
+  const [slugTouched, setSlugTouched] = useState(false);
   const agentTasks = useMemo(
     () => (tasks ?? []).filter((task) => task.agent_id === agentId),
     [tasks, agentId],
@@ -43,6 +60,19 @@ export function AgentDetailPage() {
       navigate("/agents", { replace: true });
     }
   }, [agent, isLoading, navigate]);
+
+  useEffect(() => {
+    if (!agent) {
+      return;
+    }
+    setIdentityForm({
+      friendly_name: agent.friendly_name || agent.name,
+      name: agent.name,
+      slug: agent.slug,
+    });
+    setNameTouched(false);
+    setSlugTouched(false);
+  }, [agent]);
 
   if (isLoading || !agent) {
     return <p className="panel-inline-status">[LOADING] agent profile</p>;
@@ -77,14 +107,13 @@ export function AgentDetailPage() {
     });
   }
 
-  async function onSaveFriendlyName(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const friendlyName = String(formData.get("friendly_name") ?? "").trim();
+  async function onSaveIdentity() {
     await updateAgent.mutateAsync({
       agentId: currentAgent.id,
       payload: {
-        friendly_name: friendlyName || currentAgent.name,
+        friendly_name: identityForm.friendly_name.trim() || currentAgent.name,
+        name: identityForm.name.trim(),
+        slug: identityForm.slug.trim(),
       },
     });
   }
@@ -149,27 +178,69 @@ export function AgentDetailPage() {
 
         <div className="panel-frame p-6">
           <p className="panel-label">Configuration</p>
-          <form className="mt-6 border-b border-[var(--border)] pb-5" onSubmit={onSaveFriendlyName}>
+          <div className="mt-6 border-b border-[var(--border)] pb-5">
             <label className="panel-field">
               <span className="panel-label">Friendly name</span>
               <input
-                name="friendly_name"
-                defaultValue={agent.friendly_name || agent.name}
+                value={identityForm.friendly_name}
+                onChange={(event) =>
+                  setIdentityForm((current) => {
+                    const friendlyName = event.target.value;
+                    const next = { ...current, friendly_name: friendlyName };
+                    if (!nameTouched) {
+                      next.name = friendlyName.trim();
+                    }
+                    if (!slugTouched) {
+                      next.slug = slugify(friendlyName.trim() || next.name.trim());
+                    }
+                    return next;
+                  })
+                }
                 placeholder="Display name for humans"
               />
             </label>
+            <label className="panel-field mt-4">
+              <span className="panel-label">Technical name</span>
+              <input
+                value={identityForm.name}
+                onChange={(event) => {
+                  const nextName = event.target.value;
+                  setNameTouched(true);
+                  setIdentityForm((current) => {
+                    const next = { ...current, name: nextName };
+                    if (!slugTouched && !current.friendly_name.trim()) {
+                      next.slug = slugify(nextName.trim());
+                    }
+                    return next;
+                  });
+                }}
+                placeholder="Runtime/operator name"
+              />
+            </label>
+            <label className="panel-field mt-4">
+              <span className="panel-label">Slug</span>
+              <input
+                value={identityForm.slug}
+                onChange={(event) => {
+                  setSlugTouched(true);
+                  setIdentityForm((current) => ({ ...current, slug: event.target.value }));
+                }}
+                placeholder="Unique short identifier"
+              />
+            </label>
             <div className="mt-4 flex items-center gap-3">
-              <button type="submit" className="panel-button-secondary" disabled={updateAgent.isPending}>
-                {updateAgent.isPending ? "[LOADING]" : "Save name"}
+              <button
+                type="button"
+                className="panel-button-secondary"
+                disabled={updateAgent.isPending}
+                onClick={onSaveIdentity}
+              >
+                {updateAgent.isPending ? "[LOADING]" : "Save identity"}
               </button>
-              <p className="panel-inline-status">This changes the display label, not the slug.</p>
+              <p className="panel-inline-status">Friendly name autocompletes technical name and slug until you override them manually.</p>
             </div>
-          </form>
+          </div>
           <div className="mt-6 space-y-4">
-            <div className="panel-stat-row">
-              <span>Technical name</span>
-              <strong>{agent.name}</strong>
-            </div>
             <div className="panel-stat-row">
               <span>Model</span>
               <strong>{agent.model}</strong>

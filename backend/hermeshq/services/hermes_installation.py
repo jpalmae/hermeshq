@@ -35,7 +35,8 @@ class HermesInstallationManager:
         hermes_home = self.build_hermes_home(agent.workspace_path)
         self._ensure_home_dirs(hermes_home)
         installed_skills = await self._sync_managed_skills(agent, hermes_home)
-        self._write_config(agent, hermes_home, installed_skills)
+        system_prompt = await self._build_system_prompt(agent, installed_skills)
+        self._write_config(agent, hermes_home, system_prompt)
         self._write_soul(agent, hermes_home)
         await self._sync_auth_store(agent, hermes_home)
         return installed_skills
@@ -56,7 +57,7 @@ class HermesInstallationManager:
 
     async def get_runtime_system_prompt(self, agent: Agent) -> str:
         installed = await self.list_installed_skills(agent)
-        return self._compose_system_prompt(agent, installed)
+        return await self._build_system_prompt(agent, installed)
 
     async def list_installed_skills(self, agent: Agent) -> list[dict]:
         hermes_home = self.build_hermes_home(agent.workspace_path)
@@ -100,8 +101,7 @@ class HermesInstallationManager:
         for subdir in ("cron", "sessions", "logs", "memories", "skills", "plugins"):
             (hermes_home / subdir).mkdir(parents=True, exist_ok=True)
 
-    def _write_config(self, agent: Agent, hermes_home: Path, installed_skills: list[dict]) -> None:
-        system_prompt = self._compose_system_prompt(agent, installed_skills)
+    def _write_config(self, agent: Agent, hermes_home: Path, system_prompt: str) -> None:
         config = {
             "model": {
                 "default": agent.model,
@@ -261,7 +261,38 @@ class HermesInstallationManager:
                 return stripped[:200]
         return ""
 
-    def _compose_system_prompt(self, agent: Agent, installed_skills: list[dict]) -> str:
+    async def _build_system_prompt(self, agent: Agent, installed_skills: list[dict]) -> str:
+        roster = await self._load_agent_roster(agent)
+        return self._compose_system_prompt(agent, installed_skills, roster)
+
+    async def _load_agent_roster(self, agent: Agent) -> list[dict]:
+        async with self.session_factory() as session:
+            result = await session.execute(select(Agent).order_by(Agent.created_at.asc()))
+            agents = list(result.scalars().all())
+
+        name_by_id = {
+            item.id: (item.friendly_name or item.name or item.slug or item.id)
+            for item in agents
+        }
+        roster: list[dict] = []
+        for item in agents:
+            roster.append(
+                {
+                    "id": item.id,
+                    "self": item.id == agent.id,
+                    "display_name": item.friendly_name or item.name or item.slug or item.id,
+                    "technical_name": item.name or "",
+                    "slug": item.slug or "",
+                    "description": (item.description or "").strip(),
+                    "status": item.status,
+                    "can_receive_tasks": bool(item.can_receive_tasks),
+                    "supervisor": name_by_id.get(item.supervisor_agent_id) if item.supervisor_agent_id else None,
+                    "team_tags": list(item.team_tags or []),
+                }
+            )
+        return roster
+
+    def _compose_system_prompt(self, agent: Agent, installed_skills: list[dict], roster: list[dict]) -> str:
         parts = [agent.system_prompt.strip()] if agent.system_prompt and agent.system_prompt.strip() else []
         if installed_skills:
             lines = [
@@ -279,6 +310,22 @@ class HermesInstallationManager:
                 "If asked which skills are available, do not guess. Use `skills_list` to verify installed skills. "
                 "If none are installed, say that no agent-specific skills are currently installed."
             )
+        if roster:
+            lines = [
+                "HermesHQ live roster for this instance. This is factual control-plane data, not memory.",
+                "If asked whether you know another agent, answer from this roster.",
+                "Known agents:",
+            ]
+            for item in roster:
+                role = item["description"] or "No description"
+                supervisor = item["supervisor"] or "none"
+                tag_text = ", ".join(item["team_tags"]) if item["team_tags"] else "none"
+                lines.append(
+                    f"- {item['display_name']} | slug={item['slug'] or 'unset'} | status={item['status']} | "
+                    f"receives_tasks={'yes' if item['can_receive_tasks'] else 'no'} | supervisor={supervisor} | "
+                    f"tags={tag_text} | role={role}"
+                )
+            parts.append("\n".join(lines))
         return "\n\n".join(part for part in parts if part).strip()
 
     async def _resolve_api_key(self, api_key_ref: str | None) -> str | None:

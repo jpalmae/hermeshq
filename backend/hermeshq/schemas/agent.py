@@ -8,9 +8,9 @@ from hermeshq.schemas.node import NodeRead
 
 class AgentCreate(BaseModel):
     node_id: str
-    name: str
+    name: str = ""
     friendly_name: str | None = None
-    slug: str
+    slug: str = ""
     description: str | None = None
     run_mode: str = "hybrid"
     model: str | None = None

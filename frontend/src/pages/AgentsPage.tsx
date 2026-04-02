@@ -20,6 +20,16 @@ const emptyForm = {
   system_prompt: "",
 };
 
+function slugify(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    || "agent";
+}
+
 function statusTone(status: string) {
   if (status === "running") return "text-[var(--success)]";
   if (status === "stopped") return "text-[var(--text-secondary)]";
@@ -37,6 +47,8 @@ export function AgentsPage() {
   const restartAgent = useAgentAction("restart");
 
   const [form, setForm] = useState(emptyForm);
+  const [nameTouched, setNameTouched] = useState(false);
+  const [slugTouched, setSlugTouched] = useState(false);
 
   const activeNodeId = useMemo(() => nodes?.[0]?.id ?? "", [nodes]);
 
@@ -75,6 +87,8 @@ export function AgentsPage() {
       api_key_ref: settings?.default_api_key_ref ?? "",
       base_url: settings?.default_base_url ?? "",
     });
+    setNameTouched(false);
+    setSlugTouched(false);
   }
 
   async function onDelete(agentId: string, agentName: string) {
@@ -136,7 +150,19 @@ export function AgentsPage() {
             <span className="panel-label">Friendly name</span>
             <input
               value={form.friendly_name}
-              onChange={(event) => setForm((current) => ({ ...current, friendly_name: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => {
+                  const friendlyName = event.target.value;
+                  const next = { ...current, friendly_name: friendlyName };
+                  if (!nameTouched) {
+                    next.name = friendlyName.trim();
+                  }
+                  if (!slugTouched) {
+                    next.slug = slugify(friendlyName.trim() || next.name.trim());
+                  }
+                  return next;
+                })
+              }
               placeholder="What humans should call this agent"
             />
           </label>
@@ -145,7 +171,17 @@ export function AgentsPage() {
             <span className="panel-label">Name</span>
             <input
               value={form.name}
-              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+              onChange={(event) => {
+                const nextName = event.target.value;
+                setNameTouched(true);
+                setForm((current) => {
+                  const next = { ...current, name: nextName };
+                  if (!slugTouched && !current.friendly_name.trim()) {
+                    next.slug = slugify(nextName.trim());
+                  }
+                  return next;
+                });
+              }}
               placeholder="Technical operator name"
             />
           </label>
@@ -154,7 +190,10 @@ export function AgentsPage() {
             <span className="panel-label">Slug</span>
             <input
               value={form.slug}
-              onChange={(event) => setForm((current) => ({ ...current, slug: event.target.value }))}
+              onChange={(event) => {
+                setSlugTouched(true);
+                setForm((current) => ({ ...current, slug: event.target.value }));
+              }}
             />
           </label>
 

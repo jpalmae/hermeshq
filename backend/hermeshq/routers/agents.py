@@ -15,6 +15,7 @@ from hermeshq.models.task import Task
 from hermeshq.models.template import AgentTemplate
 from hermeshq.models.user import User
 from hermeshq.schemas.agent import AgentCreate, AgentRead, AgentUpdate
+from hermeshq.services.agent_identity import derive_agent_identity, ensure_unique_agent_slug, slugify_agent_value
 from hermeshq.services.workspace_manager import WorkspaceManager
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -79,11 +80,17 @@ async def create_agent(
         raise HTTPException(status_code=404, detail="Node not found")
     await _validate_supervisor(db, None, payload.supervisor_agent_id)
     runtime_defaults = await _resolve_runtime_defaults(db, payload)
+    friendly_name, name, slug = derive_agent_identity(
+        friendly_name=payload.friendly_name,
+        name=payload.name,
+        slug=payload.slug,
+    )
+    unique_slug = await ensure_unique_agent_slug(db, slug)
     agent = Agent(
         node_id=payload.node_id,
-        name=payload.name,
-        friendly_name=(payload.friendly_name or payload.name).strip(),
-        slug=payload.slug,
+        name=name,
+        friendly_name=friendly_name,
+        slug=unique_slug,
         description=payload.description,
         run_mode=payload.run_mode,
         model=runtime_defaults["model"],
@@ -145,11 +152,37 @@ async def update_agent(
     update_data = payload.model_dump(exclude_unset=True)
     if "supervisor_agent_id" in update_data:
         await _validate_supervisor(db, agent_id, update_data.get("supervisor_agent_id"))
+    current_friendly = (agent.friendly_name or "").strip()
+    current_name = (agent.name or "").strip()
+    current_slug = (agent.slug or "").strip()
+    current_derived_slug = slugify_agent_value(current_friendly or current_name)
+
+    requested_friendly = update_data.get("friendly_name", agent.friendly_name)
+    requested_name = update_data.get("name", agent.name)
+    requested_slug = update_data.get("slug", agent.slug)
+
+    if "friendly_name" in update_data and "name" not in update_data:
+        if not current_name or current_name == current_friendly:
+            requested_name = requested_friendly
+    if "slug" not in update_data:
+        if not current_slug or current_slug == current_derived_slug:
+            requested_slug = requested_friendly or requested_name
+
+    resolved_friendly, resolved_name, resolved_slug = derive_agent_identity(
+        friendly_name=requested_friendly,
+        name=requested_name,
+        slug=requested_slug,
+    )
+    unique_slug = await ensure_unique_agent_slug(db, resolved_slug, exclude_agent_id=agent_id)
+
     for field, value in update_data.items():
         setattr(agent, field, value)
+    agent.friendly_name = resolved_friendly
+    agent.name = resolved_name
+    agent.slug = unique_slug
     if any(
         field in update_data
-        for field in ("name", "system_prompt", "soul_md")
+        for field in ("name", "friendly_name", "slug", "system_prompt", "soul_md")
     ):
         request.app.state.workspace_manager.sync_config(
             agent.id,
@@ -253,11 +286,17 @@ async def create_agent_from_template(
         raise HTTPException(status_code=404, detail="Node not found")
     await _validate_supervisor(db, None, agent_payload.supervisor_agent_id)
     runtime_defaults = await _resolve_runtime_defaults(db, agent_payload)
+    friendly_name, name, slug = derive_agent_identity(
+        friendly_name=agent_payload.friendly_name,
+        name=agent_payload.name,
+        slug=agent_payload.slug,
+    )
+    unique_slug = await ensure_unique_agent_slug(db, slug)
     agent = Agent(
         node_id=agent_payload.node_id,
-        name=agent_payload.name,
-        friendly_name=(agent_payload.friendly_name or agent_payload.name).strip(),
-        slug=agent_payload.slug,
+        name=name,
+        friendly_name=friendly_name,
+        slug=unique_slug,
         description=agent_payload.description,
         run_mode=agent_payload.run_mode,
         model=runtime_defaults["model"],

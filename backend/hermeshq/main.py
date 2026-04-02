@@ -13,6 +13,7 @@ from hermeshq.database import AsyncSessionLocal, init_database
 from hermeshq.models import Agent, AppSettings, Node, User
 from hermeshq.routers import agents, auth, comms, dashboard, logs, nodes, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates
 from hermeshq.schemas.common import HealthResponse
+from hermeshq.services.agent_identity import derive_agent_identity, slugify_agent_value
 from hermeshq.services.agent_supervisor import AgentSupervisor
 from hermeshq.services.comms_router import CommsRouter
 from hermeshq.services.hermes_installation import HermesInstallationManager
@@ -50,6 +51,23 @@ async def bootstrap_defaults() -> None:
         settings_row = await session.get(AppSettings, "default")
         if not settings_row:
             session.add(AppSettings(id="default"))
+        agent_result = await session.execute(select(Agent).order_by(Agent.created_at.asc()))
+        seen_slugs: set[str] = set()
+        for agent in agent_result.scalars().all():
+            resolved_friendly, resolved_name, resolved_slug = derive_agent_identity(
+                friendly_name=agent.friendly_name,
+                name=agent.name,
+                slug=agent.slug,
+            )
+            candidate_slug = resolved_slug
+            suffix = 2
+            while candidate_slug in seen_slugs:
+                candidate_slug = f"{resolved_slug}-{suffix}"
+                suffix += 1
+            seen_slugs.add(candidate_slug)
+            agent.friendly_name = resolved_friendly
+            agent.name = resolved_name
+            agent.slug = candidate_slug
         await session.commit()
 
 
