@@ -32,6 +32,7 @@ services:
       ADMIN_PASSWORD: admin123
       ADMIN_DISPLAY_NAME: Hermes Operator
       WORKSPACES_ROOT: /app/workspaces
+      BRANDING_ROOT: /app/workspaces/_branding
       PTY_SHELL: /bin/sh
       CORS_ORIGINS: '["http://localhost:3420","http://frontend"]'
     volumes:

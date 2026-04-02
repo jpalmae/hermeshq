@@ -23,9 +23,7 @@ class Settings(BaseSettings):
     workspaces_root: Path = Field(
         default_factory=lambda: Path(__file__).resolve().parents[2] / "workspaces"
     )
-    branding_root: Path = Field(
-        default_factory=lambda: Path(__file__).resolve().parents[2] / "workspaces" / "_branding"
-    )
+    branding_root: Path | None = None
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3420"]
     pty_shell: str = "/bin/sh"
 
@@ -35,6 +33,10 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    def model_post_init(self, __context) -> None:
+        if self.branding_root is None:
+            self.branding_root = self.workspaces_root / "_branding"
 
 
 @lru_cache

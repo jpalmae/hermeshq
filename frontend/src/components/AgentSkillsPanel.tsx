@@ -8,7 +8,7 @@ function dedupeSkills(skills: string[]) {
   return [...new Set(skills.map((skill) => skill.trim()).filter(Boolean))];
 }
 
-export function AgentSkillsPanel({ agent }: { agent: Agent }) {
+export function AgentSkillsPanel({ agent, embedded = false }: { agent: Agent; embedded?: boolean }) {
   const [query, setQuery] = useState("");
   const updateAgent = useUpdateAgent();
   const { data: agentSkills, isLoading: isSkillsLoading } = useAgentSkills(agent.id);
@@ -36,16 +36,18 @@ export function AgentSkillsPanel({ agent }: { agent: Agent }) {
   }
 
   return (
-    <section className="panel-frame p-6">
-      <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
-        <div>
-          <p className="panel-label">Skills</p>
-          <h3 className="mt-2 text-2xl text-[var(--text-display)]">Hermes skill registry</h3>
+    <section className={embedded ? "" : "panel-frame p-6"}>
+      {embedded ? null : (
+        <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
+          <div>
+            <p className="panel-label">Skills</p>
+            <h3 className="mt-2 text-2xl text-[var(--text-display)]">Hermes skill registry</h3>
+          </div>
+          <p className="panel-label">{installed.length} installed</p>
         </div>
-        <p className="panel-label">{installed.length} installed</p>
-      </div>
+      )}
 
-      <div className="mt-5 space-y-5">
+      <div className={`${embedded ? "mt-0" : "mt-5"} space-y-5`}>
         <div>
           <p className="panel-label">Assigned to this agent</p>
           <div className="mt-3 flex flex-wrap gap-2">

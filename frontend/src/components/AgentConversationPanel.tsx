@@ -47,11 +47,13 @@ export function AgentConversationPanel({
   agentStatus,
   onSubmit,
   isSubmitting,
+  embedded = false,
 }: {
   tasks: Task[];
   agentStatus: string;
   onSubmit: (prompt: string) => Promise<void>;
   isSubmitting: boolean;
+  embedded?: boolean;
 }) {
   const [draftPrompt, setDraftPrompt] = useState("");
   const feedRef = useRef<HTMLDivElement | null>(null);
@@ -107,20 +109,22 @@ export function AgentConversationPanel({
   }
 
   return (
-    <section className="panel-frame p-6">
-      <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
-        <div>
-          <p className="panel-label">Conversation</p>
-          <h3 className="mt-2 text-2xl text-[var(--text-display)]">Talk to this agent</h3>
+    <section className={embedded ? "" : "panel-frame p-6"}>
+      {embedded ? null : (
+        <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
+          <div>
+            <p className="panel-label">Conversation</p>
+            <h3 className="mt-2 text-2xl text-[var(--text-display)]">Talk to this agent</h3>
+          </div>
+          <p className="panel-label">
+            {agentStatus === "running" ? "Live runtime" : "Auto-start on send"}
+          </p>
         </div>
-        <p className="panel-label">
-          {agentStatus === "running" ? "Live runtime" : "Auto-start on send"}
-        </p>
-      </div>
+      )}
 
       <div
         ref={feedRef}
-        className="mt-6 max-h-[560px] space-y-4 overflow-y-auto border border-[var(--border)] p-4"
+        className={`${embedded ? "mt-0" : "mt-6"} max-h-[560px] space-y-4 overflow-y-auto border border-[var(--border)] p-4`}
         style={{ background: "color-mix(in srgb, var(--surface) 60%, transparent)" }}
       >
         {entries.length ? (

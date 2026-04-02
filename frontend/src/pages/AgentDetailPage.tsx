@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { useAgent, useAgentAction, useDeleteAgent, useUpdateAgent } from "../api/agents";
@@ -8,6 +8,14 @@ import { AgentConversationPanel } from "../components/AgentConversationPanel";
 import { AgentSkillsPanel } from "../components/AgentSkillsPanel";
 import { AgentTerminal } from "../components/AgentTerminal";
 import { WorkspacePanel } from "../components/WorkspacePanel";
+
+const DEFAULT_SECTION_STATE = {
+  conversation: true,
+  skills: false,
+  ledger: false,
+  logs: false,
+  workspace: false,
+};
 
 function statusTone(status: string) {
   if (status === "running") return "text-[var(--success)]";
@@ -41,6 +49,8 @@ export function AgentDetailPage() {
     name: "",
     slug: "",
   });
+  const [systemPromptDraft, setSystemPromptDraft] = useState("");
+  const [sectionState, setSectionState] = useState(DEFAULT_SECTION_STATE);
   const [nameTouched, setNameTouched] = useState(false);
   const [slugTouched, setSlugTouched] = useState(false);
   const agentTasks = useMemo(
@@ -70,9 +80,68 @@ export function AgentDetailPage() {
       name: agent.name,
       slug: agent.slug,
     });
+    setSystemPromptDraft(agent.system_prompt ?? "");
     setNameTouched(false);
     setSlugTouched(false);
   }, [agent]);
+
+  useEffect(() => {
+    if (!agentId) {
+      return;
+    }
+    const raw = window.localStorage.getItem(`hermeshq.agentDetail.sections.${agentId}`);
+    if (!raw) {
+      setSectionState(DEFAULT_SECTION_STATE);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as Partial<typeof DEFAULT_SECTION_STATE>;
+      setSectionState({ ...DEFAULT_SECTION_STATE, ...parsed });
+    } catch {
+      setSectionState(DEFAULT_SECTION_STATE);
+    }
+  }, [agentId]);
+
+  function toggleSection(section: keyof typeof DEFAULT_SECTION_STATE) {
+    setSectionState((current) => {
+      const next = { ...current, [section]: !current[section] };
+      if (agentId) {
+        window.localStorage.setItem(`hermeshq.agentDetail.sections.${agentId}`, JSON.stringify(next));
+      }
+      return next;
+    });
+  }
+
+  function renderSectionShell(
+    section: keyof typeof DEFAULT_SECTION_STATE,
+    eyebrow: string,
+    title: string,
+    meta: string,
+    children: ReactNode,
+  ) {
+    const isOpen = sectionState[section];
+    return (
+      <section className="panel-frame p-6">
+        <button
+          type="button"
+          className="flex w-full items-end justify-between gap-4 border-b border-[var(--border)] pb-4 text-left"
+          onClick={() => toggleSection(section)}
+        >
+          <div>
+            <p className="panel-label">{eyebrow}</p>
+            <h3 className="mt-2 text-2xl text-[var(--text-display)]">{title}</h3>
+          </div>
+          <div className="text-right">
+            <p className="panel-label">{meta}</p>
+            <p className="mt-2 font-mono text-xs uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+              {isOpen ? "Collapse" : "Expand"}
+            </p>
+          </div>
+        </button>
+        {isOpen ? <div className="mt-5">{children}</div> : null}
+      </section>
+    );
+  }
 
   if (isLoading || !agent) {
     return <p className="panel-inline-status">[LOADING] agent profile</p>;
@@ -114,6 +183,15 @@ export function AgentDetailPage() {
         friendly_name: identityForm.friendly_name.trim() || currentAgent.name,
         name: identityForm.name.trim(),
         slug: identityForm.slug.trim(),
+      },
+    });
+  }
+
+  async function onSaveSystemPrompt() {
+    await updateAgent.mutateAsync({
+      agentId: currentAgent.id,
+      payload: {
+        system_prompt: systemPromptDraft.trim() || null,
       },
     });
   }
@@ -241,6 +319,28 @@ export function AgentDetailPage() {
             </div>
           </div>
           <div className="mt-6 space-y-4">
+            <div className="border-b border-[var(--border)] pb-5">
+              <label className="panel-field">
+                <span className="panel-label">System prompt</span>
+                <textarea
+                  rows={6}
+                  value={systemPromptDraft}
+                  onChange={(event) => setSystemPromptDraft(event.target.value)}
+                  placeholder="Persistent operator instructions for this agent"
+                />
+              </label>
+              <div className="mt-4 flex items-center gap-3">
+                <button
+                  type="button"
+                  className="panel-button-secondary"
+                  disabled={updateAgent.isPending}
+                  onClick={onSaveSystemPrompt}
+                >
+                  {updateAgent.isPending ? "[LOADING]" : "Save system prompt"}
+                </button>
+                <p className="panel-inline-status">This updates the persistent runtime instructions for future tasks and TUI sessions.</p>
+              </div>
+            </div>
             <div className="panel-stat-row">
               <span>Model</span>
               <strong>{agent.model}</strong>
@@ -265,25 +365,28 @@ export function AgentDetailPage() {
         </div>
       </section>
 
-      <AgentConversationPanel
-        tasks={agentTasks}
-        agentStatus={agent.status}
-        onSubmit={onSendInstruction}
-        isSubmitting={createTask.isPending}
-      />
+      <AgentTerminal agentId={agent.id} mode={agent.run_mode} />
 
-      <AgentSkillsPanel agent={agent} />
+      {renderSectionShell(
+        "conversation",
+        "Conversation",
+        "Talk to this agent",
+        agent.status === "running" ? "Live runtime" : "Auto-start on send",
+        <AgentConversationPanel
+          tasks={agentTasks}
+          agentStatus={agent.status}
+          onSubmit={onSendInstruction}
+          isSubmitting={createTask.isPending}
+          embedded
+        />,
+      )}
 
-      <section className="panel-frame p-6">
-        <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
-          <div>
-            <p className="panel-label">Task history</p>
-            <h3 className="mt-2 text-2xl text-[var(--text-display)]">Runtime ledger</h3>
-          </div>
-          <p className="panel-label">{agentTasks.length} records</p>
-        </div>
-
-        <div className="mt-2">
+      {renderSectionShell(
+        "ledger",
+        "Task history",
+        "Runtime ledger",
+        `${agentTasks.length} records`,
+        <div className="mt-0">
           {ledgerTasks.map((task) => (
             <article key={task.id} className="grid gap-4 border-b border-[var(--border)] py-5 md:grid-cols-[0.7fr_1.3fr]">
               <div>
@@ -305,20 +408,23 @@ export function AgentDetailPage() {
               </div>
             </article>
           ))}
-        </div>
-      </section>
+        </div>,
+      )}
 
-      <AgentTerminal agentId={agent.id} mode={agent.run_mode} />
+      {renderSectionShell(
+        "skills",
+        "Skills",
+        "Hermes skill registry",
+        `${agent.skills.length} assigned`,
+        <AgentSkillsPanel agent={agent} embedded />,
+      )}
 
-      <section className="panel-frame p-6">
-        <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
-          <div>
-            <p className="panel-label">Logs</p>
-            <h3 className="mt-2 text-2xl text-[var(--text-display)]">Activity stream</h3>
-          </div>
-          <p className="panel-label">{logs?.length ?? 0} events</p>
-        </div>
-        <div className="mt-2">
+      {renderSectionShell(
+        "logs",
+        "Logs",
+        "Activity stream",
+        `${logs?.length ?? 0} events`,
+        <div className="mt-0">
           {(logs ?? []).map((entry) => (
             <article key={String(entry.id)} className="grid gap-3 border-b border-[var(--border)] py-4 md:grid-cols-[0.45fr_1.55fr]">
               <div>
@@ -332,10 +438,16 @@ export function AgentDetailPage() {
               </div>
             </article>
           ))}
-        </div>
-      </section>
+        </div>,
+      )}
 
-      <WorkspacePanel agentId={agent.id} />
+      {renderSectionShell(
+        "workspace",
+        "Workspace",
+        "Filesystem and editor",
+        agent.workspace_path,
+        <WorkspacePanel agentId={agent.id} />,
+      )}
     </div>
   );
 }
