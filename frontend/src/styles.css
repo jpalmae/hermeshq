@@ -3,7 +3,7 @@
 
 :root {
   color-scheme: dark;
-  --black: #000000;
+  --black: #090909;
   --surface: #111111;
   --surface-raised: #1a1a1a;
   --border: #222222;
@@ -11,12 +11,64 @@
   --text-disabled: #666666;
   --text-secondary: #999999;
   --text-primary: #e8e8e8;
-  --text-display: #ffffff;
+  --text-display: #f7f4ee;
   --accent: #d71921;
   --accent-subtle: rgba(215, 25, 33, 0.15);
   --success: #4a9e5c;
   --warning: #d4a843;
   --interactive: #5b9bf6;
+  --selection: rgba(255, 255, 255, 0.2);
+  --overlay: rgba(0, 0, 0, 0.7);
+  --contrast-muted: rgba(9, 9, 9, 0.68);
+  --app-background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.035), transparent 24rem),
+    radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.025), transparent 20rem),
+    var(--black);
+  --panel-background: color-mix(in srgb, var(--surface) 92%, transparent);
+  --terminal-background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.03), transparent 18rem),
+    #080808;
+  --org-grid:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    color-mix(in srgb, var(--surface) 98%, transparent);
+  --org-card-background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent), var(--surface-raised);
+  --org-icon-background: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --black: #f2ede4;
+  --surface: #f7f2e9;
+  --surface-raised: #fcf8f1;
+  --border: #ddd3c3;
+  --border-visible: #c2b6a4;
+  --text-disabled: #9a8e81;
+  --text-secondary: #70645a;
+  --text-primary: #2a2421;
+  --text-display: #171412;
+  --accent: #c8131e;
+  --accent-subtle: rgba(200, 19, 30, 0.08);
+  --success: #31744a;
+  --warning: #a96f14;
+  --interactive: #2d63d1;
+  --selection: rgba(23, 20, 18, 0.12);
+  --overlay: rgba(23, 20, 18, 0.24);
+  --contrast-muted: rgba(242, 237, 228, 0.76);
+  --app-background:
+    radial-gradient(circle at top right, rgba(0, 0, 0, 0.045), transparent 26rem),
+    radial-gradient(circle at bottom left, rgba(200, 19, 30, 0.055), transparent 20rem),
+    var(--black);
+  --panel-background: color-mix(in srgb, var(--surface) 94%, rgba(255, 255, 255, 0.4));
+  --terminal-background:
+    radial-gradient(circle at top right, rgba(0, 0, 0, 0.04), transparent 18rem),
+    #f5f2ea;
+  --org-grid:
+    linear-gradient(rgba(23, 20, 18, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23, 20, 18, 0.05) 1px, transparent 1px),
+    color-mix(in srgb, var(--surface) 98%, rgba(255, 255, 255, 0.4));
+  --org-card-background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.4)), var(--surface-raised);
+  --org-icon-background: rgba(23, 20, 18, 0.06);
 }
 
 @theme inline {
@@ -37,10 +89,7 @@
   body {
     margin: 0;
     min-width: 320px;
-    background:
-      radial-gradient(circle at top right, rgba(255, 255, 255, 0.035), transparent 24rem),
-      radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.025), transparent 20rem),
-      var(--black);
+    background: var(--app-background);
     color: var(--text-primary);
     font-family: var(--font-sans);
   }
@@ -81,7 +130,7 @@
   }
 
   ::selection {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--selection);
     color: var(--text-display);
   }
 }
@@ -89,7 +138,7 @@
 @layer components {
   .panel-frame {
     border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    background: var(--panel-background);
   }
 
   .panel-label {
@@ -169,9 +218,7 @@
 
   .terminal-shell {
     position: relative;
-    background:
-      radial-gradient(circle at top right, rgba(255, 255, 255, 0.03), transparent 18rem),
-      #080808;
+    background: var(--terminal-background);
   }
 
   .terminal-shell .xterm {
@@ -201,10 +248,7 @@
   .org-map-viewport {
     overflow: auto;
     padding: 1.25rem;
-    background:
-      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-      color-mix(in srgb, var(--surface) 98%, transparent);
+    background: var(--org-grid);
     background-size: 28px 28px, 28px 28px, auto;
   }
 
@@ -229,7 +273,7 @@
     position: absolute;
     border: 1px solid var(--border);
     border-radius: 1.25rem;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent), var(--surface-raised);
+    background: var(--org-card-background);
     padding: 1.25rem;
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.01);
   }
@@ -251,7 +295,7 @@
     width: 3rem;
     place-items: center;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--org-icon-background);
     color: var(--text-display);
     font-family: var(--font-mono);
     font-size: 0.9rem;

@@ -23,6 +23,7 @@ export function SettingsPage() {
 
   const [appName, setAppName] = useState("");
   const [appShortName, setAppShortName] = useState("");
+  const [themeMode, setThemeMode] = useState<"dark" | "light" | "system">("dark");
   const [secretName, setSecretName] = useState("");
   const [secretProvider, setSecretProvider] = useState("");
   const [secretValue, setSecretValue] = useState("");
@@ -43,6 +44,7 @@ export function SettingsPage() {
   useEffect(() => {
     setAppName(settings?.app_name ?? "");
     setAppShortName(settings?.app_short_name ?? "");
+    setThemeMode(settings?.theme_mode ?? "dark");
     setDefaultProvider(settings?.default_provider ?? "");
     setDefaultModel(settings?.default_model ?? "");
     setDefaultApiKeyRef(settings?.default_api_key_ref ?? "");
@@ -98,6 +100,7 @@ export function SettingsPage() {
     await updateSettings.mutateAsync({
       app_name: appName || null,
       app_short_name: appShortName || null,
+      theme_mode: themeMode,
     });
   }
 
@@ -149,6 +152,14 @@ export function SettingsPage() {
             <label className="panel-field">
               <span className="panel-label">Short name</span>
               <input value={appShortName} onChange={(event) => setAppShortName(event.target.value)} placeholder="HQ" />
+            </label>
+            <label className="panel-field">
+              <span className="panel-label">Theme</span>
+              <select value={themeMode} onChange={(event) => setThemeMode(event.target.value as "dark" | "light" | "system")}>
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+                <option value="system">System</option>
+              </select>
             </label>
             <button className="panel-button-primary w-full" type="submit">
               Save branding
@@ -268,6 +279,10 @@ export function SettingsPage() {
             <div className="pb-3">
               <p className="panel-label">Current short name</p>
               <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.app_short_name ?? settings?.app_name ?? "HermesHQ")}</p>
+            </div>
+            <div className="pb-3">
+              <p className="panel-label">Current theme</p>
+              <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.theme_mode ?? "dark")}</p>
             </div>
           </div>
         </section>

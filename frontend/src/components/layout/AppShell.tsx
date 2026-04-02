@@ -150,7 +150,7 @@ export function AppShell() {
       </div>
 
       {mobileNavOpen ? (
-        <div className="fixed inset-0 z-50 bg-black/70 md:hidden" onClick={() => setMobileNavOpen(false)}>
+        <div className="fixed inset-0 z-50 bg-[var(--overlay)] md:hidden" onClick={() => setMobileNavOpen(false)}>
           <aside
             className="panel-frame absolute left-4 top-4 bottom-4 w-[min(82vw,320px)] p-6"
             onClick={(event) => event.stopPropagation()}

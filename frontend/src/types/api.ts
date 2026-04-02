@@ -54,6 +54,7 @@ export interface AppSettings {
   id: string;
   app_name: string | null;
   app_short_name: string | null;
+  theme_mode: "dark" | "light" | "system";
   default_provider: string | null;
   default_model: string | null;
   default_api_key_ref: string | null;

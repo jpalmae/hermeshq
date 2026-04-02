@@ -3,6 +3,7 @@ import { useEffect } from "react";
 
 import { usePublicBranding, resolveAssetUrl } from "./api/settings";
 import { AppShell } from "./components/layout/AppShell";
+import { applyThemeToDocument } from "./lib/theme";
 import { useSessionStore } from "./stores/sessionStore";
 import { AgentDetailPage } from "./pages/AgentDetailPage";
 import { AgentsPage } from "./pages/AgentsPage";
@@ -19,6 +20,12 @@ export default function App() {
 
   useEffect(() => {
     document.title = branding?.app_name || "HermesHQ";
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: light)");
+    const syncTheme = () => {
+      applyThemeToDocument(branding?.theme_mode);
+    };
+    syncTheme();
+    mediaQuery.addEventListener("change", syncTheme);
     const href = resolveAssetUrl(branding?.favicon_url);
     const existing = document.querySelector<HTMLLinkElement>("link[rel='icon']");
     if (href) {
@@ -29,7 +36,10 @@ export default function App() {
     } else if (existing) {
       existing.remove();
     }
-  }, [branding?.app_name, branding?.favicon_url]);
+    return () => {
+      mediaQuery.removeEventListener("change", syncTheme);
+    };
+  }, [branding?.app_name, branding?.favicon_url, branding?.theme_mode]);
 
   if (!token) {
     return <LoginPage />;

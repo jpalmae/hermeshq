@@ -120,7 +120,8 @@ export function AgentConversationPanel({
 
       <div
         ref={feedRef}
-        className="mt-6 max-h-[560px] space-y-4 overflow-y-auto border border-[var(--border)] bg-black/20 p-4"
+        className="mt-6 max-h-[560px] space-y-4 overflow-y-auto border border-[var(--border)] p-4"
+        style={{ background: "color-mix(in srgb, var(--surface) 60%, transparent)" }}
       >
         {entries.length ? (
           entries.map((entry) => {
@@ -138,22 +139,22 @@ export function AgentConversationPanel({
                 }`}
               >
                 <div className="flex items-center justify-between gap-4">
-                  <p className={`panel-label ${isUser ? "!text-black/70" : ""}`}>
+                  <p className={`panel-label ${isUser ? "[color:var(--contrast-muted)]" : ""}`}>
                     {isUser ? "Operator" : isSystem ? "Runtime error" : "Agent"}
                   </p>
-                  <p className={`text-xs uppercase tracking-[0.1em] ${isUser ? "text-black/70" : statusTone(entry.status)}`}>
+                  <p className={`text-xs uppercase tracking-[0.1em] ${isUser ? "[color:var(--contrast-muted)]" : statusTone(entry.status)}`}>
                     {entry.status}
                   </p>
                 </div>
                 {entry.title ? (
-                  <p className={`mt-2 text-xs uppercase tracking-[0.1em] ${isUser ? "text-black/60" : "text-[var(--text-disabled)]"}`}>
+                  <p className={`mt-2 text-xs uppercase tracking-[0.1em] ${isUser ? "[color:var(--contrast-muted)]" : "text-[var(--text-disabled)]"}`}>
                     {entry.title}
                   </p>
                 ) : null}
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
                   {entry.content}
                 </p>
-                <p className={`mt-3 text-xs uppercase tracking-[0.1em] ${isUser ? "text-black/60" : "text-[var(--text-disabled)]"}`}>
+                <p className={`mt-3 text-xs uppercase tracking-[0.1em] ${isUser ? "[color:var(--contrast-muted)]" : "text-[var(--text-disabled)]"}`}>
                   {new Date(entry.timestamp).toLocaleString()}
                 </p>
               </article>

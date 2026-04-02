@@ -160,9 +160,9 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
 
       <div className="mt-4">
         {readOnly ? (
-          <div ref={containerRef} className="terminal-shell h-[28rem] overflow-hidden border border-[var(--border)] bg-black" />
+          <div ref={containerRef} className="terminal-shell h-[28rem] overflow-hidden border border-[var(--border)]" />
         ) : (
-          <div className="border border-[var(--border)] bg-black/40 p-4 font-mono text-sm text-[var(--text-secondary)]">
+          <div className="border border-[var(--border)] bg-[var(--surface-raised)] p-4 font-mono text-sm text-[var(--text-secondary)]">
             Terminal unavailable in this mode.
           </div>
         )}
