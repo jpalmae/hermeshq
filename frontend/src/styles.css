@@ -1,0 +1,292 @@
+@import url("https://fonts.googleapis.com/css2?family=Doto:wght@400..700&family=Space+Grotesk:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap");
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  --black: #000000;
+  --surface: #111111;
+  --surface-raised: #1a1a1a;
+  --border: #222222;
+  --border-visible: #333333;
+  --text-disabled: #666666;
+  --text-secondary: #999999;
+  --text-primary: #e8e8e8;
+  --text-display: #ffffff;
+  --accent: #d71921;
+  --accent-subtle: rgba(215, 25, 33, 0.15);
+  --success: #4a9e5c;
+  --warning: #d4a843;
+  --interactive: #5b9bf6;
+}
+
+@theme inline {
+  --font-display: "Doto", "Space Mono", monospace;
+  --font-sans: "Space Grotesk", "DM Sans", system-ui, sans-serif;
+  --font-mono: "Space Mono", "JetBrains Mono", monospace;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    background: var(--black);
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    background:
+      radial-gradient(circle at top right, rgba(255, 255, 255, 0.035), transparent 24rem),
+      radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.025), transparent 20rem),
+      var(--black);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  input,
+  textarea,
+  select {
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid var(--border-visible);
+    background: transparent;
+    padding: 0.9rem 0 0.7rem;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    outline: none;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    border-color: var(--text-primary);
+  }
+
+  ::selection {
+    background: rgba(255, 255, 255, 0.2);
+    color: var(--text-display);
+  }
+}
+
+@layer components {
+  .panel-frame {
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+  }
+
+  .panel-label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .panel-field {
+    display: block;
+  }
+
+  .panel-button-primary,
+  .panel-button-secondary {
+    min-height: 44px;
+    border-radius: 999px;
+    padding: 0.9rem 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition:
+      border-color 180ms ease-out,
+      color 180ms ease-out,
+      background-color 180ms ease-out;
+  }
+
+  .panel-button-primary {
+    border: 0;
+    background: var(--text-display);
+    color: var(--black);
+  }
+
+  .panel-button-secondary {
+    border: 1px solid var(--border-visible);
+    background: transparent;
+    color: var(--text-primary);
+  }
+
+  .panel-button-secondary:hover,
+  .panel-button-primary:hover {
+    cursor: pointer;
+  }
+
+  .panel-inline-status {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .panel-stat-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 1rem;
+  }
+
+  .panel-stat-row span {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .panel-stat-row strong {
+    color: var(--text-display);
+    font-size: 0.95rem;
+    font-weight: 400;
+  }
+
+  .terminal-shell {
+    position: relative;
+    background:
+      radial-gradient(circle at top right, rgba(255, 255, 255, 0.03), transparent 18rem),
+      #080808;
+  }
+
+  .terminal-shell .xterm {
+    height: 100%;
+    padding: 0.9rem;
+  }
+
+  .terminal-shell .xterm-viewport {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-visible) transparent;
+  }
+
+  .org-map-shell {
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 95%, transparent);
+  }
+
+  .org-map-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 1.25rem;
+  }
+
+  .org-map-viewport {
+    overflow: auto;
+    padding: 1.25rem;
+    background:
+      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+      color-mix(in srgb, var(--surface) 98%, transparent);
+    background-size: 28px 28px, 28px 28px, auto;
+  }
+
+  .org-map-stage {
+    position: relative;
+    min-width: 100%;
+    min-height: 100%;
+  }
+
+  .org-map-canvas {
+    position: relative;
+  }
+
+  .org-map-lines {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .org-map-card {
+    position: relative;
+    position: absolute;
+    border: 1px solid var(--border);
+    border-radius: 1.25rem;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent), var(--surface-raised);
+    padding: 1.25rem;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.01);
+  }
+
+  .org-map-handle {
+    margin: -0.1rem -0.1rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0.1rem 0.9rem;
+    user-select: none;
+  }
+
+  .org-chart-icon {
+    position: relative;
+    display: grid;
+    height: 3rem;
+    width: 3rem;
+    place-items: center;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-display);
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+  }
+
+  .org-chart-status {
+    position: absolute;
+    right: -0.1rem;
+    bottom: -0.1rem;
+    height: 0.7rem;
+    width: 0.7rem;
+    border-radius: 999px;
+    border: 2px solid var(--surface-raised);
+  }
+
+  .org-map-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border-top: 1px solid var(--border);
+    padding: 0.9rem 1.25rem 1rem;
+  }
+
+  .org-map-resize-handle {
+    min-height: 0;
+    border: 1px solid var(--border-visible);
+    border-radius: 999px;
+    background: transparent;
+    padding: 0.55rem 1rem;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: ns-resize;
+  }
+}

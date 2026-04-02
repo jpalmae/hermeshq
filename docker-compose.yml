@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: hermeshq-postgres
+    environment:
+      POSTGRES_DB: hermeshq
+      POSTGRES_USER: hermeshq
+      POSTGRES_PASSWORD: hermeshq
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hermeshq -d hermeshq"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "5432:5432"
+    volumes:
+      - hermeshq_postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: hermeshq-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://hermeshq:hermeshq@postgres:5432/hermeshq
+      JWT_SECRET: change-me
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin123
+      ADMIN_DISPLAY_NAME: Hermes Operator
+      WORKSPACES_ROOT: /app/workspaces
+      PTY_SHELL: /bin/sh
+      CORS_ORIGINS: '["http://localhost:3420","http://frontend"]'
+    volumes:
+      - hermeshq_workspaces:/app/workspaces
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8000/api
+    container_name: hermeshq-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3420:80"
+    restart: unless-stopped
+
+volumes:
+  hermeshq_postgres:
+  hermeshq_workspaces:

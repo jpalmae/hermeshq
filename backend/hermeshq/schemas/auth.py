@@ -1,0 +1,23 @@
+from datetime import datetime
+
+from pydantic import BaseModel
+
+from hermeshq.schemas.common import ORMModel
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_at: datetime
+
+
+class UserRead(ORMModel):
+    id: str
+    username: str
+    display_name: str
+
