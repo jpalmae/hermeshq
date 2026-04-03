@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, Query, WebSocket, status
@@ -44,6 +46,15 @@ def decode_access_token(token: str) -> str | None:
     except JWTError:
         return None
     return payload.get("sub")
+
+
+def create_agent_service_token(agent_id: str) -> str:
+    digest = hmac.new(
+        settings.jwt_secret.encode("utf-8"),
+        f"agent:{agent_id}".encode("utf-8"),
+        hashlib.sha256,
+    )
+    return digest.hexdigest()
 
 
 async def get_user_by_username(db: AsyncSession, username: str | None) -> User | None:

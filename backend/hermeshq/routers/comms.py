@@ -8,6 +8,7 @@ from hermeshq.models.agent import Agent
 from hermeshq.models.message import AgentMessage
 from hermeshq.models.user import User
 from hermeshq.schemas.message import BroadcastCreate, MessageCreate, MessageRead
+from hermeshq.services.agent_hierarchy import validate_delegate_hierarchy
 
 router = APIRouter(prefix="/comms", tags=["comms"])
 
@@ -15,61 +16,6 @@ router = APIRouter(prefix="/comms", tags=["comms"])
 async def _load_agent_map(session: AsyncSession) -> dict[str, Agent]:
     result = await session.execute(select(Agent))
     return {agent.id: agent for agent in result.scalars().all()}
-
-
-def _ancestor_chain(agent_map: dict[str, Agent], agent_id: str) -> list[str]:
-    chain: list[str] = []
-    seen: set[str] = set()
-    current = agent_map.get(agent_id)
-    parent_id = current.supervisor_agent_id if current else None
-    while parent_id and parent_id not in seen:
-        chain.append(parent_id)
-        seen.add(parent_id)
-        parent = agent_map.get(parent_id)
-        parent_id = parent.supervisor_agent_id if parent else None
-    return chain
-
-
-def _descendant_ids(agent_map: dict[str, Agent], root_id: str) -> set[str]:
-    children_by_parent: dict[str | None, list[str]] = {}
-    for agent in agent_map.values():
-        children_by_parent.setdefault(agent.supervisor_agent_id, []).append(agent.id)
-    descendants: set[str] = set()
-    stack = list(children_by_parent.get(root_id, []))
-    while stack:
-        current = stack.pop()
-        if current in descendants:
-            continue
-        descendants.add(current)
-        stack.extend(children_by_parent.get(current, []))
-    return descendants
-
-
-def _validate_delegate_hierarchy(agent_map: dict[str, Agent], source: Agent, target: Agent) -> None:
-    if not source.can_send_tasks:
-        raise HTTPException(status_code=400, detail=f"{source.friendly_name or source.name} cannot send delegated tasks")
-    if not target.can_receive_tasks:
-        raise HTTPException(status_code=400, detail=f"{target.friendly_name or target.name} cannot receive delegated tasks")
-
-    if not source.supervisor_agent_id:
-        return
-
-    ancestor_ids = set(_ancestor_chain(agent_map, source.id))
-    if target.id in ancestor_ids:
-        return
-
-    descendant_ids = _descendant_ids(agent_map, source.id)
-    if target.id in descendant_ids:
-        return
-
-    raise HTTPException(
-        status_code=400,
-        detail=(
-            "Delegation violates hierarchy. Subordinates may escalate upward to supervisors or delegate downward within "
-            "their own branch. Cross-branch lateral delegation is blocked."
-        ),
-    )
-
 
 @router.post("/send", response_model=MessageRead)
 async def send_message(
@@ -86,7 +32,7 @@ async def send_message(
             raise HTTPException(status_code=404, detail="Destination agent not found")
         if payload.message_type == "delegate":
             agent_map = await _load_agent_map(session)
-            _validate_delegate_hierarchy(agent_map, source_agent, target_agent)
+            validate_delegate_hierarchy(agent_map, source_agent, target_agent)
     message = await request.app.state.comms_router.send_message(payload)
     if payload.message_type == "delegate" and message.task_id:
         async with request.app.state.supervisor.session_factory() as session:

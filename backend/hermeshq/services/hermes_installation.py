@@ -8,10 +8,13 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from hermeshq.config import get_settings
+from hermeshq.core.security import create_agent_service_token
 from hermeshq.models.agent import Agent
 from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.secret import Secret
+from hermeshq.services.agent_hierarchy import delegate_route, route_label
 from hermeshq.services.secret_vault import SecretVault
 
 
@@ -36,6 +39,7 @@ class HermesInstallationManager:
     async def sync_agent_installation(self, agent: Agent) -> list[dict]:
         hermes_home = self.build_hermes_home(agent.workspace_path)
         self._ensure_home_dirs(hermes_home)
+        self._sync_managed_plugins(hermes_home)
         app_name = await self._get_instance_app_name()
         installed_skills = await self._sync_managed_skills(agent, hermes_home)
         system_prompt = await self._build_system_prompt(agent, installed_skills, app_name)
@@ -49,6 +53,9 @@ class HermesInstallationManager:
     async def build_process_env(self, agent: Agent) -> dict[str, str]:
         hermes_home = self.build_hermes_home(agent.workspace_path)
         env = {**os.environ, "HERMES_HOME": str(hermes_home), "TERM": "xterm-256color"}
+        env["HERMESHQ_AGENT_ID"] = agent.id
+        env["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id)
+        env["HERMESHQ_INTERNAL_API_URL"] = get_settings().internal_api_base_url.rstrip("/")
         api_key = await self._resolve_api_key(agent.api_key_ref)
         if api_key:
             for env_name in self._provider_env_names(agent.provider):
@@ -111,6 +118,13 @@ class HermesInstallationManager:
         hermes_home.mkdir(parents=True, exist_ok=True)
         for subdir in ("cron", "sessions", "logs", "memories", "skills", "plugins"):
             (hermes_home / subdir).mkdir(parents=True, exist_ok=True)
+
+    def _sync_managed_plugins(self, hermes_home: Path) -> None:
+        source_root = Path(__file__).resolve().parents[1] / "plugin_templates" / "hermeshq_comms"
+        target_root = hermes_home / "plugins" / "hermeshq_comms"
+        if target_root.exists():
+            shutil.rmtree(target_root)
+        shutil.copytree(source_root, target_root)
 
     def _write_config(
         self,
@@ -310,7 +324,9 @@ class HermesInstallationManager:
             for item in agents
         }
         roster: list[dict] = []
+        agent_map = {item.id: item for item in agents}
         for item in agents:
+            allowed, route = delegate_route(agent_map, agent, item)
             roster.append(
                 {
                     "id": item.id,
@@ -321,8 +337,11 @@ class HermesInstallationManager:
                     "description": (item.description or "").strip(),
                     "status": item.status,
                     "can_receive_tasks": bool(item.can_receive_tasks),
+                    "can_send_tasks": bool(item.can_send_tasks),
                     "supervisor": name_by_id.get(item.supervisor_agent_id) if item.supervisor_agent_id else None,
                     "team_tags": list(item.team_tags or []),
+                    "delegate_allowed": bool(allowed),
+                    "delegate_route": route,
                 }
             )
         return roster
@@ -349,6 +368,18 @@ class HermesInstallationManager:
             lines = [
                 f"{app_name} live roster for this instance. This is factual control-plane data, not memory.",
                 "If asked whether you know another agent, answer from this roster.",
+                (
+                    "You have real control-plane tools available for inter-agent communication: "
+                    "`hq_list_agents`, `hq_direct_message`, and `hq_delegate_task`."
+                ),
+                (
+                    "Do not claim that you cannot contact other agents when these tools are available. "
+                    "Use `hq_direct_message` for a non-task message and `hq_delegate_task` for executable work."
+                ),
+                (
+                    "Hierarchy is enforced by the platform: independent agents may delegate freely; "
+                    "subordinates may escalate upward or delegate downward within their own branch."
+                ),
                 "Known agents:",
             ]
             for item in roster:
@@ -357,8 +388,9 @@ class HermesInstallationManager:
                 tag_text = ", ".join(item["team_tags"]) if item["team_tags"] else "none"
                 lines.append(
                     f"- {item['display_name']} | slug={item['slug'] or 'unset'} | status={item['status']} | "
-                    f"receives_tasks={'yes' if item['can_receive_tasks'] else 'no'} | supervisor={supervisor} | "
-                    f"tags={tag_text} | role={role}"
+                    f"receives_tasks={'yes' if item['can_receive_tasks'] else 'no'} | "
+                    f"sends_tasks={'yes' if item['can_send_tasks'] else 'no'} | supervisor={supervisor} | "
+                    f"tags={tag_text} | role={role} | delegate={route_label(item['delegate_route'])}"
                 )
             parts.append("\n".join(lines))
         return "\n\n".join(part for part in parts if part).strip()

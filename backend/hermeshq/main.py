@@ -11,7 +11,7 @@ from hermeshq.core.events import EventBroker
 from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
 from hermeshq.database import AsyncSessionLocal, init_database
 from hermeshq.models import Agent, AppSettings, Node, User
-from hermeshq.routers import agents, auth, comms, dashboard, logs, messaging_channels, nodes, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, users
+from hermeshq.routers import agents, auth, comms, dashboard, internal_agents, logs, messaging_channels, nodes, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, users
 from hermeshq.schemas.common import HealthResponse
 from hermeshq.services.agent_identity import derive_agent_identity, slugify_agent_value
 from hermeshq.services.agent_supervisor import AgentSupervisor
@@ -87,7 +87,12 @@ async def lifespan(app: FastAPI):
     app.state.secret_vault = SecretVault(settings.fernet_key or settings.jwt_secret)
     app.state.installation_manager = HermesInstallationManager(AsyncSessionLocal, app.state.secret_vault)
     app.state.runtime = HermesRuntime(AsyncSessionLocal, app.state.secret_vault, app.state.installation_manager)
-    app.state.supervisor = AgentSupervisor(AsyncSessionLocal, app.state.event_broker, app.state.runtime)
+    app.state.supervisor = AgentSupervisor(
+        AsyncSessionLocal,
+        app.state.event_broker,
+        app.state.runtime,
+        app.state.secret_vault,
+    )
     app.state.gateway_supervisor = GatewaySupervisor(
         AsyncSessionLocal,
         app.state.event_broker,
@@ -95,6 +100,7 @@ async def lifespan(app: FastAPI):
     )
     app.state.comms_router = CommsRouter(AsyncSessionLocal, app.state.event_broker)
     app.state.pty_manager = PTYManager(settings.pty_shell)
+    app.state.supervisor.pty_manager = app.state.pty_manager
     app.state.scheduler = SchedulerService(AsyncSessionLocal, app.state.supervisor.submit_task)
     await app.state.supervisor.bootstrap_runtime()
     await app.state.gateway_supervisor.bootstrap_gateways()
@@ -119,6 +125,7 @@ app.include_router(agents.router, prefix=settings.api_prefix)
 app.include_router(tasks.router, prefix=settings.api_prefix)
 app.include_router(dashboard.router, prefix=settings.api_prefix)
 app.include_router(comms.router, prefix=settings.api_prefix)
+app.include_router(internal_agents.router, prefix=settings.api_prefix)
 app.include_router(secrets.router, prefix=settings.api_prefix)
 app.include_router(settings_router.router, prefix=settings.api_prefix)
 app.include_router(skills.router, prefix=settings.api_prefix)

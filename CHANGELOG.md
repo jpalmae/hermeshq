@@ -5,6 +5,7 @@
 ### Added
 
 - Per-agent Telegram channel management using the native Hermes gateway, including allowlisted Telegram user IDs persisted per agent.
+- Real HermesHQ inter-agent tools exposed to agents themselves: `hq_list_agents`, `hq_direct_message` and `hq_delegate_task`.
 - Per-agent avatars with upload, delete and rendering across the dashboard, agent matrix, dependency canvas and agent detail view.
 - Per-user avatars with upload and delete from the `Users` page.
 - Per-user theme overrides layered on top of the instance default theme.
@@ -22,5 +23,7 @@
 - Hermes runtime prompt fragments now use the configured instance app name, falling back to `HermesHQ` only when no branding name is set.
 - `Comms` now enforces hierarchy-aware delegation: independent agents delegate freely, subordinates can escalate upward or delegate downward within their branch, and cross-branch lateral delegation is blocked.
 - `Comms` now previews those hierarchy rules in the UI, including disabled destinations and a visual routing scope for the selected source agent.
+- Delegated child tasks now generate a real callback path to the parent agent: HermesHQ persists a `delegate_result` message, creates a follow-up callback task in the delegator and surfaces the result in the parent runtime ledger.
+- Delegations started from Telegram now preserve the origin chat context so the delegator can auto-reply to that same Telegram conversation when the delegated child finishes.
 - `Message edges` in `Comms` now shows human-readable agent names plus delegate/direct/broadcast counts instead of raw IDs.
 - `Settings` now controls the instance default language, while `My Account` and the sidebar operator section expose a personal language override for every user.

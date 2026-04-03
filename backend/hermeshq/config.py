@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     user_assets_root: Path | None = None
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3420"]
     pty_shell: str = "/bin/sh"
+    internal_api_base_url: str = "http://127.0.0.1:8000/api/internal"
 
     model_config = SettingsConfigDict(
         env_file=".env",

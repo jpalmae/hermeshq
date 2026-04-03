@@ -38,9 +38,15 @@ class CommsRouter:
                 )
             )
             if payload.message_type == "delegate":
+                parent_task_id = None
+                if isinstance(payload.metadata, dict):
+                    raw_parent_task_id = payload.metadata.get("parent_task_id")
+                    if isinstance(raw_parent_task_id, str) and raw_parent_task_id.strip():
+                        parent_task_id = raw_parent_task_id.strip()
                 delegated_task = Task(
                     agent_id=payload.to_agent_id,
                     source_agent_id=payload.from_agent_id,
+                    parent_task_id=parent_task_id,
                     title=payload.metadata.get("title") if isinstance(payload.metadata, dict) else None,
                     prompt=payload.content,
                     metadata_json={"delegated": True, **payload.metadata},

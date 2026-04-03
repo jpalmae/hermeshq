@@ -77,7 +77,8 @@ const manualSections: ManualSection[] = [
     bullets: [
       "Terminal muestra la TUI real de Hermes. Puedes mantenerla embebida, flotarla o expandirla a pantalla casi completa.",
       "Talk to this agent envía mensajes como tareas operativas y conserva un historial estilo conversación.",
-      "Runtime ledger resume ejecuciones, resultados y errores; Configuration permite editar parámetros como system prompt o avatar cuando haga falta.",
+      "Runtime ledger resume ejecuciones, resultados y errores; cuando este agente delega trabajo, el resultado del subordinado vuelve a aparecer aquí como una task callback automática.",
+      "Configuration permite editar parámetros como system prompt o avatar cuando haga falta.",
       "Hermes skill registry, Logs y Workspace están pensados para investigación y soporte técnico. Se mantienen colapsados por defecto para no ensuciar la vista.",
     ],
   },
@@ -128,6 +129,7 @@ const manualSections: ManualSection[] = [
       "El sistema registra los eventos y las tareas resultantes, permitiendo seguir la conversación operativa entre agentes.",
       "Las reglas jerárquicas se aplican solo a Delegate: agentes independientes delegan libremente, subordinados pueden escalar hacia supervisores o delegar hacia abajo dentro de su propia rama, y las delegaciones laterales entre ramas quedan bloqueadas.",
       "La propia pantalla de Comms muestra esas rutas válidas e inválidas antes de enviar, incluyendo destinos deshabilitados y una vista visual del alcance del agente origen.",
+      "Cuando la tarea hija termina, HermesHQ genera un `delegate_result`: queda visible en Comms history y además crea una task de retorno en el runtime ledger del agente delegador.",
       "Si el agente destino está detenido, HermesHQ puede levantarlo antes de enviar la delegación. Para automatizar una delegación periódica debes usar Schedules, no Comms.",
     ],
   },
@@ -142,6 +144,7 @@ const manualSections: ManualSection[] = [
       "Los IDs permitidos determinan quién puede interactuar con el agente desde Telegram. Cualquier usuario fuera de esa lista queda excluido.",
       "El token del bot debe guardarse como secreto y luego asociarse al agente desde su configuración de mensajería.",
       "El estado del canal se supervisa desde HermesHQ, pero el procesamiento real ocurre en la instalación Hermes del agente.",
+      "Si una delegación nace desde Telegram, HermesHQ conserva el contexto del chat de origen. Cuando el agente subordinado termina, el resultado puede volver automáticamente a ese mismo chat de Telegram.",
     ],
   },
   {

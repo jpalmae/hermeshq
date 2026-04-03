@@ -1,0 +1,8 @@
+name: hermeshq-comms
+version: "1.0.0"
+description: HermesHQ internal inter-agent communication tools
+author: HermesHQ
+provides_tools:
+  - hq_list_agents
+  - hq_direct_message
+  - hq_delegate_task

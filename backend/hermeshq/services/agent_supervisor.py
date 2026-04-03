@@ -1,16 +1,22 @@
 import asyncio
 import traceback
+from typing import Any
 
+from telegram import Bot
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hermeshq.core.events import EventBroker
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
+from hermeshq.models.message import AgentMessage
+from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.node import Node
+from hermeshq.models.secret import Secret
 from hermeshq.models.task import Task
 from hermeshq.models.base import utcnow
 from hermeshq.services.hermes_runtime import HermesRuntime
+from hermeshq.services.secret_vault import SecretVault
 
 
 class AgentSupervisor:
@@ -19,12 +25,15 @@ class AgentSupervisor:
         session_factory: async_sessionmaker[AsyncSession],
         event_broker: EventBroker,
         runtime: HermesRuntime,
+        secret_vault: SecretVault,
     ) -> None:
         self.session_factory = session_factory
         self.event_broker = event_broker
         self.runtime = runtime
+        self.secret_vault = secret_vault
         self.running_agents: set[str] = set()
         self.active_tasks: dict[str, asyncio.Task] = {}
+        self._pending_callbacks: list = []
 
     async def bootstrap_runtime(self) -> None:
         async with self.session_factory() as session:
@@ -187,9 +196,24 @@ class AgentSupervisor:
                     agent=agent,
                     task=task,
                     message=task.title or "Task completed",
-                    details={"tokens_used": task.tokens_used, "engine": execution.engine},
+                        details={"tokens_used": task.tokens_used, "engine": execution.engine},
+                )
+                await self._queue_delegate_result_callback(
+                    session,
+                    task=task,
+                    agent=agent,
+                    success=True,
+                    summary=execution.final_response,
+                )
+                await self._queue_external_callback_delivery(
+                    session,
+                    task=task,
+                    agent=agent,
+                    success=True,
+                    summary=execution.final_response,
                 )
                 await session.commit()
+                await self._drain_pending_callbacks()
 
             await self.event_broker.publish(
                 {
@@ -239,7 +263,22 @@ class AgentSupervisor:
                             "traceback": traceback.format_exc(),
                         },
                     )
+                    await self._queue_delegate_result_callback(
+                        session,
+                        task=task,
+                        agent=agent,
+                        success=False,
+                        summary=str(exc),
+                    )
+                    await self._queue_external_callback_delivery(
+                        session,
+                        task=task,
+                        agent=agent,
+                        success=False,
+                        summary=str(exc),
+                    )
                 await session.commit()
+                await self._drain_pending_callbacks()
             await self.event_broker.publish(
                 {
                     "type": "task.failed",
@@ -273,6 +312,170 @@ class AgentSupervisor:
                 details=details or {},
             )
         )
+
+    async def _queue_delegate_result_callback(
+        self,
+        session: AsyncSession,
+        *,
+        task: Task,
+        agent: Agent,
+        success: bool,
+        summary: str,
+    ) -> None:
+        if not task.source_agent_id:
+            return
+        if (task.metadata_json or {}).get("delegation_result"):
+            return
+
+        source_agent = await session.get(Agent, task.source_agent_id)
+        if not source_agent:
+            return
+
+        status_label = "completed" if success else "failed"
+        child_name = agent.friendly_name or agent.name or agent.slug or agent.id
+        source_name = source_agent.friendly_name or source_agent.name or source_agent.slug or source_agent.id
+        title = f"Delegation result from {child_name}"
+        message_content = (
+            f"Delegated task update from {child_name}: {status_label}.\n\n"
+            f"Original instruction:\n{task.prompt}\n\n"
+            f"Result:\n{summary.strip() or '(no response)'}"
+        )
+
+        callback_message = AgentMessage(
+            from_agent_id=agent.id,
+            to_agent_id=source_agent.id,
+            task_id=task.id,
+            message_type="delegate_result",
+            content=message_content,
+            metadata_json={
+                "delegated_result": True,
+                "status": status_label,
+                "source_task_id": task.id,
+                "parent_task_id": task.parent_task_id,
+            },
+        )
+        session.add(callback_message)
+
+        callback_task = Task(
+            agent_id=source_agent.id,
+            source_agent_id=agent.id,
+            parent_task_id=task.parent_task_id,
+            title=title,
+            prompt=(
+                f"A delegated task you assigned to {child_name} has {status_label}.\n\n"
+                f"Original delegated instruction:\n{task.prompt}\n\n"
+                f"{child_name} result:\n{summary.strip() or '(no response)'}\n\n"
+                "If needed, continue the orchestration and inform the user."
+            ),
+            metadata_json={
+                "delegation_result": True,
+                "delegated_task_id": task.id,
+                "delegated_agent_id": agent.id,
+                "delegated_agent_name": child_name,
+                "status": status_label,
+                "callback_delivery": (task.metadata_json or {}).get("callback_delivery"),
+            },
+        )
+        session.add(callback_task)
+        await session.flush()
+        callback_message.task_id = callback_task.id
+
+        await self._log(
+            session,
+            "comms.delegate_result",
+            agent=source_agent,
+            task=callback_task,
+            message=f"{child_name} -> {source_name}: delegated task {status_label}",
+            details={
+                "delegated_task_id": task.id,
+                "delegated_agent_id": agent.id,
+                "status": status_label,
+            },
+        )
+
+        async def _after_commit() -> None:
+            if source_agent.status == "running":
+                await self.submit_task(callback_task.id)
+            await self.event_broker.publish(
+                {
+                    "type": "comms.message",
+                    "message_id": callback_message.id,
+                    "from_agent_id": callback_message.from_agent_id,
+                    "to_agent_id": callback_message.to_agent_id,
+                    "message_type": callback_message.message_type,
+                    "content": callback_message.content,
+                    "task_id": callback_task.id,
+                }
+            )
+            pty_manager = getattr(self, "pty_manager", None)
+            if pty_manager is not None:
+                notice = (
+                    f"\r\n[HermesHQ] Delegation result from {child_name}: {status_label}. "
+                    f"Task {task.id}\r\n"
+                )
+                await pty_manager.broadcast_notice(source_agent.id, notice)
+
+        self._pending_callbacks.append(_after_commit)
+
+    async def _queue_external_callback_delivery(
+        self,
+        session: AsyncSession,
+        *,
+        task: Task,
+        agent: Agent,
+        success: bool,
+        summary: str,
+    ) -> None:
+        metadata = task.metadata_json or {}
+        callback_delivery = metadata.get("callback_delivery")
+        if not isinstance(callback_delivery, dict):
+            return
+        platform = str(callback_delivery.get("platform") or "").strip().lower()
+        chat_id = str(callback_delivery.get("chat_id") or "").strip()
+        thread_id = callback_delivery.get("thread_id")
+        if platform != "telegram" or not chat_id:
+            return
+
+        message_text = summary.strip() if success else f"Delegated task failed: {summary.strip()}"
+        if not message_text:
+            return
+        source_agent = await session.get(Agent, task.agent_id)
+        if not source_agent:
+            return
+        result = await session.execute(
+            select(MessagingChannel).where(
+                MessagingChannel.agent_id == source_agent.id,
+                MessagingChannel.platform == "telegram",
+                MessagingChannel.enabled.is_(True),
+            )
+        )
+        channel = result.scalar_one_or_none()
+        if not channel or not channel.secret_ref:
+            return
+        secret_result = await session.execute(select(Secret).where(Secret.name == channel.secret_ref))
+        secret = secret_result.scalar_one_or_none()
+        if not secret:
+            return
+        token = self.secret_vault.decrypt(secret.value_enc)
+        thread_value = int(str(thread_id)) if thread_id not in (None, "", "None") else None
+
+        async def _after_commit() -> None:
+            try:
+                bot = Bot(token=token)
+                await bot.send_message(chat_id=chat_id, text=message_text, message_thread_id=thread_value)
+                await bot.shutdown()
+            except Exception:
+                pass
+
+        self._pending_callbacks.append(_after_commit)
+
+    async def _drain_pending_callbacks(self) -> None:
+        if not self._pending_callbacks:
+            return
+        callbacks = list(self._pending_callbacks)
+        self._pending_callbacks.clear()
+        for callback in callbacks:
+            await callback()
 
     async def get_recent_activity(self, limit: int = 20) -> list[ActivityLog]:
         async with self.session_factory() as session:

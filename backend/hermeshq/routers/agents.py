@@ -13,6 +13,7 @@ from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
 from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.message import AgentMessage
+from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.node import Node
 from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.task import Task
@@ -246,6 +247,20 @@ async def update_agent(
     agent.friendly_name = resolved_friendly
     agent.name = resolved_name
     agent.slug = unique_slug
+    restart_gateway_fields = {
+        "name",
+        "friendly_name",
+        "slug",
+        "description",
+        "system_prompt",
+        "soul_md",
+        "skills",
+        "team_tags",
+        "supervisor_agent_id",
+        "can_send_tasks",
+        "can_receive_tasks",
+    }
+    should_restart_gateways = bool(set(update_data).intersection(restart_gateway_fields))
     if any(
         field in update_data
         for field in ("name", "friendly_name", "slug", "system_prompt", "soul_md")
@@ -258,6 +273,13 @@ async def update_agent(
         )
     await db.commit()
     await request.app.state.installation_manager.sync_agent_installation(agent)
+    if should_restart_gateways:
+        channel_result = await db.execute(
+            select(MessagingChannel.platform, MessagingChannel.enabled).where(MessagingChannel.agent_id == agent_id)
+        )
+        for platform, enabled in channel_result.all():
+            if enabled:
+                await request.app.state.gateway_supervisor.restart_channel(agent_id, platform)
     result = await db.execute(
         select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id)
     )

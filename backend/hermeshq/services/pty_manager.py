@@ -108,6 +108,20 @@ class PTYManager:
         session.rows = rows
         self._resize_fd(session.master_fd, cols, rows)
 
+    async def broadcast_notice(self, agent_id: str, text: str) -> None:
+        session = self.sessions.get(agent_id)
+        if not session or not session.connections:
+            return
+        payload = base64.b64encode(text.encode("utf-8")).decode("utf-8")
+        stale: list[WebSocket] = []
+        for connection in list(session.connections):
+            try:
+                await connection.send_json({"type": "output", "data": payload})
+            except Exception:
+                stale.append(connection)
+        for connection in stale:
+            session.connections.discard(connection)
+
     async def _reader_loop(self, session: PTYSession) -> None:
         while True:
             output = await asyncio.to_thread(os.read, session.master_fd, 1024)
