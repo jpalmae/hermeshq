@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useAgentAction, useAgents, useCreateAgent, useDeleteAgent } from "../api/agents";
+import { AgentAvatar } from "../components/AgentAvatar";
 import { useNodes } from "../api/nodes";
 import { useSettings } from "../api/settings";
 import { useSessionStore } from "../stores/sessionStore";
@@ -253,15 +254,18 @@ export function AgentsPage() {
           {(agents ?? []).map((agent) => (
             <article key={agent.id} className="grid gap-5 border-b border-[var(--border)] py-5 xl:grid-cols-[1fr_auto]">
               <div className="grid gap-5 md:grid-cols-[1.1fr_0.8fr_0.8fr]">
-                <div>
-                  <p className="panel-label">{agent.slug}</p>
-                  <Link to={`/agents/${agent.id}`} className="mt-2 block text-xl text-[var(--text-display)]">
-                    {agent.friendly_name || agent.name}
-                  </Link>
-                  {agent.friendly_name && agent.friendly_name !== agent.name ? (
-                    <p className="mt-2 text-sm text-[var(--text-primary)]">{agent.name}</p>
-                  ) : null}
-                  <p className="mt-3 text-sm text-[var(--text-secondary)]">{agent.description ?? "No description"}</p>
+                <div className="flex items-start gap-4">
+                  <AgentAvatar agent={agent} sizeClass="h-14 w-14" className="shrink-0" />
+                  <div>
+                    <p className="panel-label">{agent.slug}</p>
+                    <Link to={`/agents/${agent.id}`} className="mt-2 block text-xl text-[var(--text-display)]">
+                      {agent.friendly_name || agent.name}
+                    </Link>
+                    {agent.friendly_name && agent.friendly_name !== agent.name ? (
+                      <p className="mt-2 text-sm text-[var(--text-primary)]">{agent.name}</p>
+                    ) : null}
+                    <p className="mt-3 text-sm text-[var(--text-secondary)]">{agent.description ?? "No description"}</p>
+                  </div>
                 </div>
                 <div>
                   <p className="panel-label">Runtime</p>

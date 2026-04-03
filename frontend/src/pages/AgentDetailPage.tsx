@@ -1,9 +1,10 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { useAgent, useAgentAction, useDeleteAgent, useUpdateAgent } from "../api/agents";
+import { useAgent, useAgentAction, useDeleteAgent, useDeleteAgentAvatar, useUpdateAgent, useUploadAgentAvatar } from "../api/agents";
 import { useLogs } from "../api/logs";
 import { useCreateTask, useTasks } from "../api/tasks";
+import { AgentAvatar } from "../components/AgentAvatar";
 import { AgentConversationPanel } from "../components/AgentConversationPanel";
 import { AgentMessagingPanel } from "../components/AgentMessagingPanel";
 import { AgentSkillsPanel } from "../components/AgentSkillsPanel";
@@ -47,6 +48,8 @@ export function AgentDetailPage() {
   const startAgent = useAgentAction("start");
   const stopAgent = useAgentAction("stop");
   const deleteAgent = useDeleteAgent();
+  const uploadAgentAvatar = useUploadAgentAvatar();
+  const deleteAgentAvatar = useDeleteAgentAvatar();
   const updateAgent = useUpdateAgent();
   const createTask = useCreateTask();
   const [identityForm, setIdentityForm] = useState({
@@ -201,6 +204,25 @@ export function AgentDetailPage() {
     });
   }
 
+  async function onAvatarSelected(file: File | null) {
+    if (!file) {
+      return;
+    }
+    try {
+      await uploadAgentAvatar.mutateAsync({ agentId: currentAgent.id, file });
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Avatar upload failed");
+    }
+  }
+
+  async function onRemoveAvatar() {
+    try {
+      await deleteAgentAvatar.mutateAsync(currentAgent.id);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Avatar removal failed");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
@@ -218,7 +240,28 @@ export function AgentDetailPage() {
                 {agent.description ?? "No operator description yet."}
               </p>
             </div>
-            <div className="h-28 w-28 rounded-full border border-[var(--border-visible)]" />
+            <div className="flex flex-col items-end gap-3">
+              <AgentAvatar agent={agent} sizeClass="h-28 w-28" />
+              <div className="flex flex-wrap justify-end gap-2">
+                <label className="panel-button-secondary cursor-pointer">
+                  Upload avatar
+                  <input
+                    className="hidden"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(event) => void onAvatarSelected(event.target.files?.[0] ?? null)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="panel-button-secondary"
+                  onClick={() => void onRemoveAvatar()}
+                  disabled={!agent.has_avatar || deleteAgentAvatar.isPending}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="mt-10 grid gap-6 border-t border-[var(--border)] pt-6 md:grid-cols-4">

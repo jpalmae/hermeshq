@@ -35,6 +35,8 @@ export interface Agent {
   name: string;
   friendly_name: string | null;
   slug: string;
+  avatar_url: string | null;
+  has_avatar: boolean;
   description: string | null;
   status: AgentStatus;
   run_mode: string;

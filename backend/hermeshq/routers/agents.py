@@ -1,8 +1,12 @@
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, status
+from pathlib import Path
+
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import delete, false, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from hermeshq.config import get_settings
 from hermeshq.core.security import ensure_agent_access, get_accessible_agent_ids, get_current_user, is_admin, require_admin
 from hermeshq.database import get_db_session
 from hermeshq.models.activity import ActivityLog
@@ -30,10 +34,53 @@ USER_EDITABLE_FIELDS = {
     "skills",
     "team_tags",
 }
+ALLOWED_AVATAR_TYPES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+}
+MAX_AVATAR_BYTES = 2 * 1024 * 1024
 
 
 def _get_workspace_manager(request: Request) -> WorkspaceManager:
     return request.app.state.workspace_manager
+
+
+def _get_agent_assets_root() -> Path:
+    root = Path(get_settings().agent_assets_root)
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _build_avatar_dir(agent_id: str) -> Path:
+    return _get_agent_assets_root() / agent_id
+
+
+def _build_avatar_path(agent: Agent) -> Path | None:
+    if not agent.avatar_filename:
+        return None
+    return _build_avatar_dir(agent.id) / agent.avatar_filename
+
+
+def _delete_avatar_files(agent_id: str) -> None:
+    avatar_dir = _build_avatar_dir(agent_id)
+    if not avatar_dir.exists():
+        return
+    for path in sorted(avatar_dir.rglob("*"), reverse=True):
+        if path.is_file() or path.is_symlink():
+            path.unlink()
+        elif path.is_dir():
+            path.rmdir()
+    avatar_dir.rmdir()
+
+
+def _serialize_agent(request: Request, agent: Agent) -> AgentRead:
+    payload = AgentRead.model_validate(agent)
+    avatar_url = None
+    if agent.avatar_filename:
+        version = int(agent.updated_at.timestamp()) if agent.updated_at else 0
+        avatar_url = f"{get_settings().api_prefix}/agents/{agent.id}/avatar?v={version}"
+    return payload.model_copy(update={"avatar_url": avatar_url, "has_avatar": bool(agent.avatar_filename)})
 
 
 async def _validate_supervisor(
@@ -72,6 +119,7 @@ async def _resolve_runtime_defaults(db: AsyncSession, payload: AgentCreate) -> d
 
 @router.get("", response_model=list[AgentRead])
 async def list_agents(
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> list[AgentRead]:
@@ -80,7 +128,7 @@ async def list_agents(
         accessible_ids = await get_accessible_agent_ids(db, current_user)
         statement = statement.where(Agent.id.in_(accessible_ids)) if accessible_ids else statement.where(false())
     result = await db.execute(statement)
-    return [AgentRead.model_validate(agent) for agent in result.scalars().all()]
+    return [_serialize_agent(request, agent) for agent in result.scalars().all()]
 
 
 @router.post("", response_model=AgentRead, status_code=status.HTTP_201_CREATED)
@@ -135,19 +183,20 @@ async def create_agent(
     await request.app.state.installation_manager.sync_agent_installation(agent)
     result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent.id))
     created = result.scalar_one_or_none() or agent
-    return AgentRead.model_validate(created)
+    return _serialize_agent(request, created)
 
 
 @router.get("/{agent_id}", response_model=AgentRead)
 async def get_agent(
     agent_id: str,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
     await ensure_agent_access(db, current_user, agent_id)
     result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id))
     agent = result.scalar_one()
-    return AgentRead.model_validate(agent)
+    return _serialize_agent(request, agent)
 
 
 @router.put("/{agent_id}", response_model=AgentRead)
@@ -212,7 +261,7 @@ async def update_agent(
     result = await db.execute(
         select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id)
     )
-    return AgentRead.model_validate(result.scalar_one())
+    return _serialize_agent(request, result.scalar_one())
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -280,6 +329,7 @@ async def delete_agent(
     await db.execute(delete(ScheduledTask).where(ScheduledTask.agent_id == agent_id))
     workspace_manager = _get_workspace_manager(request)
     workspace_manager.delete_workspace(agent_id)
+    _delete_avatar_files(agent_id)
     await db.delete(agent)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -342,7 +392,7 @@ async def create_agent_from_template(
     await request.app.state.installation_manager.sync_agent_installation(agent)
     result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent.id))
     created = result.scalar_one_or_none() or agent
-    return AgentRead.model_validate(created)
+    return _serialize_agent(request, created)
 
 
 @router.post("/{agent_id}/start", response_model=AgentRead)
@@ -358,7 +408,7 @@ async def start_agent(
     result = await db.execute(
         select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id)
     )
-    return AgentRead.model_validate(result.scalar_one())
+    return _serialize_agent(request, result.scalar_one())
 
 
 @router.post("/{agent_id}/stop", response_model=AgentRead)
@@ -374,7 +424,7 @@ async def stop_agent(
     result = await db.execute(
         select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id)
     )
-    return AgentRead.model_validate(result.scalar_one())
+    return _serialize_agent(request, result.scalar_one())
 
 
 @router.post("/{agent_id}/restart", response_model=AgentRead)
@@ -390,13 +440,14 @@ async def restart_agent(
     result = await db.execute(
         select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id)
     )
-    return AgentRead.model_validate(result.scalar_one())
+    return _serialize_agent(request, result.scalar_one())
 
 
 @router.post("/{agent_id}/mode", response_model=AgentRead)
 async def set_agent_mode(
     agent_id: str,
     payload: dict,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
@@ -409,7 +460,72 @@ async def set_agent_mode(
     result = await db.execute(
         select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id)
     )
-    return AgentRead.model_validate(result.scalar_one())
+    return _serialize_agent(request, result.scalar_one())
+
+
+@router.get("/{agent_id}/avatar", include_in_schema=False)
+async def get_agent_avatar(agent_id: str, db: AsyncSession = Depends(get_db_session)):
+    agent = await db.get(Agent, agent_id)
+    if not agent or not agent.avatar_filename:
+        raise HTTPException(status_code=404, detail="Avatar not found")
+    avatar_path = _build_avatar_path(agent)
+    if not avatar_path or not avatar_path.exists():
+        raise HTTPException(status_code=404, detail="Avatar not found")
+    media_type = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }.get(avatar_path.suffix.lower(), "application/octet-stream")
+    return FileResponse(avatar_path, media_type=media_type)
+
+
+@router.post("/{agent_id}/avatar", response_model=AgentRead)
+async def upload_agent_avatar(
+    agent_id: str,
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> AgentRead:
+    agent = await ensure_agent_access(db, current_user, agent_id)
+    if file.content_type not in ALLOWED_AVATAR_TYPES:
+        raise HTTPException(status_code=400, detail="Unsupported avatar type. Use PNG, JPG or WEBP.")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Avatar file is empty")
+    if len(content) > MAX_AVATAR_BYTES:
+        raise HTTPException(status_code=400, detail="Avatar exceeds 2 MB limit")
+    avatar_dir = _build_avatar_dir(agent_id)
+    avatar_dir.mkdir(parents=True, exist_ok=True)
+    for existing in avatar_dir.iterdir():
+        if existing.is_file() or existing.is_symlink():
+            existing.unlink()
+    extension = ALLOWED_AVATAR_TYPES[file.content_type]
+    filename = f"avatar{extension}"
+    avatar_path = avatar_dir / filename
+    avatar_path.write_bytes(content)
+    agent.avatar_filename = filename
+    await db.commit()
+    await db.refresh(agent)
+    result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id))
+    return _serialize_agent(request, result.scalar_one())
+
+
+@router.delete("/{agent_id}/avatar", response_model=AgentRead)
+async def delete_agent_avatar(
+    agent_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> AgentRead:
+    agent = await ensure_agent_access(db, current_user, agent_id)
+    _delete_avatar_files(agent_id)
+    agent.avatar_filename = None
+    await db.commit()
+    await db.refresh(agent)
+    result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id))
+    return _serialize_agent(request, result.scalar_one())
 
 
 @router.get("/{agent_id}/workspace")

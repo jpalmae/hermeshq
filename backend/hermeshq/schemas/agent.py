@@ -52,6 +52,8 @@ class AgentRead(ORMModel):
     name: str
     friendly_name: str | None
     slug: str
+    avatar_url: str | None = None
+    has_avatar: bool = False
     description: str | None
     status: str
     run_mode: str

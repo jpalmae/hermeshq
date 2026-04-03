@@ -15,6 +15,7 @@ class Agent(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(128), index=True)
     friendly_name: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     slug: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    avatar_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="stopped", index=True)
     run_mode: Mapped[str] = mapped_column(String(20), default="hybrid")

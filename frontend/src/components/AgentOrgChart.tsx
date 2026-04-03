@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useUpdateAgent } from "../api/agents";
+import { AgentAvatar } from "./AgentAvatar";
 import type { Agent } from "../types/api";
 
 const BASE_CARD_WIDTH = 300;
@@ -366,9 +367,9 @@ export function AgentOrgChart({
 
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-start gap-4">
-                      <div className="org-chart-icon">
+                      <div className="relative">
+                        <AgentAvatar agent={agent} sizeClass="h-12 w-12" className="org-chart-avatar" />
                         <span className={`org-chart-status ${statusClass(agent.status)}`} />
-                        <span>{agent.run_mode === "hybrid" ? "<>" : "[]"}</span>
                       </div>
                       <div className="min-w-0">
                         <Link to={`/agents/${agent.id}`} className="block text-xl text-[var(--text-display)]">
@@ -381,7 +382,7 @@ export function AgentOrgChart({
                         </p>
                         <p className="mt-3 text-sm text-[var(--text-primary)]">{agent.model}</p>
                         <p className="mt-1 font-mono text-xs uppercase tracking-[0.12em] text-[var(--text-disabled)]">
-                          {agent.provider}
+                          {agent.provider} / {agent.run_mode}
                         </p>
                       </div>
                     </div>

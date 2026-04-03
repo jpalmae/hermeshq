@@ -58,6 +58,8 @@ def _run_schema_updates(sync_connection) -> None:
     if "friendly_name" not in agent_columns:
         sync_connection.execute(text("ALTER TABLE agents ADD COLUMN friendly_name VARCHAR(128)"))
         sync_connection.execute(text("UPDATE agents SET friendly_name = name WHERE friendly_name IS NULL"))
+    if "avatar_filename" not in agent_columns:
+        sync_connection.execute(text("ALTER TABLE agents ADD COLUMN avatar_filename VARCHAR(255)"))
     settings_columns = {column["name"] for column in inspector.get_columns("app_settings")}
     if "app_name" not in settings_columns:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN app_name VARCHAR(128)"))

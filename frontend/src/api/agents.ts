@@ -124,3 +124,37 @@ export function useAgentAction(path: "start" | "stop" | "restart") {
     },
   });
 }
+
+export function useUploadAgentAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ agentId, file }: { agentId: string; file: File }) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const { data } = await apiClient.post<Agent>(`/agents/${agentId}/avatar`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return data;
+    },
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ["agents"] });
+      await queryClient.invalidateQueries({ queryKey: ["agents", variables.agentId] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+export function useDeleteAgentAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (agentId: string) => {
+      const { data } = await apiClient.delete<Agent>(`/agents/${agentId}/avatar`);
+      return data;
+    },
+    onSuccess: async (_, agentId) => {
+      await queryClient.invalidateQueries({ queryKey: ["agents"] });
+      await queryClient.invalidateQueries({ queryKey: ["agents", agentId] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}

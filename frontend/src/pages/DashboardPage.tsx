@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
 import { useAgents } from "../api/agents";
+import { AgentAvatar } from "../components/AgentAvatar";
 import { useDashboardOverview } from "../api/dashboard";
 import { AgentOrgChart } from "../components/AgentOrgChart";
 import { useRealtimeStore } from "../stores/realtimeStore";
@@ -116,12 +117,15 @@ export function DashboardPage() {
                 to={`/agents/${agent.id}`}
                 className="grid gap-3 border-b border-[var(--border)] py-4 md:grid-cols-[1.4fr_1fr_1fr]"
               >
-                <div>
-                  <p className="panel-label">{agent.slug}</p>
-                  <p className="mt-2 text-lg text-[var(--text-display)]">{agent.friendly_name || agent.name}</p>
-                  {agent.friendly_name && agent.friendly_name !== agent.name ? (
-                    <p className="mt-2 text-sm text-[var(--text-secondary)]">{agent.name}</p>
-                  ) : null}
+                <div className="flex items-start gap-4">
+                  <AgentAvatar agent={agent} sizeClass="h-12 w-12" className="shrink-0" />
+                  <div>
+                    <p className="panel-label">{agent.slug}</p>
+                    <p className="mt-2 text-lg text-[var(--text-display)]">{agent.friendly_name || agent.name}</p>
+                    {agent.friendly_name && agent.friendly_name !== agent.name ? (
+                      <p className="mt-2 text-sm text-[var(--text-secondary)]">{agent.name}</p>
+                    ) : null}
+                  </div>
                 </div>
                 <div>
                   <p className="panel-label">Model</p>
