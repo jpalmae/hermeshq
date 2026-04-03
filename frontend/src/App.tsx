@@ -1,9 +1,10 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useEffect } from "react";
 
+import { useMe } from "./api/auth";
 import { usePublicBranding, resolveAssetUrl } from "./api/settings";
 import { AppShell } from "./components/layout/AppShell";
-import { applyThemeToDocument } from "./lib/theme";
+import { applyThemeToDocument, resolveEffectiveThemeMode } from "./lib/theme";
 import { useSessionStore } from "./stores/sessionStore";
 import { AgentDetailPage } from "./pages/AgentDetailPage";
 import { AgentsPage } from "./pages/AgentsPage";
@@ -18,13 +19,22 @@ import { UsersPage } from "./pages/UsersPage";
 
 export default function App() {
   const token = useSessionStore((state) => state.token);
+  const setUser = useSessionStore((state) => state.setUser);
+  const currentUser = useSessionStore((state) => state.user);
   const { data: branding } = usePublicBranding();
+  const { data: me } = useMe(Boolean(token));
+
+  useEffect(() => {
+    if (me) {
+      setUser(me);
+    }
+  }, [me, setUser]);
 
   useEffect(() => {
     document.title = branding?.app_name || "HermesHQ";
     const mediaQuery = window.matchMedia("(prefers-color-scheme: light)");
     const syncTheme = () => {
-      applyThemeToDocument(branding?.theme_mode);
+      applyThemeToDocument(resolveEffectiveThemeMode(branding?.theme_mode, currentUser?.theme_preference));
     };
     syncTheme();
     mediaQuery.addEventListener("change", syncTheme);
@@ -41,7 +51,7 @@ export default function App() {
     return () => {
       mediaQuery.removeEventListener("change", syncTheme);
     };
-  }, [branding?.app_name, branding?.favicon_url, branding?.theme_mode]);
+  }, [branding?.app_name, branding?.favicon_url, branding?.theme_mode, currentUser?.theme_preference]);
 
   if (!token) {
     return <LoginPage />;

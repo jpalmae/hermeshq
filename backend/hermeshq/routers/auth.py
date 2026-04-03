@@ -9,7 +9,7 @@ from hermeshq.core.security import (
 )
 from hermeshq.database import get_db_session
 from hermeshq.models.user import User
-from hermeshq.schemas.auth import LoginRequest, TokenResponse, UserRead
+from hermeshq.schemas.auth import LoginRequest, TokenResponse, UserPreferencesUpdate, UserRead
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -28,3 +28,16 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db_session
 async def me(current_user: User = Depends(get_current_user)) -> UserRead:
     return UserRead.model_validate(current_user)
 
+
+@router.put("/me/preferences", response_model=UserRead)
+async def update_preferences(
+    payload: UserPreferencesUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> UserRead:
+    if payload.theme_preference not in {"default", "dark", "light", "system"}:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid theme preference")
+    current_user.theme_preference = payload.theme_preference
+    await db.commit()
+    await db.refresh(current_user)
+    return UserRead.model_validate(current_user)

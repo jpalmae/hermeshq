@@ -22,3 +22,8 @@ class UserRead(ORMModel):
     display_name: str
     role: str
     is_active: bool
+    theme_preference: str
+
+
+class UserPreferencesUpdate(BaseModel):
+    theme_preference: str

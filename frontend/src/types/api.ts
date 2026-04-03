@@ -7,6 +7,7 @@ export interface User {
   display_name: string;
   role: "admin" | "user";
   is_active: boolean;
+  theme_preference: "default" | "dark" | "light" | "system";
 }
 
 export interface ManagedUser extends User {

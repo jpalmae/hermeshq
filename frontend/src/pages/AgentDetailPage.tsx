@@ -12,6 +12,7 @@ import { WorkspacePanel } from "../components/WorkspacePanel";
 import { useSessionStore } from "../stores/sessionStore";
 
 const DEFAULT_SECTION_STATE = {
+  configuration: false,
   conversation: true,
   skills: false,
   ledger: false,
@@ -263,117 +264,136 @@ export function AgentDetailPage() {
           </div>
         </div>
 
-        <div className="panel-frame p-6">
-          <p className="panel-label">Configuration</p>
-          <div className="mt-6 border-b border-[var(--border)] pb-5">
-            <label className="panel-field">
-              <span className="panel-label">Friendly name</span>
-              <input
-                value={identityForm.friendly_name}
-                onChange={(event) =>
-                  setIdentityForm((current) => {
-                    const friendlyName = event.target.value;
-                    const next = { ...current, friendly_name: friendlyName };
-                    if (!nameTouched) {
-                      next.name = friendlyName.trim();
-                    }
-                    if (!slugTouched) {
-                      next.slug = slugify(friendlyName.trim() || next.name.trim());
-                    }
-                    return next;
-                  })
-                }
-                placeholder="Display name for humans"
-              />
-            </label>
-            <label className="panel-field mt-4">
-              <span className="panel-label">Technical name</span>
-              <input
-                value={identityForm.name}
-                onChange={(event) => {
-                  const nextName = event.target.value;
-                  setNameTouched(true);
-                  setIdentityForm((current) => {
-                    const next = { ...current, name: nextName };
-                    if (!slugTouched && !current.friendly_name.trim()) {
-                      next.slug = slugify(nextName.trim());
-                    }
-                    return next;
-                  });
-                }}
-                placeholder="Runtime/operator name"
-              />
-            </label>
-            <label className="panel-field mt-4">
-              <span className="panel-label">Slug</span>
-              <input
-                value={identityForm.slug}
-                onChange={(event) => {
-                  setSlugTouched(true);
-                  setIdentityForm((current) => ({ ...current, slug: event.target.value }));
-                }}
-                placeholder="Unique short identifier"
-              />
-            </label>
-            <div className="mt-4 flex items-center gap-3">
-              <button
-                type="button"
-                className="panel-button-secondary"
-                disabled={updateAgent.isPending}
-                onClick={onSaveIdentity}
-              >
-                {updateAgent.isPending ? "[LOADING]" : "Save identity"}
-              </button>
-              <p className="panel-inline-status">Friendly name autocompletes technical name and slug until you override them manually.</p>
+        <section className="panel-frame p-6">
+          <button
+            type="button"
+            className="flex w-full items-end justify-between gap-4 border-b border-[var(--border)] pb-4 text-left"
+            onClick={() => toggleSection("configuration")}
+          >
+            <div>
+              <p className="panel-label">Configuration</p>
+              <h3 className="mt-2 text-2xl text-[var(--text-display)]">Runtime settings</h3>
             </div>
-          </div>
-          <div className="mt-6 space-y-4">
-            <div className="border-b border-[var(--border)] pb-5">
-              <label className="panel-field">
-                <span className="panel-label">System prompt</span>
-                <textarea
-                  rows={6}
-                  value={systemPromptDraft}
-                  onChange={(event) => setSystemPromptDraft(event.target.value)}
-                  placeholder="Persistent operator instructions for this agent"
-                />
-              </label>
-              <div className="mt-4 flex items-center gap-3">
-                <button
-                  type="button"
-                  className="panel-button-secondary"
-                  disabled={updateAgent.isPending}
-                  onClick={onSaveSystemPrompt}
-                >
-                  {updateAgent.isPending ? "[LOADING]" : "Save system prompt"}
-                </button>
-                <p className="panel-inline-status">This updates the persistent runtime instructions for future tasks and TUI sessions.</p>
+            <div className="text-right">
+              <p className="panel-label">{agent.provider} / {agent.model}</p>
+              <p className="mt-2 font-mono text-xs uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+                {sectionState.configuration ? "Collapse" : "Expand"}
+              </p>
+            </div>
+          </button>
+          {sectionState.configuration ? (
+            <div className="mt-5">
+              <div className="border-b border-[var(--border)] pb-5">
+                <label className="panel-field">
+                  <span className="panel-label">Friendly name</span>
+                  <input
+                    value={identityForm.friendly_name}
+                    onChange={(event) =>
+                      setIdentityForm((current) => {
+                        const friendlyName = event.target.value;
+                        const next = { ...current, friendly_name: friendlyName };
+                        if (!nameTouched) {
+                          next.name = friendlyName.trim();
+                        }
+                        if (!slugTouched) {
+                          next.slug = slugify(friendlyName.trim() || next.name.trim());
+                        }
+                        return next;
+                      })
+                    }
+                    placeholder="Display name for humans"
+                  />
+                </label>
+                <label className="panel-field mt-4">
+                  <span className="panel-label">Technical name</span>
+                  <input
+                    value={identityForm.name}
+                    onChange={(event) => {
+                      const nextName = event.target.value;
+                      setNameTouched(true);
+                      setIdentityForm((current) => {
+                        const next = { ...current, name: nextName };
+                        if (!slugTouched && !current.friendly_name.trim()) {
+                          next.slug = slugify(nextName.trim());
+                        }
+                        return next;
+                      });
+                    }}
+                    placeholder="Runtime/operator name"
+                  />
+                </label>
+                <label className="panel-field mt-4">
+                  <span className="panel-label">Slug</span>
+                  <input
+                    value={identityForm.slug}
+                    onChange={(event) => {
+                      setSlugTouched(true);
+                      setIdentityForm((current) => ({ ...current, slug: event.target.value }));
+                    }}
+                    placeholder="Unique short identifier"
+                  />
+                </label>
+                <div className="mt-4 flex items-center gap-3">
+                  <button
+                    type="button"
+                    className="panel-button-secondary"
+                    disabled={updateAgent.isPending}
+                    onClick={onSaveIdentity}
+                  >
+                    {updateAgent.isPending ? "[LOADING]" : "Save identity"}
+                  </button>
+                  <p className="panel-inline-status">Friendly name autocompletes technical name and slug until you override them manually.</p>
+                </div>
+              </div>
+              <div className="mt-6 space-y-4">
+                <div className="border-b border-[var(--border)] pb-5">
+                  <label className="panel-field">
+                    <span className="panel-label">System prompt</span>
+                    <textarea
+                      rows={6}
+                      value={systemPromptDraft}
+                      onChange={(event) => setSystemPromptDraft(event.target.value)}
+                      placeholder="Persistent operator instructions for this agent"
+                    />
+                  </label>
+                  <div className="mt-4 flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="panel-button-secondary"
+                      disabled={updateAgent.isPending}
+                      onClick={onSaveSystemPrompt}
+                    >
+                      {updateAgent.isPending ? "[LOADING]" : "Save system prompt"}
+                    </button>
+                    <p className="panel-inline-status">This updates the persistent runtime instructions for future tasks and TUI sessions.</p>
+                  </div>
+                </div>
+                <div className="panel-stat-row">
+                  <span>Model</span>
+                  <strong>{agent.model}</strong>
+                </div>
+                <div className="panel-stat-row">
+                  <span>Provider</span>
+                  <strong>{agent.provider}</strong>
+                </div>
+                <div className="panel-stat-row">
+                  <span>Secret ref</span>
+                  <strong>{agent.api_key_ref ?? "none"}</strong>
+                </div>
+                <div className="panel-stat-row">
+                  <span>Node</span>
+                  <strong>{agent.node?.name ?? "Local Runtime"}</strong>
+                </div>
+                <div className="panel-stat-row">
+                  <span>Workspace</span>
+                  <strong className="truncate text-right">{agent.workspace_path}</strong>
+                </div>
+
+                <AgentMessagingPanel agentId={agent.id} isAdmin={isAdmin} />
               </div>
             </div>
-            <div className="panel-stat-row">
-              <span>Model</span>
-              <strong>{agent.model}</strong>
-            </div>
-            <div className="panel-stat-row">
-              <span>Provider</span>
-              <strong>{agent.provider}</strong>
-            </div>
-            <div className="panel-stat-row">
-              <span>Secret ref</span>
-              <strong>{agent.api_key_ref ?? "none"}</strong>
-            </div>
-            <div className="panel-stat-row">
-              <span>Node</span>
-              <strong>{agent.node?.name ?? "Local Runtime"}</strong>
-            </div>
-            <div className="panel-stat-row">
-              <span>Workspace</span>
-              <strong className="truncate text-right">{agent.workspace_path}</strong>
-            </div>
-
-            <AgentMessagingPanel agentId={agent.id} isAdmin={isAdmin} />
-          </div>
-        </div>
+          ) : null}
+        </section>
       </section>
 
       <AgentTerminal agentId={agent.id} mode={agent.run_mode} />

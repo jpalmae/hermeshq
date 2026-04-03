@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient } from "./client";
 import type { User } from "../types/api";
@@ -23,3 +23,16 @@ export function useMe(enabled: boolean) {
   });
 }
 
+export function useUpdateMyPreferences() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { theme_preference: "default" | "dark" | "light" | "system" }) => {
+      const { data } = await apiClient.put<User>("/auth/me/preferences", payload);
+      return data;
+    },
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
+      return data;
+    },
+  });
+}

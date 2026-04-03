@@ -33,6 +33,9 @@ def _run_schema_updates(sync_connection) -> None:
     if "is_active" not in user_columns:
         sync_connection.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE"))
         sync_connection.execute(text("UPDATE users SET is_active = TRUE WHERE is_active IS NULL"))
+    if "theme_preference" not in user_columns:
+        sync_connection.execute(text("ALTER TABLE users ADD COLUMN theme_preference VARCHAR(16)"))
+        sync_connection.execute(text("UPDATE users SET theme_preference = 'default' WHERE theme_preference IS NULL"))
     if not inspector.has_table("agent_assignments"):
         sync_connection.execute(
             text(

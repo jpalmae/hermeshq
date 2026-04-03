@@ -1,7 +1,7 @@
 import { useEffect, type CSSProperties } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 
-import { useMe } from "../../api/auth";
+import { useMe, useUpdateMyPreferences } from "../../api/auth";
 import { resolveAssetUrl, usePublicBranding } from "../../api/settings";
 import { useWebSocket } from "../../hooks/useWebSocket";
 import { useSessionStore } from "../../stores/sessionStore";
@@ -17,6 +17,7 @@ export function AppShell() {
   const setMobileNavOpen = useUIStore((state) => state.setMobileNavOpen);
   const { data: user } = useMe(Boolean(token));
   const { data: branding } = usePublicBranding();
+  const updatePreferences = useUpdateMyPreferences();
   const logoUrl = resolveAssetUrl(branding?.logo_url);
   const appName = branding?.app_name || "HermesHQ";
   const appShortName = branding?.app_short_name || appName;
@@ -101,6 +102,24 @@ export function AppShell() {
               <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[var(--text-disabled)]">
                 {(user?.role ?? "offline")} / {user?.username ?? "offline"}
               </p>
+              <label className="panel-field mt-4">
+                <span className="panel-label">My theme</span>
+                <select
+                  value={user?.theme_preference ?? "default"}
+                  onChange={(event) => {
+                    void updatePreferences.mutateAsync({
+                      theme_preference: event.target.value as "default" | "dark" | "light" | "system",
+                    }).then((updatedUser) => {
+                      setUser(updatedUser);
+                    });
+                  }}
+                >
+                  <option value="default">Use instance default</option>
+                  <option value="dark">Dark</option>
+                  <option value="light">Light</option>
+                  <option value="system">System</option>
+                </select>
+              </label>
             </>
           ) : (
             <p className="mt-2 text-center text-sm text-[var(--text-display)]">

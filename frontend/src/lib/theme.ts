@@ -1,6 +1,7 @@
 import type { AppSettings } from "../types/api";
 
 export type ThemeMode = AppSettings["theme_mode"];
+export type UserThemePreference = "default" | ThemeMode;
 export type ResolvedTheme = "dark" | "light";
 
 export function resolveThemeMode(mode: ThemeMode | null | undefined): ResolvedTheme {
@@ -20,3 +21,12 @@ export function applyThemeToDocument(mode: ThemeMode | null | undefined) {
   return resolvedTheme;
 }
 
+export function resolveEffectiveThemeMode(
+  instanceTheme: ThemeMode | null | undefined,
+  userPreference: UserThemePreference | null | undefined,
+): ThemeMode {
+  if (userPreference && userPreference !== "default") {
+    return userPreference;
+  }
+  return instanceTheme ?? "dark";
+}

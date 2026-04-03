@@ -137,7 +137,7 @@ export function SettingsPage() {
           <p className="panel-label">Branding</p>
           <h2 className="mt-2 text-2xl text-[var(--text-display)]">Instance identity</h2>
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-            Define the app name visible in the UI, browser title and login shell.
+            Define the app name visible in the UI, browser title, login shell and the instance default theme.
           </p>
           <div className="mt-6 space-y-4">
             <label className="panel-field">
@@ -276,7 +276,7 @@ export function SettingsPage() {
               <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.app_short_name ?? settings?.app_name ?? "HermesHQ")}</p>
             </div>
             <div className="pb-3">
-              <p className="panel-label">Current theme</p>
+              <p className="panel-label">Current default theme</p>
               <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.theme_mode ?? "dark")}</p>
             </div>
           </div>

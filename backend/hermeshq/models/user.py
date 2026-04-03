@@ -15,6 +15,7 @@ class User(TimestampMixin, Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(16), default="user", index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    theme_preference: Mapped[str] = mapped_column(String(16), default="default")
 
     agent_assignments = relationship(
         "AgentAssignment",
