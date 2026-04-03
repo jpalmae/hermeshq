@@ -6,8 +6,11 @@ Initial end-to-end implementation for a multi-agent operations panel based on th
 
 - FastAPI backend with:
   - JWT auth
+  - per-user theme preference override
+  - admin/user RBAC with assigned-agent scope
   - local node bootstrap
   - agent CRUD
+  - per-agent avatar upload
   - task submission/cancellation
   - strict local agent runtime via `hermes-agent`
   - activity feed
@@ -27,9 +30,11 @@ Initial end-to-end implementation for a multi-agent operations panel based on th
   - nodes
   - comms
   - settings
+  - users and assignments
   - workspace editor
   - PTY terminal pane
   - per-agent Telegram channel management
+  - per-user operator avatar
 
 ## Frontend fonts
 
@@ -89,5 +94,8 @@ URLs:
 - Task execution is strict: if `hermes-agent` is missing, the agent has no valid credentials, or the provider rejects the request, the task is marked `failed`.
 - The bundled Docker runtime uses `/bin/sh` for PTY sessions so the embedded terminal works reliably inside the container image.
 - Telegram bindings are now managed per agent. HermesHQ writes the agent's `.hermes/config.yaml` and `.hermes/.env`, then supervises `hermes gateway run` for that agent. Configure a bot token as a secret and reference it from the agent detail page.
+- Agent avatars are stored per agent under the persistent workspaces volume and are rendered across the agent detail page, dashboard and dependency canvas.
+- User avatars are stored separately from branding and can be managed from the `Users` page. The active operator avatar is reflected in the shell and dashboard.
+- Instance theme is still controlled by admins in `Settings`, but each user can now override the theme from the left shell without needing admin access.
 - Local node metrics are real. Remote node provisioning and remote node metrics are still not implemented and return `501`.
 - Redis-backed pub/sub, remote node daemon/provisioning and xterm.js-grade PTY rendering are still incomplete versus the full spec.

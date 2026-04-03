@@ -36,6 +36,8 @@ def _run_schema_updates(sync_connection) -> None:
     if "theme_preference" not in user_columns:
         sync_connection.execute(text("ALTER TABLE users ADD COLUMN theme_preference VARCHAR(16)"))
         sync_connection.execute(text("UPDATE users SET theme_preference = 'default' WHERE theme_preference IS NULL"))
+    if "avatar_filename" not in user_columns:
+        sync_connection.execute(text("ALTER TABLE users ADD COLUMN avatar_filename VARCHAR(255)"))
     if not inspector.has_table("agent_assignments"):
         sync_connection.execute(
             text(

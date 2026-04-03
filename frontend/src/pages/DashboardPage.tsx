@@ -4,7 +4,9 @@ import { useAgents } from "../api/agents";
 import { AgentAvatar } from "../components/AgentAvatar";
 import { useDashboardOverview } from "../api/dashboard";
 import { AgentOrgChart } from "../components/AgentOrgChart";
+import { UserAvatar } from "../components/UserAvatar";
 import { useRealtimeStore } from "../stores/realtimeStore";
+import { useSessionStore } from "../stores/sessionStore";
 
 function statusTone(status: string) {
   if (status === "running") return "text-[var(--success)]";
@@ -17,6 +19,7 @@ export function DashboardPage() {
   const { data: overview } = useDashboardOverview();
   const { data: agents } = useAgents();
   const realtime = useRealtimeStore((state) => state.events);
+  const currentUser = useSessionStore((state) => state.user);
   const liveFeed = realtime.slice(0, 5);
 
   return (
@@ -24,19 +27,30 @@ export function DashboardPage() {
       <section className="grid gap-6 xl:grid-cols-[0.7fr_1.3fr]">
         <div className="grid gap-6">
           <div className="panel-frame p-5 md:p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="panel-label">Primary Readout</p>
-                <div className="mt-3 flex items-end gap-3">
-                  <h2 className="font-display text-[clamp(2.2rem,5.6vw,3.9rem)] leading-[0.9] text-[var(--text-display)]">
-                    {overview?.stats.active_agents ?? 0}
-                  </h2>
-                  <p className="max-w-[12ch] pb-1 text-xs leading-5 text-[var(--text-secondary)]">
-                    active agents live
+            <div>
+              <p className="panel-label">Primary Readout</p>
+              <div className="mt-3 flex items-end gap-3">
+                <h2 className="font-display text-[clamp(2.2rem,5.6vw,3.9rem)] leading-[0.9] text-[var(--text-display)]">
+                  {overview?.stats.active_agents ?? 0}
+                </h2>
+                <p className="max-w-[12ch] pb-1 text-xs leading-5 text-[var(--text-secondary)]">
+                  active agents live
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 border-t border-[var(--border)] pt-4">
+              <div className="flex items-center gap-3">
+                {currentUser ? <UserAvatar user={currentUser} sizeClass="h-12 w-12 md:h-14 md:w-14" className="shrink-0" /> : null}
+                <div className="min-w-0">
+                  <p className="panel-label">Operator</p>
+                  <p className="mt-1 truncate text-sm leading-5 text-[var(--text-display)]">
+                    {currentUser?.display_name ?? "Unknown"}
+                  </p>
+                  <p className="mt-1 text-xs uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+                    {currentUser?.role ?? "offline"}
                   </p>
                 </div>
               </div>
-              <div className="hidden h-14 w-14 rounded-full border border-[var(--border-visible)] md:block md:h-16 md:w-16" />
             </div>
             <div className="mt-5 grid gap-3 border-t border-[var(--border)] pt-4 md:grid-cols-3">
               <div>

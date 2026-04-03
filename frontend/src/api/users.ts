@@ -37,6 +37,7 @@ export function useUpdateUser() {
     onSuccess: async (_, variables) => {
       await queryClient.invalidateQueries({ queryKey: ["users"] });
       await queryClient.invalidateQueries({ queryKey: ["users", variables.userId] });
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
     },
   });
 }
@@ -51,6 +52,38 @@ export function useDeleteUser() {
     onSuccess: async (_, userId) => {
       await queryClient.invalidateQueries({ queryKey: ["users"] });
       await queryClient.invalidateQueries({ queryKey: ["users", userId] });
+    },
+  });
+}
+
+export function useUploadUserAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ userId, file }: { userId: string; file: File }) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const { data } = await apiClient.post<ManagedUser>(`/users/${userId}/avatar`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["users"] });
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
+export function useDeleteUserAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const { data } = await apiClient.delete<ManagedUser>(`/users/${userId}/avatar`);
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["users"] });
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
     },
   });
 }

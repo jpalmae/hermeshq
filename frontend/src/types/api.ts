@@ -8,6 +8,8 @@ export interface User {
   role: "admin" | "user";
   is_active: boolean;
   theme_preference: "default" | "dark" | "light" | "system";
+  avatar_url: string | null;
+  has_avatar: boolean;
 }
 
 export interface ManagedUser extends User {

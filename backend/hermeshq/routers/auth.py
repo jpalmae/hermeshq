@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,15 @@ from hermeshq.schemas.auth import LoginRequest, TokenResponse, UserPreferencesUp
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _serialize_user(request: Request, user: User) -> UserRead:
+    payload = UserRead.model_validate(user)
+    avatar_url = None
+    if user.avatar_filename:
+        version = int(user.updated_at.timestamp()) if user.updated_at else 0
+        avatar_url = f"/api/users/{user.id}/avatar?v={version}"
+    return payload.model_copy(update={"avatar_url": avatar_url, "has_avatar": bool(user.avatar_filename)})
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db_session)) -> TokenResponse:
     result = await db.execute(select(User).where(User.username == payload.username))
@@ -25,13 +34,14 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db_session
 
 
 @router.get("/me", response_model=UserRead)
-async def me(current_user: User = Depends(get_current_user)) -> UserRead:
-    return UserRead.model_validate(current_user)
+async def me(request: Request, current_user: User = Depends(get_current_user)) -> UserRead:
+    return _serialize_user(request, current_user)
 
 
 @router.put("/me/preferences", response_model=UserRead)
 async def update_preferences(
     payload: UserPreferencesUpdate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> UserRead:
@@ -40,4 +50,4 @@ async def update_preferences(
     current_user.theme_preference = payload.theme_preference
     await db.commit()
     await db.refresh(current_user)
-    return UserRead.model_validate(current_user)
+    return _serialize_user(request, current_user)

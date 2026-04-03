@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     )
     branding_root: Path | None = None
     agent_assets_root: Path | None = None
+    user_assets_root: Path | None = None
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3420"]
     pty_shell: str = "/bin/sh"
 
@@ -40,6 +41,8 @@ class Settings(BaseSettings):
             self.branding_root = self.workspaces_root / "_branding"
         if self.agent_assets_root is None:
             self.agent_assets_root = self.workspaces_root / "_agent_assets"
+        if self.user_assets_root is None:
+            self.user_assets_root = self.workspaces_root / "_user_assets"
 
 
 @lru_cache

@@ -1,7 +1,8 @@
 import { FormEvent, useMemo, useState } from "react";
 
 import { useAgents } from "../api/agents";
-import { useCreateUser, useDeleteUser, useUpdateUser, useUsers } from "../api/users";
+import { useCreateUser, useDeleteUser, useDeleteUserAvatar, useUpdateUser, useUploadUserAvatar, useUsers } from "../api/users";
+import { UserAvatar } from "../components/UserAvatar";
 import { useSessionStore } from "../stores/sessionStore";
 
 const emptyCreateForm = {
@@ -56,9 +57,12 @@ export function UsersPage() {
   const { data: users } = useUsers(isAdmin);
   const createUser = useCreateUser();
   const deleteUser = useDeleteUser();
+  const uploadUserAvatar = useUploadUserAvatar();
+  const deleteUserAvatar = useDeleteUserAvatar();
   const updateUser = useUpdateUser();
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
+  const [displayNameDrafts, setDisplayNameDrafts] = useState<Record<string, string>>({});
   const [createError, setCreateError] = useState<string | null>(null);
   const [createInfo, setCreateInfo] = useState<string | null>(null);
   const [rowMessages, setRowMessages] = useState<Record<string, string | null>>({});
@@ -105,6 +109,17 @@ export function UsersPage() {
     }
     try {
       await deleteUser.mutateAsync(userId);
+    } catch (error) {
+      window.alert(extractErrorMessage(error));
+    }
+  }
+
+  async function onAvatarSelected(userId: string, file: File | null) {
+    if (!file) {
+      return;
+    }
+    try {
+      await uploadUserAvatar.mutateAsync({ userId, file });
     } catch (error) {
       window.alert(extractErrorMessage(error));
     }
@@ -199,20 +214,79 @@ export function UsersPage() {
           {(users ?? []).map((user) => (
             <article key={user.id} className="border-b border-[var(--border)] py-5">
               <div className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
-                <div>
-                  <p className="panel-label">{user.username}</p>
-                  <p className="mt-2 text-xl text-[var(--text-display)]">{user.display_name}</p>
-                  <p className="mt-2 text-sm uppercase tracking-[0.1em] text-[var(--text-secondary)]">
-                    {user.role} / {user.is_active ? "active" : "inactive"}
-                  </p>
-                  <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                    Assigned:{" "}
-                    {user.assigned_agent_ids.length
-                      ? user.assigned_agent_ids
-                          .map((agentId) => agentOptions.find((option) => option.id === agentId)?.label ?? agentId)
-                          .join(", ")
-                      : "No agents"}
-                  </p>
+                <div className="flex items-start gap-4">
+                  <UserAvatar user={user} sizeClass="h-14 w-14" className="shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="panel-label">{user.username}</p>
+                    <div className="mt-2 grid gap-3">
+                      <label className="panel-field">
+                        <span className="panel-label">Display name</span>
+                        <input
+                          value={displayNameDrafts[user.id] ?? user.display_name}
+                          onChange={(event) =>
+                            setDisplayNameDrafts((current) => ({ ...current, [user.id]: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="panel-button-secondary"
+                          onClick={async () => {
+                            const displayName = (displayNameDrafts[user.id] ?? user.display_name).trim();
+                            if (!displayName) {
+                              setRowMessages((current) => ({ ...current, [user.id]: "Display name cannot be empty." }));
+                              return;
+                            }
+                            try {
+                              await updateUser.mutateAsync({
+                                userId: user.id,
+                                payload: { display_name: displayName },
+                              });
+                              setRowMessages((current) => ({ ...current, [user.id]: "Display name updated." }));
+                            } catch (error) {
+                              setRowMessages((current) => ({ ...current, [user.id]: extractErrorMessage(error) }));
+                            }
+                          }}
+                        >
+                          Save display name
+                        </button>
+                      </div>
+                      <div className="border-t border-[var(--border)] pt-3">
+                        <p className="panel-label">Operator icon</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <label className="panel-button-secondary cursor-pointer">
+                            Upload icon
+                            <input
+                              className="hidden"
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              onChange={(event) => void onAvatarSelected(user.id, event.target.files?.[0] ?? null)}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="panel-button-secondary"
+                            onClick={() => void deleteUserAvatar.mutateAsync(user.id)}
+                            disabled={!user.has_avatar || deleteUserAvatar.isPending}
+                          >
+                            Remove icon
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-sm uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+                      {user.role} / {user.is_active ? "active" : "inactive"}
+                    </p>
+                    <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                      Assigned:{" "}
+                      {user.assigned_agent_ids.length
+                        ? user.assigned_agent_ids
+                            .map((agentId) => agentOptions.find((option) => option.id === agentId)?.label ?? agentId)
+                            .join(", ")
+                        : "No agents"}
+                    </p>
+                  </div>
                 </div>
                 <div className="space-y-4">
                   <label className="panel-field">

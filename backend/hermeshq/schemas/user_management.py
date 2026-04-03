@@ -43,6 +43,8 @@ class UserManagedRead(ORMModel):
     role: str
     is_active: bool
     assigned_agent_ids: list[str]
+    avatar_url: str | None = None
+    has_avatar: bool = False
 
 
 def _validate_password_strength(value: str) -> None:

@@ -23,6 +23,8 @@ class UserRead(ORMModel):
     role: str
     is_active: bool
     theme_preference: str
+    avatar_url: str | None = None
+    has_avatar: bool = False
 
 
 class UserPreferencesUpdate(BaseModel):

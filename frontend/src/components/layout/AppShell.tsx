@@ -2,6 +2,7 @@ import { useEffect, type CSSProperties } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 
 import { useMe, useUpdateMyPreferences } from "../../api/auth";
+import { UserAvatar } from "../UserAvatar";
 import { resolveAssetUrl, usePublicBranding } from "../../api/settings";
 import { useWebSocket } from "../../hooks/useWebSocket";
 import { useSessionStore } from "../../stores/sessionStore";
@@ -98,7 +99,10 @@ export function AppShell() {
           <p className="panel-label">Operator</p>
           {!sidebarCollapsed ? (
             <>
-              <p className="mt-2 text-sm text-[var(--text-display)]">{user?.display_name ?? "..."}</p>
+              <div className="mt-2 flex items-center gap-3">
+                {user ? <UserAvatar user={user} sizeClass="h-10 w-10" className="shrink-0" /> : null}
+                <p className="text-sm text-[var(--text-display)]">{user?.display_name ?? "..."}</p>
+              </div>
               <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[var(--text-disabled)]">
                 {(user?.role ?? "offline")} / {user?.username ?? "offline"}
               </p>
@@ -122,9 +126,9 @@ export function AppShell() {
               </label>
             </>
           ) : (
-            <p className="mt-2 text-center text-sm text-[var(--text-display)]">
-              {user?.display_name?.slice(0, 1) ?? "…"}
-            </p>
+            <div className="mt-2 flex justify-center">
+              {user ? <UserAvatar user={user} sizeClass="h-10 w-10" /> : <p className="text-center text-sm text-[var(--text-display)]">…</p>}
+            </div>
           )}
         </div>
         <button type="button" className="panel-button-secondary w-full" onClick={logout}>
