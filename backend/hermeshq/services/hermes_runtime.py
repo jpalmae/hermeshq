@@ -174,6 +174,14 @@ class HermesRuntime:
                 "OPENROUTER_API_KEY",
                 "OPENAI_API_KEY",
                 "ANTHROPIC_API_KEY",
+                "ANTHROPIC_TOKEN",
+                "CLAUDE_CODE_OAUTH_TOKEN",
+                "KIMI_API_KEY",
+                "GEMINI_API_KEY",
+                "GOOGLE_API_KEY",
+                "GLM_API_KEY",
+                "ZAI_API_KEY",
+                "Z_AI_API_KEY",
             )
         )
 

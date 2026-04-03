@@ -10,8 +10,8 @@ from hermeshq.config import get_settings
 from hermeshq.core.events import EventBroker
 from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
 from hermeshq.database import AsyncSessionLocal, init_database
-from hermeshq.models import Agent, AppSettings, Node, User
-from hermeshq.routers import agents, auth, comms, dashboard, internal_agents, logs, messaging_channels, nodes, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, users
+from hermeshq.models import Agent, AppSettings, Node, ProviderDefinition, User
+from hermeshq.routers import agents, auth, comms, dashboard, internal_agents, logs, messaging_channels, nodes, providers, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, users
 from hermeshq.schemas.common import HealthResponse
 from hermeshq.services.agent_identity import derive_agent_identity, slugify_agent_value
 from hermeshq.services.agent_supervisor import AgentSupervisor
@@ -20,6 +20,7 @@ from hermeshq.services.hermes_installation import HermesInstallationManager
 from hermeshq.services.hermes_runtime import HermesRuntime
 from hermeshq.services.gateway_supervisor import GatewaySupervisor
 from hermeshq.services.pty_manager import PTYManager
+from hermeshq.services.provider_catalog import BUILTIN_PROVIDERS, seed_provider_defaults
 from hermeshq.services.scheduler import SchedulerService
 from hermeshq.services.secret_vault import SecretVault
 from hermeshq.services.workspace_manager import WorkspaceManager
@@ -58,6 +59,15 @@ async def bootstrap_defaults() -> None:
         settings_row = await session.get(AppSettings, "default")
         if not settings_row:
             session.add(AppSettings(id="default"))
+        for payload in BUILTIN_PROVIDERS:
+            provider = await session.get(ProviderDefinition, payload["slug"])
+            if not provider:
+                session.add(ProviderDefinition(**payload))
+            else:
+                seed_provider_defaults(provider, payload)
+        obsolete_openai_oauth = await session.get(ProviderDefinition, "openai-oauth")
+        if obsolete_openai_oauth:
+            await session.delete(obsolete_openai_oauth)
         agent_result = await session.execute(select(Agent).order_by(Agent.created_at.asc()))
         seen_slugs: set[str] = set()
         for agent in agent_result.scalars().all():
@@ -121,6 +131,7 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(nodes.router, prefix=settings.api_prefix)
+app.include_router(providers.router, prefix=settings.api_prefix)
 app.include_router(agents.router, prefix=settings.api_prefix)
 app.include_router(tasks.router, prefix=settings.api_prefix)
 app.include_router(dashboard.router, prefix=settings.api_prefix)

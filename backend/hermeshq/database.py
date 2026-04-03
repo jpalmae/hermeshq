@@ -82,6 +82,31 @@ def _run_schema_updates(sync_connection) -> None:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN logo_filename VARCHAR(255)"))
     if "favicon_filename" not in settings_columns:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN favicon_filename VARCHAR(255)"))
+    if not inspector.has_table("providers"):
+        sync_connection.execute(
+            text(
+                """
+                CREATE TABLE providers (
+                    slug VARCHAR(64) PRIMARY KEY,
+                    name VARCHAR(128) NOT NULL,
+                    runtime_provider VARCHAR(64) NOT NULL,
+                    auth_type VARCHAR(32) NOT NULL DEFAULT 'api_key',
+                    base_url VARCHAR(512) NULL,
+                    default_model VARCHAR(255) NULL,
+                    description TEXT NULL,
+                    docs_url VARCHAR(512) NULL,
+                    secret_placeholder VARCHAR(128) NULL,
+                    supports_secret_ref BOOLEAN NOT NULL DEFAULT TRUE,
+                    supports_custom_base_url BOOLEAN NOT NULL DEFAULT TRUE,
+                    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    sort_order INTEGER NOT NULL DEFAULT 100,
+                    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        sync_connection.execute(text("CREATE INDEX ix_providers_runtime_provider ON providers(runtime_provider)"))
     if not inspector.has_table("messaging_channels"):
         sync_connection.execute(
             text(

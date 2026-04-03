@@ -17,6 +17,14 @@ export interface ManagedUser extends User {
   assigned_agent_ids: string[];
 }
 
+export interface Secret {
+  id: string;
+  name: string;
+  provider: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Node {
   id: string;
   name: string;
@@ -81,6 +89,24 @@ export interface AppSettings {
   has_tui_skin: boolean;
   has_logo: boolean;
   has_favicon: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProviderDefinition {
+  slug: string;
+  name: string;
+  runtime_provider: string;
+  auth_type: "api_key" | "oauth_external" | string;
+  base_url: string | null;
+  default_model: string | null;
+  description: string | null;
+  docs_url: string | null;
+  secret_placeholder: string | null;
+  supports_secret_ref: boolean;
+  supports_custom_base_url: boolean;
+  enabled: boolean;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 }

@@ -4,8 +4,11 @@ import { Link } from "react-router-dom";
 import { useAgentAction, useAgents, useCreateAgent, useDeleteAgent } from "../api/agents";
 import { AgentAvatar } from "../components/AgentAvatar";
 import { useNodes } from "../api/nodes";
+import { useProviders } from "../api/providers";
+import { useSecrets } from "../api/secrets";
 import { useSettings } from "../api/settings";
 import { useI18n } from "../lib/i18n";
+import { applyProviderPreset, findMatchingProvider } from "../lib/providers";
 import { useSessionStore } from "../stores/sessionStore";
 
 const emptyForm = {
@@ -45,6 +48,8 @@ export function AgentsPage() {
   const { data: nodes } = useNodes(isAdmin);
   const { data: agents } = useAgents();
   const { data: settings } = useSettings(isAdmin);
+  const { data: providers } = useProviders(Boolean(currentUser));
+  const { data: secrets } = useSecrets(isAdmin);
   const createAgent = useCreateAgent();
   const deleteAgent = useDeleteAgent();
   const startAgent = useAgentAction("start");
@@ -54,8 +59,17 @@ export function AgentsPage() {
   const [form, setForm] = useState(emptyForm);
   const [nameTouched, setNameTouched] = useState(false);
   const [slugTouched, setSlugTouched] = useState(false);
+  const [selectedProviderSlug, setSelectedProviderSlug] = useState("");
 
   const activeNodeId = useMemo(() => nodes?.[0]?.id ?? "", [nodes]);
+  const enabledProviders = useMemo(
+    () => (providers ?? []).filter((provider) => provider.enabled),
+    [providers],
+  );
+  const selectedProvider = useMemo(
+    () => enabledProviders.find((provider) => provider.slug === selectedProviderSlug) ?? null,
+    [enabledProviders, selectedProviderSlug],
+  );
 
   useEffect(() => {
     setForm((current) => {
@@ -72,6 +86,11 @@ export function AgentsPage() {
       };
     });
   }, [activeNodeId, settings]);
+
+  useEffect(() => {
+    const match = findMatchingProvider(enabledProviders, form.provider || settings?.default_provider, form.base_url || settings?.default_base_url);
+    setSelectedProviderSlug(match?.slug ?? "");
+  }, [enabledProviders, form.provider, form.base_url, settings?.default_provider, settings?.default_base_url]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -190,6 +209,36 @@ export function AgentsPage() {
           </label>
 
           <label className="panel-field">
+            <span className="panel-label">Provider preset</span>
+            <select
+              value={selectedProviderSlug}
+              onChange={(event) => {
+                const slug = event.target.value;
+                setSelectedProviderSlug(slug);
+                const provider = enabledProviders.find((item) => item.slug === slug);
+                if (!provider) {
+                  return;
+                }
+                const applied = applyProviderPreset(provider, form.api_key_ref);
+                setForm((current) => ({
+                  ...current,
+                  provider: applied.provider,
+                  model: applied.model,
+                  base_url: applied.base_url,
+                  api_key_ref: applied.api_key_ref,
+                }));
+              }}
+            >
+              <option value="">{t("providers.selectProviderPreset")}</option>
+              {enabledProviders.map((provider) => (
+                <option key={provider.slug} value={provider.slug}>
+                  {provider.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="panel-field">
             <span className="panel-label">{t("agents.model")}</span>
             <input
               value={form.model}
@@ -209,11 +258,17 @@ export function AgentsPage() {
 
           <label className="panel-field">
             <span className="panel-label">{t("agents.secretRef")}</span>
-            <input
+            <select
               value={form.api_key_ref}
               onChange={(event) => setForm((current) => ({ ...current, api_key_ref: event.target.value }))}
-              placeholder={settings?.default_api_key_ref ?? "Uses global default"}
-            />
+            >
+              <option value="">{selectedProvider?.supports_secret_ref === false ? t("providers.oauthManaged") : (settings?.default_api_key_ref ?? t("providers.noSecret"))}</option>
+              {(secrets ?? []).map((secret) => (
+                <option key={String(secret.id)} value={String(secret.name)}>
+                  {String(secret.name)}{secret.provider ? ` (${secret.provider})` : ""}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className="panel-field">
@@ -222,8 +277,13 @@ export function AgentsPage() {
               value={form.base_url}
               onChange={(event) => setForm((current) => ({ ...current, base_url: event.target.value }))}
               placeholder={settings?.default_base_url ?? "Uses global default"}
+              disabled={selectedProvider?.supports_custom_base_url === false}
             />
           </label>
+
+          {selectedProvider ? (
+            <p className="text-sm leading-6 text-[var(--text-secondary)]">{selectedProvider.description}</p>
+          ) : null}
 
           <label className="panel-field">
             <span className="panel-label">{t("agents.systemPrompt")}</span>

@@ -1,6 +1,7 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useAgents } from "../api/agents";
+import { useProviders, useUpdateProvider } from "../api/providers";
 import { useCreateSecret, useSecrets } from "../api/secrets";
 import {
   resolveAssetUrl,
@@ -13,6 +14,7 @@ import {
 } from "../api/settings";
 import { useCreateTemplate, useTemplates } from "../api/templates";
 import { useI18n } from "../lib/i18n";
+import { applyProviderPreset, findMatchingProvider } from "../lib/providers";
 import { useSessionStore } from "../stores/sessionStore";
 
 export function SettingsPage() {
@@ -21,8 +23,10 @@ export function SettingsPage() {
   const { t } = useI18n();
   const { data: agents } = useAgents();
   const { data: secrets } = useSecrets(isAdmin);
+  const { data: providers } = useProviders(Boolean(currentUser));
   const { data: templates } = useTemplates(isAdmin);
   const { data: settings } = useSettings(isAdmin);
+  const updateProvider = useUpdateProvider();
   const createSecret = useCreateSecret();
   const createTemplate = useCreateTemplate();
   const updateSettings = useUpdateSettings();
@@ -45,6 +49,13 @@ export function SettingsPage() {
   const [defaultModel, setDefaultModel] = useState("");
   const [defaultApiKeyRef, setDefaultApiKeyRef] = useState("");
   const [defaultBaseUrl, setDefaultBaseUrl] = useState("");
+  const [selectedDefaultProviderSlug, setSelectedDefaultProviderSlug] = useState("");
+  const [providerDrafts, setProviderDrafts] = useState<Record<string, {
+    name: string;
+    base_url: string;
+    default_model: string;
+    enabled: boolean;
+  }>>({});
 
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
@@ -59,6 +70,37 @@ export function SettingsPage() {
     setDefaultApiKeyRef(settings?.default_api_key_ref ?? "");
     setDefaultBaseUrl(settings?.default_base_url ?? "");
   }, [settings]);
+
+  useEffect(() => {
+    const match = findMatchingProvider(providers, settings?.default_provider, settings?.default_base_url);
+    setSelectedDefaultProviderSlug(match?.slug ?? "");
+  }, [providers, settings?.default_provider, settings?.default_base_url]);
+
+  useEffect(() => {
+    setProviderDrafts(
+      Object.fromEntries(
+        (providers ?? []).map((provider) => [
+          provider.slug,
+          {
+            name: provider.name,
+            base_url: provider.base_url ?? "",
+            default_model: provider.default_model ?? "",
+            enabled: provider.enabled,
+          },
+        ]),
+      ),
+    );
+  }, [providers]);
+
+  const enabledProviders = useMemo(
+    () => (providers ?? []).filter((provider) => provider.enabled),
+    [providers],
+  );
+
+  const selectedDefaultProvider = useMemo(
+    () => enabledProviders.find((provider) => provider.slug === selectedDefaultProviderSlug) ?? null,
+    [enabledProviders, selectedDefaultProviderSlug],
+  );
 
   async function submitSecret(event: FormEvent) {
     event.preventDefault();
@@ -109,6 +151,22 @@ export function SettingsPage() {
       default_model: defaultModel || null,
       default_api_key_ref: defaultApiKeyRef || null,
       default_base_url: defaultBaseUrl || null,
+    });
+  }
+
+  async function saveProvider(providerSlug: string) {
+    const draft = providerDrafts[providerSlug];
+    if (!draft) {
+      return;
+    }
+    await updateProvider.mutateAsync({
+      providerSlug,
+      payload: {
+        name: draft.name,
+        base_url: draft.base_url || null,
+        default_model: draft.default_model || null,
+        enabled: draft.enabled,
+      },
     });
   }
 
@@ -201,6 +259,34 @@ export function SettingsPage() {
           </p>
           <div className="mt-6 space-y-4">
             <label className="panel-field">
+              <span className="panel-label">{t("providers.catalogProvider")}</span>
+              <select
+                value={selectedDefaultProviderSlug}
+                onChange={(event) => {
+                  const slug = event.target.value;
+                  setSelectedDefaultProviderSlug(slug);
+                  const provider = enabledProviders.find((item) => item.slug === slug);
+                  if (!provider) {
+                    return;
+                  }
+                  const applied = applyProviderPreset(provider, defaultApiKeyRef);
+                  setDefaultProvider(applied.provider);
+                  setDefaultModel(applied.model);
+                  setDefaultBaseUrl(applied.base_url);
+                  if (!provider.supports_secret_ref) {
+                    setDefaultApiKeyRef("");
+                  }
+                }}
+              >
+                <option value="">{t("providers.selectProviderPreset")}</option>
+                {enabledProviders.map((provider) => (
+                  <option key={provider.slug} value={provider.slug}>
+                    {provider.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="panel-field">
               <span className="panel-label">{t("agents.provider")}</span>
               <input value={defaultProvider} onChange={(event) => setDefaultProvider(event.target.value)} />
             </label>
@@ -210,7 +296,18 @@ export function SettingsPage() {
             </label>
             <label className="panel-field">
               <span className="panel-label">{t("agents.secretRef")}</span>
-              <input value={defaultApiKeyRef} onChange={(event) => setDefaultApiKeyRef(event.target.value)} />
+              <select
+                value={defaultApiKeyRef}
+                onChange={(event) => setDefaultApiKeyRef(event.target.value)}
+                disabled={selectedDefaultProvider?.supports_secret_ref === false}
+              >
+                <option value="">{selectedDefaultProvider?.supports_secret_ref === false ? t("providers.oauthManaged") : t("providers.noSecret")}</option>
+                {(secrets ?? []).map((secret) => (
+                  <option key={String(secret.id)} value={String(secret.name)}>
+                    {String(secret.name)}{secret.provider ? ` (${secret.provider})` : ""}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="panel-field">
               <span className="panel-label">{t("agents.baseUrl")}</span>
@@ -219,6 +316,11 @@ export function SettingsPage() {
             <button className="panel-button-primary w-full" type="submit">
               {t("settings.saveRuntimeDefaults")}
             </button>
+            {selectedDefaultProvider ? (
+              <p className="text-sm leading-6 text-[var(--text-secondary)]">
+                {selectedDefaultProvider.description}
+              </p>
+            ) : null}
           </div>
         </form>
 
@@ -375,7 +477,14 @@ export function SettingsPage() {
             </label>
             <label className="panel-field">
               <span className="panel-label">Provider</span>
-              <input value={secretProvider} onChange={(event) => setSecretProvider(event.target.value)} />
+              <select value={secretProvider} onChange={(event) => setSecretProvider(event.target.value)}>
+                <option value="">{t("providers.genericSecret")}</option>
+                {(providers ?? []).map((provider) => (
+                  <option key={provider.slug} value={provider.slug}>
+                    {provider.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="panel-field">
               <span className="panel-label">Value</span>
@@ -451,6 +560,105 @@ export function SettingsPage() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="panel-frame p-6">
+        <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
+          <div>
+            <p className="panel-label">{t("providers.registry")}</p>
+            <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("providers.title")}</h2>
+          </div>
+          <p className="panel-label">{t("providers.configuredCount", { count: providers?.length ?? 0 })}</p>
+        </div>
+        <div className="mt-6 grid gap-4 xl:grid-cols-2">
+          {(providers ?? []).map((provider) => {
+            const draft = providerDrafts[provider.slug];
+            if (!draft) return null;
+            return (
+              <article key={provider.slug} className="border border-[var(--border)] bg-[var(--surface-raised)] p-5">
+                <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-4">
+                  <div>
+                    <p className="panel-label">{provider.runtime_provider}</p>
+                    <h3 className="mt-2 text-xl text-[var(--text-display)]">{provider.name}</h3>
+                    <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                      {provider.description}
+                    </p>
+                  </div>
+                  <label className="panel-field !mt-0 min-w-[7rem]">
+                    <span className="panel-label">{t("providers.enabled")}</span>
+                    <select
+                      value={draft.enabled ? "true" : "false"}
+                      onChange={(event) =>
+                        setProviderDrafts((current) => ({
+                          ...current,
+                          [provider.slug]: {
+                            ...current[provider.slug],
+                            enabled: event.target.value === "true",
+                          },
+                        }))
+                      }
+                    >
+                      <option value="true">{t("common.yes")}</option>
+                      <option value="false">{t("common.no")}</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div className="mt-4 grid gap-4">
+                  <label className="panel-field">
+                    <span className="panel-label">{t("providers.providerName")}</span>
+                    <input
+                      value={draft.name}
+                      onChange={(event) =>
+                        setProviderDrafts((current) => ({
+                          ...current,
+                          [provider.slug]: { ...current[provider.slug], name: event.target.value },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="panel-field">
+                    <span className="panel-label">{t("agents.baseUrl")}</span>
+                    <input
+                      value={draft.base_url}
+                      onChange={(event) =>
+                        setProviderDrafts((current) => ({
+                          ...current,
+                          [provider.slug]: { ...current[provider.slug], base_url: event.target.value },
+                        }))
+                      }
+                      disabled={!provider.supports_custom_base_url}
+                    />
+                  </label>
+                  <label className="panel-field">
+                    <span className="panel-label">{t("providers.defaultModel")}</span>
+                    <input
+                      value={draft.default_model}
+                      onChange={(event) =>
+                        setProviderDrafts((current) => ({
+                          ...current,
+                          [provider.slug]: { ...current[provider.slug], default_model: event.target.value },
+                        }))
+                      }
+                    />
+                  </label>
+                  <div className="grid gap-2 text-sm text-[var(--text-secondary)]">
+                    <p>{t("providers.authType")}: {provider.auth_type}</p>
+                    <p>{t("providers.secretUsage")}: {provider.supports_secret_ref ? t("providers.secretSupported") : t("providers.secretNotSupported")}</p>
+                    {provider.docs_url ? (
+                      <a className="text-[var(--text-display)] underline underline-offset-4" href={provider.docs_url} target="_blank" rel="noreferrer">
+                        {t("providers.openDocs")}
+                      </a>
+                    ) : null}
+                  </div>
+                  <button type="button" className="panel-button-primary w-full" onClick={() => void saveProvider(provider.slug)}>
+                    {t("providers.saveProvider")}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
         </div>
       </section>
     </div>

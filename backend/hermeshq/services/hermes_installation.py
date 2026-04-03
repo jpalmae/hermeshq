@@ -596,6 +596,9 @@ class HermesInstallationManager:
             "openrouter": ["OPENROUTER_API_KEY"],
             "anthropic": ["ANTHROPIC_API_KEY"],
             "openai": ["OPENAI_API_KEY"],
+            "openai-codex": ["OPENAI_API_KEY"],
+            "kimi-coding": ["KIMI_API_KEY"],
+            "gemini": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
         }
         return fallback.get(provider, [])
 
@@ -615,6 +618,9 @@ class HermesInstallationManager:
             "zai": "GLM_BASE_URL",
             "openrouter": "OPENROUTER_BASE_URL",
             "openai": "OPENAI_BASE_URL",
+            "openai-codex": "OPENAI_BASE_URL",
+            "kimi-coding": "KIMI_BASE_URL",
+            "gemini": "OPENAI_BASE_URL",
             "anthropic": None,
         }
         return fallback.get(provider)

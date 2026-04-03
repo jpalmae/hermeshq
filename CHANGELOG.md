@@ -6,6 +6,7 @@
 
 - Per-agent Telegram channel management using the native Hermes gateway, including allowlisted Telegram user IDs persisted per agent.
 - Instance-wide Hermes TUI skin management for admins. A single uploaded YAML skin can now be applied as the default look for every agent TUI.
+- Provider registry and preset-driven runtime configuration for admins, covering Kimi Coding, Z.AI Coding Plan, OpenRouter API, OpenAI API, Gemini API and Anthropic API.
 - Real HermesHQ inter-agent tools exposed to agents themselves: `hq_list_agents`, `hq_direct_message` and `hq_delegate_task`.
 - Per-agent avatars with upload, delete and rendering across the dashboard, agent matrix, dependency canvas and agent detail view.
 - Per-user avatars with upload and delete from the `Users` page.
@@ -29,3 +30,4 @@
 - `Message edges` in `Comms` now shows human-readable agent names plus delegate/direct/broadcast counts instead of raw IDs.
 - `Settings` now controls the instance default language, while `My Account` and the sidebar operator section expose a personal language override for every user.
 - `Settings` now also controls a shared Hermes TUI skin, which HermesHQ propagates into each agent `HERMES_HOME` and activates through `display.skin`.
+- `Settings` now includes a provider registry where admins can edit provider names, base URLs, enabled state and default models. Agent creation and instance runtime defaults can start from those presets instead of typing provider/model/base URL/secret ref by hand.

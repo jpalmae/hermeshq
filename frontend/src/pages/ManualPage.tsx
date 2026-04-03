@@ -57,7 +57,7 @@ const manualSections: ManualSection[] = [
       caption: "Agent matrix con acciones de runtime y acceso al detalle de cada agente.",
     },
     bullets: [
-      "Al crear un agente, los valores por defecto de provider, modelo y credenciales se heredan desde la configuración global de la instancia.",
+      "Al crear un agente, puedes partir desde un preset de provider mantenido por la instancia. Eso rellena runtime provider, modelo, base URL y secret ref sugerido antes de cualquier ajuste manual.",
       "Friendly name es el nombre visible y recordable. Si name o slug se dejan vacíos, se derivan automáticamente a partir de ese nombre.",
       "Cada agente tiene workspace, instalación Hermes propia, skills y canales asociados dentro de su directorio aislado.",
       "Desde el listado puedes iniciar, detener, reiniciar y eliminar agentes. El detalle completo se abre haciendo clic sobre la tarjeta.",
@@ -197,7 +197,8 @@ const manualSections: ManualSection[] = [
       "Default Theme establece el modo base de la instancia; cada usuario puede luego aplicar su override personal desde el shell.",
       "Default Language define el idioma base de la interfaz. Cada usuario puede mantener ese valor o elegir su propio override entre inglés y español.",
       "TUI Skin permite subir un archivo YAML de skin de Hermes y usarlo como apariencia global para todas las TUI de agentes.",
-      "Runtime defaults controla provider, modelo, base URL y secreto por defecto para los nuevos agentes.",
+      "Runtime defaults controla provider, modelo, base URL y secreto por defecto para los nuevos agentes, ahora apoyándose en presets del catálogo de providers.",
+      "Provider registry permite mantener los providers soportados por la instancia, editando nombre, URL base, modelo por defecto y estado habilitado sin necesidad de tocar código.",
       "Los usuarios sin privilegios no pueden modificar estos parámetros globales, pero sí elegir su tema e idioma personales.",
     ],
   },

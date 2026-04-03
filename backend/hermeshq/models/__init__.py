@@ -6,6 +6,7 @@ from hermeshq.models.base import Base
 from hermeshq.models.message import AgentMessage
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.node import Node
+from hermeshq.models.provider import ProviderDefinition
 from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.secret import Secret
 from hermeshq.models.task import Task
@@ -22,6 +23,7 @@ __all__ = [
     "Base",
     "MessagingChannel",
     "Node",
+    "ProviderDefinition",
     "ScheduledTask",
     "Secret",
     "Task",

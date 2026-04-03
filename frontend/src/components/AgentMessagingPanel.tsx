@@ -53,7 +53,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
 
   const secretOptions = useMemo(
     () =>
-      ((secrets ?? []) as Array<Record<string, unknown>>)
+      (secrets ?? [])
         .map((item) => String(item.name ?? ""))
         .filter(Boolean)
         .sort((left, right) => left.localeCompare(right)),

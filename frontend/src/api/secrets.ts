@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient } from "./client";
+import type { Secret } from "../types/api";
 
 export function useSecrets(enabled = true) {
   return useQuery({
     queryKey: ["secrets"],
     queryFn: async () => {
-      const { data } = await apiClient.get("/secrets");
-      return data as Array<Record<string, unknown>>;
+      const { data } = await apiClient.get<Secret[]>("/secrets");
+      return data;
     },
     enabled,
   });
