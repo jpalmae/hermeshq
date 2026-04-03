@@ -41,9 +41,21 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
   const containerRef = useRef<HTMLDivElement | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const shouldReconnectRef = useRef(true);
+  const shouldAutoScrollRef = useRef(true);
   const readOnly = useMemo(() => mode === "hybrid" || mode === "interactive", [mode]);
 
-  const scrollTerminalToBottom = () => {
+  const isTerminalNearBottom = () => {
+    const buffer = terminalRef.current?.buffer.active;
+    if (!buffer) {
+      return true;
+    }
+    return buffer.baseY - buffer.viewportY <= 2;
+  };
+
+  const scrollTerminalToBottom = (force = false) => {
+    if (!force && !shouldAutoScrollRef.current) {
+      return;
+    }
     window.requestAnimationFrame(() => {
       terminalRef.current?.scrollToBottom();
     });
@@ -111,7 +123,8 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
       setConnected(true);
       setConnectionMessage(null);
       fitAddon.fit();
-      scrollTerminalToBottom();
+      shouldAutoScrollRef.current = true;
+      scrollTerminalToBottom(true);
       socket.send(
         JSON.stringify({
           type: "resize",
@@ -141,6 +154,7 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
     socket.onmessage = (event) => {
       const payload = JSON.parse(event.data) as { type: string; data?: string };
       if (payload.type === "output" && payload.data) {
+        shouldAutoScrollRef.current = isTerminalNearBottom();
         terminal.write(decodeChunk(payload.data));
         scrollTerminalToBottom();
       }
@@ -156,6 +170,10 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
           data: encodeChunk(data),
         }),
       );
+    });
+
+    const onScrollDispose = terminal.onScroll(() => {
+      shouldAutoScrollRef.current = isTerminalNearBottom();
     });
 
     const resizeObserver = new ResizeObserver(() => {
@@ -179,6 +197,7 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
         reconnectTimerRef.current = null;
       }
       resizeObserver.disconnect();
+      onScrollDispose.dispose();
       onDataDispose.dispose();
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: "detach" }));
@@ -194,7 +213,9 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
     const frame = window.requestAnimationFrame(() => {
       fitAddonRef.current?.fit();
       const terminal = terminalRef.current;
-      terminal?.scrollToBottom();
+      if (shouldAutoScrollRef.current) {
+        terminal?.scrollToBottom();
+      }
       if (terminal && socketRef.current?.readyState === WebSocket.OPEN) {
         socketRef.current.send(
           JSON.stringify({
