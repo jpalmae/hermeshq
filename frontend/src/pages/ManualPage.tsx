@@ -125,8 +125,9 @@ const manualSections: ManualSection[] = [
     bullets: [
       "Puedes seleccionar origen, destino y mensaje para generar una delegación puntual y trazable.",
       "El sistema registra los eventos y las tareas resultantes, permitiendo seguir la conversación operativa entre agentes.",
-      "Si el agente destino está detenido, HermesHQ puede levantarlo antes de enviar la delegación.",
-      "Para automatizar una delegación periódica debes usar Schedules, no Comms.",
+      "Las reglas jerárquicas se aplican solo a Delegate: agentes independientes delegan libremente, subordinados pueden escalar hacia supervisores o delegar hacia abajo dentro de su propia rama, y las delegaciones laterales entre ramas quedan bloqueadas.",
+      "La propia pantalla de Comms muestra esas rutas válidas e inválidas antes de enviar, incluyendo destinos deshabilitados y una vista visual del alcance del agente origen.",
+      "Si el agente destino está detenido, HermesHQ puede levantarlo antes de enviar la delegación. Para automatizar una delegación periódica debes usar Schedules, no Comms.",
     ],
   },
   {
@@ -159,6 +160,19 @@ const manualSections: ManualSection[] = [
       "La política de contraseña exige mínimo ocho caracteres, al menos una mayúscula, un número y un carácter especial.",
       "Desde aquí puedes crear usuarios, cambiar display name, subir icono del operador, resetear contraseña y eliminar cuentas.",
       "Las asignaciones determinan qué agentes puede ver y manipular cada usuario estándar en todo el sistema.",
+    ],
+  },
+  {
+    id: "account",
+    eyebrow: "Perfil personal",
+    title: "My Account para cualquier usuario",
+    summary:
+      "Además del registro administrativo de usuarios, cada operador dispone de una página personal para gestionar su propia identidad y seguridad.",
+    bullets: [
+      "My Account está disponible desde la sección Operator del sidebar, sin necesidad de privilegios de administrador.",
+      "Desde ahí puedes cambiar display name, icono/avatar y preferencia de tema personal.",
+      "También puedes cambiar tu propia contraseña validando primero la contraseña actual.",
+      "La política de contraseña sigue siendo la misma en todo el sistema: mínimo ocho caracteres, una mayúscula, un número y un carácter especial.",
     ],
   },
   {

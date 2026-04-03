@@ -7,6 +7,7 @@ Initial end-to-end implementation for a multi-agent operations panel based on th
 - FastAPI backend with:
   - JWT auth
   - per-user theme preference override
+  - self-service profile and password change for the current user
   - admin/user RBAC with assigned-agent scope
   - local node bootstrap
   - agent CRUD
@@ -15,7 +16,7 @@ Initial end-to-end implementation for a multi-agent operations panel based on th
   - strict local agent runtime via `hermes-agent`
   - activity feed
   - websocket event stream
-  - inter-agent comms
+  - inter-agent comms with hierarchy-aware delegation rules
   - secrets vault
   - templates
   - scheduled tasks
@@ -30,6 +31,8 @@ Initial end-to-end implementation for a multi-agent operations panel based on th
   - nodes
   - comms
   - settings
+  - in-app user manual with screenshots
+  - self-service `My Account`
   - users and assignments
   - workspace editor
   - PTY terminal pane
@@ -94,8 +97,12 @@ URLs:
 - Task execution is strict: if `hermes-agent` is missing, the agent has no valid credentials, or the provider rejects the request, the task is marked `failed`.
 - The bundled Docker runtime uses `/bin/sh` for PTY sessions so the embedded terminal works reliably inside the container image.
 - Telegram bindings are now managed per agent. HermesHQ writes the agent's `.hermes/config.yaml` and `.hermes/.env`, then supervises `hermes gateway run` for that agent. Configure a bot token as a secret and reference it from the agent detail page.
+- `Comms` now enforces real hierarchy rules for `Delegate`: independent agents can delegate freely, subordinate agents can escalate upward or delegate downward inside their own branch, and cross-branch lateral delegation is blocked.
+- The `Comms` screen reflects those rules before sending by disabling invalid targets and visualizing upward, downward and blocked routes for the selected source agent.
 - Agent avatars are stored per agent under the persistent workspaces volume and are rendered across the agent detail page, dashboard and dependency canvas.
 - User avatars are stored separately from branding and can be managed from the `Users` page. The active operator avatar is reflected in the shell and dashboard.
 - Instance theme is still controlled by admins in `Settings`, but each user can now override the theme from the left shell without needing admin access.
+- The left shell exposes `My Account` for any user, including profile edits, avatar management and password changes without admin intervention.
+- The in-app `Manual` is available from the operator section in the sidebar and includes annotated screenshots of the main operational surfaces.
 - Local node metrics are real. Remote node provisioning and remote node metrics are still not implemented and return `501`.
 - Redis-backed pub/sub, remote node daemon/provisioning and xterm.js-grade PTY rendering are still incomplete versus the full spec.

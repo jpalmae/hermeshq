@@ -67,6 +67,8 @@ class AgentRead(ORMModel):
     disabled_toolsets: list[str]
     skills: list[str]
     team_tags: list[str]
+    can_receive_tasks: bool
+    can_send_tasks: bool
     supervisor_agent_id: str | None
     total_tasks: int
     total_tokens_used: int

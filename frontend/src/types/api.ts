@@ -52,6 +52,8 @@ export interface Agent {
   disabled_toolsets: string[];
   skills: string[];
   team_tags: string[];
+  can_receive_tasks: boolean;
+  can_send_tasks: boolean;
   supervisor_agent_id: string | null;
   total_tasks: number;
   total_tokens_used: number;

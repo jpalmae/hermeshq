@@ -9,9 +9,15 @@
 - Per-user avatars with upload and delete from the `Users` page.
 - Per-user theme overrides layered on top of the instance default theme.
 - User management with `admin` / `user` roles and assigned-agent scope.
+- In-app user manual with screenshots, exposed from the operator section in the sidebar.
+- Self-service `My Account` page for display name, avatar, theme preference and personal password changes.
 
 ### Changed
 
 - Agent detail `Configuration` is now collapsed by default.
 - Dashboard `Primary Readout` now shows the active operator instead of a decorative placeholder.
 - The `Users` screen now exposes editable display names and clearer operator icon controls.
+- Hermes runtime prompt fragments now use the configured instance app name, falling back to `HermesHQ` only when no branding name is set.
+- `Comms` now enforces hierarchy-aware delegation: independent agents delegate freely, subordinates can escalate upward or delegate downward within their branch, and cross-branch lateral delegation is blocked.
+- `Comms` now previews those hierarchy rules in the UI, including disabled destinations and a visual routing scope for the selected source agent.
+- `Message edges` in `Comms` now shows human-readable agent names plus delegate/direct/broadcast counts instead of raw IDs.
