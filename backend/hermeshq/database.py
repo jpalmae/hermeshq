@@ -74,6 +74,10 @@ def _run_schema_updates(sync_connection) -> None:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN theme_mode VARCHAR(16)"))
     if "default_locale" not in settings_columns:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN default_locale VARCHAR(8)"))
+    if "default_tui_skin" not in settings_columns:
+        sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN default_tui_skin VARCHAR(128)"))
+    if "tui_skin_filename" not in settings_columns:
+        sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN tui_skin_filename VARCHAR(255)"))
     if "logo_filename" not in settings_columns:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN logo_filename VARCHAR(255)"))
     if "favicon_filename" not in settings_columns:

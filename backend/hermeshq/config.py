@@ -24,6 +24,7 @@ class Settings(BaseSettings):
         default_factory=lambda: Path(__file__).resolve().parents[2] / "workspaces"
     )
     branding_root: Path | None = None
+    hermes_skins_root: Path | None = None
     agent_assets_root: Path | None = None
     user_assets_root: Path | None = None
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3420"]
@@ -40,6 +41,8 @@ class Settings(BaseSettings):
     def model_post_init(self, __context) -> None:
         if self.branding_root is None:
             self.branding_root = self.workspaces_root / "_branding"
+        if self.hermes_skins_root is None:
+            self.hermes_skins_root = self.workspaces_root / "_hermes_skins"
         if self.agent_assets_root is None:
             self.agent_assets_root = self.workspaces_root / "_agent_assets"
         if self.user_assets_root is None:

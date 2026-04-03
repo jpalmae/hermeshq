@@ -74,8 +74,11 @@ export interface AppSettings {
   default_model: string | null;
   default_api_key_ref: string | null;
   default_base_url: string | null;
+  default_tui_skin: string | null;
+  tui_skin_filename: string | null;
   logo_url: string | null;
   favicon_url: string | null;
+  has_tui_skin: boolean;
   has_logo: boolean;
   has_favicon: boolean;
   created_at: string;

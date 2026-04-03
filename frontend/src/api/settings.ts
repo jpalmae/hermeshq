@@ -84,3 +84,37 @@ export function useDeleteBrandAsset(kind: "logo" | "favicon") {
     },
   });
 }
+
+export function useUploadTuiSkin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const { data } = await apiClient.post<AppSettings>("/settings/tui-skin", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["settings"] });
+      await queryClient.invalidateQueries({ queryKey: ["branding", "public"] });
+      await queryClient.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+}
+
+export function useDeleteTuiSkin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.delete<AppSettings>("/settings/tui-skin");
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["settings"] });
+      await queryClient.invalidateQueries({ queryKey: ["branding", "public"] });
+      await queryClient.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+}

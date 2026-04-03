@@ -16,5 +16,7 @@ class AppSettings(TimestampMixin, Base):
     default_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     default_api_key_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
     default_base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    default_tui_skin: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    tui_skin_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     logo_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     favicon_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)

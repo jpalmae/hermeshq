@@ -40,11 +40,12 @@ class HermesInstallationManager:
         hermes_home = self.build_hermes_home(agent.workspace_path)
         self._ensure_home_dirs(hermes_home)
         self._sync_managed_plugins(hermes_home)
+        active_skin = await self._sync_global_skin(hermes_home)
         app_name = await self._get_instance_app_name()
         installed_skills = await self._sync_managed_skills(agent, hermes_home)
         system_prompt = await self._build_system_prompt(agent, installed_skills, app_name)
         messaging_channels = await self._load_messaging_channels(agent.id)
-        self._write_config(agent, hermes_home, system_prompt, messaging_channels)
+        self._write_config(agent, hermes_home, system_prompt, messaging_channels, active_skin)
         self._write_soul(agent, hermes_home, app_name)
         await self._sync_auth_store(agent, hermes_home)
         await self._sync_dotenv(agent, hermes_home, messaging_channels)
@@ -126,12 +127,30 @@ class HermesInstallationManager:
             shutil.rmtree(target_root)
         shutil.copytree(source_root, target_root)
 
+    async def _sync_global_skin(self, hermes_home: Path) -> str | None:
+        skins_root = hermes_home / "skins"
+        skins_root.mkdir(parents=True, exist_ok=True)
+        for path in list(skins_root.glob("hermeshq-global-*.y*ml")):
+            path.unlink()
+
+        async with self.session_factory() as session:
+            app_settings = await session.get(AppSettings, "default")
+            if not app_settings or not app_settings.default_tui_skin or not app_settings.tui_skin_filename:
+                return None
+            source_path = get_settings().hermes_skins_root / app_settings.tui_skin_filename
+            if not source_path.exists():
+                return None
+            target_path = skins_root / app_settings.tui_skin_filename
+            shutil.copy2(source_path, target_path)
+            return Path(app_settings.tui_skin_filename).stem
+
     def _write_config(
         self,
         agent: Agent,
         hermes_home: Path,
         system_prompt: str,
         messaging_channels: list[MessagingChannel],
+        active_skin: str | None,
     ) -> None:
         telegram_channel = next((item for item in messaging_channels if item.platform == "telegram"), None)
         config = {
@@ -148,6 +167,8 @@ class HermesInstallationManager:
                 "external_dirs": [],
             },
         }
+        if active_skin:
+            config["display"] = {"skin": active_skin}
         if telegram_channel:
             platforms = config.setdefault("platforms", {})
             telegram_platform = {

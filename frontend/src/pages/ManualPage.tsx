@@ -76,6 +76,7 @@ const manualSections: ManualSection[] = [
     },
     bullets: [
       "Terminal muestra la TUI real de Hermes. Puedes mantenerla embebida, flotarla o expandirla a pantalla casi completa.",
+      "Si la instancia tiene una skin global de TUI configurada por un admin, esa apariencia se aplica a todas las sesiones nuevas del terminal Hermes.",
       "Talk to this agent envía mensajes como tareas operativas y conserva un historial estilo conversación.",
       "Runtime ledger resume ejecuciones, resultados y errores; cuando este agente delega trabajo, el resultado del subordinado vuelve a aparecer aquí como una task callback automática.",
       "Configuration permite editar parámetros como system prompt o avatar cuando haga falta.",
@@ -195,6 +196,7 @@ const manualSections: ManualSection[] = [
       "Branding permite definir nombre de la app, short name, logo y favicon persistentes.",
       "Default Theme establece el modo base de la instancia; cada usuario puede luego aplicar su override personal desde el shell.",
       "Default Language define el idioma base de la interfaz. Cada usuario puede mantener ese valor o elegir su propio override entre inglés y español.",
+      "TUI Skin permite subir un archivo YAML de skin de Hermes y usarlo como apariencia global para todas las TUI de agentes.",
       "Runtime defaults controla provider, modelo, base URL y secreto por defecto para los nuevos agentes.",
       "Los usuarios sin privilegios no pueden modificar estos parámetros globales, pero sí elegir su tema e idioma personales.",
     ],

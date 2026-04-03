@@ -41,6 +41,7 @@ Initial end-to-end implementation for a multi-agent operations panel based on th
   - PTY terminal pane
   - per-agent Telegram channel management
   - per-user operator avatar
+  - instance-wide Hermes TUI skin upload for admins
 
 ## Frontend fonts
 
@@ -99,6 +100,7 @@ URLs:
 - The Docker stack uses PostgreSQL 16 and the backend connects through `asyncpg`.
 - Task execution is strict: if `hermes-agent` is missing, the agent has no valid credentials, or the provider rejects the request, the task is marked `failed`.
 - The bundled Docker runtime uses `/bin/sh` for PTY sessions so the embedded terminal works reliably inside the container image.
+- Admins can upload a single Hermes skin YAML in `Settings`. HermesHQ distributes it to every agent installation under `.hermes/skins/`, writes `display.skin` into each agent `config.yaml`, and new TUI sessions pick up that shared look automatically.
 - Telegram bindings are now managed per agent. HermesHQ writes the agent's `.hermes/config.yaml` and `.hermes/.env`, then supervises `hermes gateway run` for that agent. Configure a bot token as a secret and reference it from the agent detail page.
 - `Comms` now enforces real hierarchy rules for `Delegate`: independent agents can delegate freely, subordinate agents can escalate upward or delegate downward inside their own branch, and cross-branch lateral delegation is blocked.
 - The `Comms` screen reflects those rules before sending by disabling invalid targets and visualizing upward, downward and blocked routes for the selected source agent.

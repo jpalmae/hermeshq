@@ -2,7 +2,15 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { useAgents } from "../api/agents";
 import { useCreateSecret, useSecrets } from "../api/secrets";
-import { resolveAssetUrl, useDeleteBrandAsset, useSettings, useUpdateSettings, useUploadBrandAsset } from "../api/settings";
+import {
+  resolveAssetUrl,
+  useDeleteBrandAsset,
+  useDeleteTuiSkin,
+  useSettings,
+  useUpdateSettings,
+  useUploadBrandAsset,
+  useUploadTuiSkin,
+} from "../api/settings";
 import { useCreateTemplate, useTemplates } from "../api/templates";
 import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../stores/sessionStore";
@@ -22,6 +30,8 @@ export function SettingsPage() {
   const uploadFavicon = useUploadBrandAsset("favicon");
   const deleteLogo = useDeleteBrandAsset("logo");
   const deleteFavicon = useDeleteBrandAsset("favicon");
+  const uploadTuiSkin = useUploadTuiSkin();
+  const deleteTuiSkin = useDeleteTuiSkin();
 
   const [appName, setAppName] = useState("");
   const [appShortName, setAppShortName] = useState("");
@@ -117,6 +127,15 @@ export function SettingsPage() {
       await uploadFavicon.mutateAsync(file);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "Favicon upload failed");
+    }
+  }
+
+  async function onTuiSkinSelected(file: File | null) {
+    if (!file) return;
+    try {
+      await uploadTuiSkin.mutateAsync(file);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "TUI skin upload failed");
     }
   }
 
@@ -279,6 +298,52 @@ export function SettingsPage() {
               </div>
             </div>
 
+            <div className="border-b border-[var(--border)] pb-4">
+              <p className="panel-label">{t("settings.tuiSkin")}</p>
+              <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                {t("settings.tuiSkinCopy")}
+              </p>
+              <div className="mt-3 flex items-center gap-3">
+                {settings?.has_tui_skin ? (
+                  <div>
+                    <p className="text-sm text-[var(--text-display)]">
+                      {String(settings?.default_tui_skin ?? "unset")}
+                    </p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.24em] text-[var(--text-secondary)]">
+                      {String(settings?.tui_skin_filename ?? "")}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-[var(--text-secondary)]">{t("settings.noTuiSkin")}</p>
+                )}
+              </div>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <label className="panel-button-secondary cursor-pointer">
+                  {t("settings.uploadTuiSkin")}
+                  <input
+                    className="hidden"
+                    type="file"
+                    accept=".yaml,.yml,text/yaml,application/yaml"
+                    onChange={(event) => void onTuiSkinSelected(event.target.files?.[0] ?? null)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="panel-button-secondary"
+                  onClick={async () => {
+                    try {
+                      await deleteTuiSkin.mutateAsync();
+                    } catch (error) {
+                      window.alert(error instanceof Error ? error.message : "TUI skin removal failed");
+                    }
+                  }}
+                  disabled={!settings?.has_tui_skin}
+                >
+                  {t("settings.removeTuiSkin")}
+                </button>
+              </div>
+            </div>
+
             <div className="border-b border-[var(--border)] pb-3">
               <p className="panel-label">Current app name</p>
               <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.app_name ?? "HermesHQ")}</p>
@@ -290,6 +355,12 @@ export function SettingsPage() {
             <div className="pb-3">
               <p className="panel-label">Current default theme</p>
               <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.theme_mode ?? "dark")}</p>
+            </div>
+            <div className="pb-3">
+              <p className="panel-label">{t("settings.currentTuiSkin")}</p>
+              <p className="mt-2 text-sm text-[var(--text-display)]">
+                {String(settings?.default_tui_skin ?? t("settings.hermesDefaultSkin"))}
+              </p>
             </div>
           </div>
         </section>

@@ -1,13 +1,17 @@
 import mimetypes
+import re
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+import yaml
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hermeshq.config import get_settings
 from hermeshq.core.security import require_admin
 from hermeshq.database import get_db_session
+from hermeshq.models.agent import Agent
 from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.user import User
 from hermeshq.schemas.settings import AppSettingsRead, AppSettingsUpdate
@@ -16,6 +20,8 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 settings = get_settings()
 MAX_LOGO_BYTES = 2 * 1024 * 1024
 MAX_FAVICON_BYTES = 512 * 1024
+MAX_TUI_SKIN_BYTES = 256 * 1024
+MANAGED_SKIN_PREFIX = "hermeshq-global-"
 
 
 async def _get_or_create_settings(db: AsyncSession) -> AppSettings:
@@ -47,8 +53,11 @@ def _settings_to_read(item: AppSettings) -> AppSettingsRead:
         default_model=item.default_model,
         default_api_key_ref=item.default_api_key_ref,
         default_base_url=item.default_base_url,
+        default_tui_skin=item.default_tui_skin,
+        tui_skin_filename=item.tui_skin_filename,
         logo_url=logo_url,
         favicon_url=favicon_url,
+        has_tui_skin=bool(item.tui_skin_filename and item.default_tui_skin),
         has_logo=bool(item.logo_filename),
         has_favicon=bool(item.favicon_filename),
         created_at=item.created_at,
@@ -73,6 +82,26 @@ def _validate_upload(kind: str, file: UploadFile, content: bytes) -> str:
     if len(content) > MAX_FAVICON_BYTES:
         raise HTTPException(status_code=400, detail="Favicon exceeds 512 KB limit")
     return f"favicon{suffix}"
+
+
+def _sanitize_skin_slug(filename: str) -> str:
+    stem = Path(filename).stem.strip().lower()
+    stem = re.sub(r"[^a-z0-9]+", "-", stem).strip("-")
+    return stem or "instance-skin"
+
+
+def _tui_skin_path(filename: str) -> Path:
+    return settings.hermes_skins_root / filename
+
+
+async def _resync_global_tui_skin(request: Request, db: AsyncSession) -> None:
+    agents = (await db.execute(select(Agent))).scalars().all()
+    installation_manager = request.app.state.installation_manager
+    for agent in agents:
+        await installation_manager.sync_agent_installation(agent)
+    pty_manager = request.app.state.pty_manager
+    for agent_id in list(pty_manager.sessions.keys()):
+        await pty_manager.destroy_session(agent_id)
 
 
 @router.get("", response_model=AppSettingsRead)
@@ -108,7 +137,6 @@ async def update_settings(
 
 @router.post("/branding/logo", response_model=AppSettingsRead)
 async def upload_logo(
-    request: Request,
     file: UploadFile = File(...),
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
@@ -127,7 +155,6 @@ async def upload_logo(
 
 @router.post("/branding/favicon", response_model=AppSettingsRead)
 async def upload_favicon(
-    request: Request,
     file: UploadFile = File(...),
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
@@ -144,6 +171,64 @@ async def upload_favicon(
     target_path.write_bytes(content)
     item.favicon_filename = target_name
     await db.commit()
+    await db.refresh(item)
+    return _settings_to_read(item)
+
+
+@router.post("/tui-skin", response_model=AppSettingsRead)
+async def upload_tui_skin(
+    request: Request,
+    file: UploadFile = File(...),
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db_session),
+) -> AppSettingsRead:
+    item = await _get_or_create_settings(db)
+    content = await file.read()
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".yaml", ".yml"}:
+        raise HTTPException(status_code=400, detail="TUI skin must be a YAML file")
+    if len(content) > MAX_TUI_SKIN_BYTES:
+        raise HTTPException(status_code=400, detail="TUI skin exceeds 256 KB limit")
+    try:
+        parsed = yaml.safe_load(content.decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid YAML skin file") from exc
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="Skin YAML must define a mapping object")
+
+    settings.hermes_skins_root.mkdir(parents=True, exist_ok=True)
+    skin_slug = _sanitize_skin_slug(file.filename or "")
+    target_name = f"{MANAGED_SKIN_PREFIX}{skin_slug}.yaml"
+    if item.tui_skin_filename and item.tui_skin_filename != target_name:
+        old_path = _tui_skin_path(item.tui_skin_filename)
+        if old_path.exists():
+            old_path.unlink()
+    _tui_skin_path(target_name).write_bytes(content)
+    item.default_tui_skin = skin_slug
+    item.tui_skin_filename = target_name
+    await db.commit()
+    await db.refresh(item)
+    await _resync_global_tui_skin(request, db)
+    await db.refresh(item)
+    return _settings_to_read(item)
+
+
+@router.delete("/tui-skin", response_model=AppSettingsRead)
+async def delete_tui_skin(
+    request: Request,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db_session),
+) -> AppSettingsRead:
+    item = await _get_or_create_settings(db)
+    if item.tui_skin_filename:
+        path = _tui_skin_path(item.tui_skin_filename)
+        if path.exists():
+            path.unlink()
+    item.default_tui_skin = None
+    item.tui_skin_filename = None
+    await db.commit()
+    await db.refresh(item)
+    await _resync_global_tui_skin(request, db)
     await db.refresh(item)
     return _settings_to_read(item)
 

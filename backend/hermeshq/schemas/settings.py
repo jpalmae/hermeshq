@@ -15,6 +15,7 @@ class AppSettingsUpdate(BaseModel):
     default_model: str | None = None
     default_api_key_ref: str | None = None
     default_base_url: str | None = None
+    default_tui_skin: str | None = None
 
 
 class AppSettingsRead(ORMModel):
@@ -27,8 +28,11 @@ class AppSettingsRead(ORMModel):
     default_model: str | None
     default_api_key_ref: str | None
     default_base_url: str | None
+    default_tui_skin: str | None = None
+    tui_skin_filename: str | None = None
     logo_url: str | None = None
     favicon_url: str | None = None
+    has_tui_skin: bool = False
     has_logo: bool = False
     has_favicon: bool = False
     created_at: datetime
