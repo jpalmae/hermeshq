@@ -1,7 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 
 import { useAgents } from "../api/agents";
-import { useCreateUser, useUpdateUser, useUsers } from "../api/users";
+import { useCreateUser, useDeleteUser, useUpdateUser, useUsers } from "../api/users";
 import { useSessionStore } from "../stores/sessionStore";
 
 const emptyCreateForm = {
@@ -55,6 +55,7 @@ export function UsersPage() {
   const { data: agents } = useAgents();
   const { data: users } = useUsers(isAdmin);
   const createUser = useCreateUser();
+  const deleteUser = useDeleteUser();
   const updateUser = useUpdateUser();
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
@@ -94,6 +95,18 @@ export function UsersPage() {
       setCreateInfo("User created.");
     } catch (error) {
       setCreateError(extractErrorMessage(error));
+    }
+  }
+
+  async function onDeleteUser(userId: string, username: string) {
+    const confirmed = window.confirm(`Delete user "${username}"?`);
+    if (!confirmed) {
+      return;
+    }
+    try {
+      await deleteUser.mutateAsync(userId);
+    } catch (error) {
+      window.alert(extractErrorMessage(error));
     }
   }
 
@@ -290,6 +303,16 @@ export function UsersPage() {
                       }
                     >
                       {user.is_active ? "Deactivate" : "Activate"}
+                    </button>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      className="panel-button-secondary border-[var(--accent)] text-[var(--accent)]"
+                      onClick={() => void onDeleteUser(user.id, user.username)}
+                      disabled={currentUser?.id === user.id || deleteUser.isPending}
+                    >
+                      Delete user
                     </button>
                   </div>
                   {rowMessages[user.id] ? (

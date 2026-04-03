@@ -29,11 +29,23 @@ function resolvePtyUrl(agentId: string, token: string) {
 export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string }) {
   const token = useSessionStore((state) => state.token);
   const [connected, setConnected] = useState(false);
+  const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
+  const [reconnectNonce, setReconnectNonce] = useState(0);
+  const [isFloating, setIsFloating] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const shouldReconnectRef = useRef(true);
   const readOnly = useMemo(() => mode === "hybrid" || mode === "interactive", [mode]);
+
+  const scrollTerminalToBottom = () => {
+    window.requestAnimationFrame(() => {
+      terminalRef.current?.scrollToBottom();
+    });
+  };
 
   useEffect(() => {
     if (mode === "headless") {
@@ -81,6 +93,7 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
 
     if (!token) {
       terminal.writeln("[SESSION REQUIRED]");
+      setConnectionMessage("Session required");
       return () => {
         terminal.dispose();
         terminalRef.current = null;
@@ -88,11 +101,15 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
       };
     }
 
+    shouldReconnectRef.current = true;
+    setConnectionMessage(null);
     const socket = new WebSocket(resolvePtyUrl(agentId, token));
     socketRef.current = socket;
     socket.onopen = () => {
       setConnected(true);
+      setConnectionMessage(null);
       fitAddon.fit();
+      scrollTerminalToBottom();
       socket.send(
         JSON.stringify({
           type: "resize",
@@ -101,15 +118,29 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
         }),
       );
     };
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       setConnected(false);
       terminal.writeln("");
       terminal.writeln("[PTY CLOSED]");
+      const shouldRetry = shouldReconnectRef.current && ![4400, 4401, 4403, 4404].includes(event.code);
+      if ([4401, 4403].includes(event.code)) {
+        setConnectionMessage("Terminal access denied. Refresh your session and try again.");
+      } else if (event.code === 4404) {
+        setConnectionMessage("Agent terminal was not found.");
+      } else if (shouldRetry) {
+        setConnectionMessage("PTY connection lost. Reconnecting...");
+        reconnectTimerRef.current = window.setTimeout(() => {
+          setReconnectNonce((value) => value + 1);
+        }, 1200);
+      } else {
+        setConnectionMessage("PTY connection closed.");
+      }
     };
     socket.onmessage = (event) => {
       const payload = JSON.parse(event.data) as { type: string; data?: string };
       if (payload.type === "output" && payload.data) {
         terminal.write(decodeChunk(payload.data));
+        scrollTerminalToBottom();
       }
     };
 
@@ -140,6 +171,11 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      shouldReconnectRef.current = false;
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       resizeObserver.disconnect();
       onDataDispose.dispose();
       if (socket.readyState === WebSocket.OPEN) {
@@ -150,10 +186,40 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [agentId, mode, token]);
+  }, [agentId, mode, token, reconnectNonce]);
 
-  return (
-    <section className="panel-frame p-6">
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      fitAddonRef.current?.fit();
+      const terminal = terminalRef.current;
+      terminal?.scrollToBottom();
+      if (terminal && socketRef.current?.readyState === WebSocket.OPEN) {
+        socketRef.current.send(
+          JSON.stringify({
+            type: "resize",
+            cols: terminal.cols,
+            rows: terminal.rows,
+          }),
+        );
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [isFloating, isFullscreen]);
+
+  const shellClassName = isFloating
+    ? isFullscreen
+      ? "fixed inset-4 z-[80] flex flex-col"
+      : "fixed left-1/2 top-1/2 z-[80] flex h-[82vh] w-[min(96vw,1400px)] -translate-x-1/2 -translate-y-1/2 flex-col"
+    : "";
+
+  const panelClassName = `panel-frame p-6 ${isFloating ? "flex h-full min-h-0 flex-col shadow-2xl" : ""}`;
+  const terminalBodyClassName = isFloating ? "mt-4 min-h-0 flex-1" : "mt-4";
+  const terminalViewportClassName = isFloating
+    ? "terminal-shell h-full overflow-hidden border border-[var(--border)]"
+    : "terminal-shell h-[28rem] overflow-hidden border border-[var(--border)]";
+
+  const terminalSection = (
+    <section className={`${panelClassName} ${shellClassName}`.trim()}>
       <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] pb-4">
         <div>
           <p className="panel-label">Terminal</p>
@@ -170,9 +236,9 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
         </p>
       </div>
 
-      <div className="mt-4">
+      <div className={terminalBodyClassName}>
         {readOnly ? (
-          <div ref={containerRef} className="terminal-shell h-[28rem] overflow-hidden border border-[var(--border)]" />
+          <div ref={containerRef} className={terminalViewportClassName} />
         ) : (
           <div className="border border-[var(--border)] bg-[var(--surface-raised)] p-4 font-mono text-sm text-[var(--text-secondary)]">
             Terminal unavailable in this mode.
@@ -189,10 +255,66 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
         >
           Clear
         </button>
+        <button
+          className="panel-button-secondary"
+          type="button"
+          onClick={() => {
+            setConnectionMessage("Reattaching terminal...");
+            setReconnectNonce((value) => value + 1);
+          }}
+          disabled={!readOnly}
+        >
+          Reconnect
+        </button>
+        <button
+          className="panel-button-secondary"
+          type="button"
+          onClick={() => {
+            if (isFloating) {
+              setIsFullscreen(false);
+            }
+            setIsFloating((value) => !value);
+          }}
+          disabled={!readOnly}
+        >
+          {isFloating ? "Dock" : "Float"}
+        </button>
+        <button
+          className="panel-button-secondary"
+          type="button"
+          onClick={() => {
+            if (!isFloating) {
+              setIsFloating(true);
+              setIsFullscreen(true);
+              return;
+            }
+            setIsFullscreen((value) => !value);
+          }}
+          disabled={!readOnly}
+        >
+          {isFullscreen ? "Windowed" : "Fullscreen"}
+        </button>
         <p className="panel-inline-status">
-          {connected ? "[LIVE] running hermes in the agent installation" : "[BOOT] opening Hermes terminal"}
+          {connected
+            ? "[LIVE] running hermes in the agent installation"
+            : connectionMessage || "[BOOT] opening Hermes terminal"}
         </p>
       </div>
     </section>
+  );
+
+  return (
+    <>
+      {isFloating ? (
+        <div
+          className="fixed inset-0 z-[70] bg-[var(--overlay)]"
+          onClick={() => {
+            setIsFullscreen(false);
+            setIsFloating(false);
+          }}
+        />
+      ) : null}
+      {terminalSection}
+    </>
   );
 }

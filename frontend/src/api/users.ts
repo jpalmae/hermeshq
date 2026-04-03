@@ -40,3 +40,17 @@ export function useUpdateUser() {
     },
   });
 }
+
+export function useDeleteUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      await apiClient.delete(`/users/${userId}`);
+      return userId;
+    },
+    onSuccess: async (_, userId) => {
+      await queryClient.invalidateQueries({ queryKey: ["users"] });
+      await queryClient.invalidateQueries({ queryKey: ["users", userId] });
+    },
+  });
+}

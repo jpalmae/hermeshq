@@ -8,8 +8,8 @@ import { useSessionStore } from "../stores/sessionStore";
 export function LoginPage() {
   const navigate = useNavigate();
   const setSession = useSessionStore((state) => state.setSession);
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin123");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { data: branding } = usePublicBranding();
@@ -81,13 +81,18 @@ export function LoginPage() {
 
             <label className="panel-field">
               <span className="panel-label">Username</span>
-              <input value={username} onChange={(e) => setUsername(e.target.value)} />
+              <input
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
             </label>
 
             <label className="panel-field">
               <span className="panel-label">Password</span>
               <input
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
