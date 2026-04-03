@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hermeshq.models.agent import Agent
+from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.secret import Secret
 from hermeshq.services.secret_vault import SecretVault
 
@@ -36,9 +37,11 @@ class HermesInstallationManager:
         self._ensure_home_dirs(hermes_home)
         installed_skills = await self._sync_managed_skills(agent, hermes_home)
         system_prompt = await self._build_system_prompt(agent, installed_skills)
-        self._write_config(agent, hermes_home, system_prompt)
+        messaging_channels = await self._load_messaging_channels(agent.id)
+        self._write_config(agent, hermes_home, system_prompt, messaging_channels)
         self._write_soul(agent, hermes_home)
         await self._sync_auth_store(agent, hermes_home)
+        await self._sync_dotenv(agent, hermes_home, messaging_channels)
         return installed_skills
 
     async def build_process_env(self, agent: Agent) -> dict[str, str]:
@@ -53,6 +56,12 @@ class HermesInstallationManager:
             if provider_base_url_env:
                 env[provider_base_url_env] = agent.base_url
             env["OPENAI_BASE_URL"] = agent.base_url
+        return env
+
+    async def build_gateway_env(self, agent: Agent, platform: str) -> dict[str, str]:
+        env = await self.build_process_env(agent)
+        for key, value in (await self._build_managed_env_map(agent, platform)).items():
+            env[key] = value
         return env
 
     async def get_runtime_system_prompt(self, agent: Agent) -> str:
@@ -101,7 +110,14 @@ class HermesInstallationManager:
         for subdir in ("cron", "sessions", "logs", "memories", "skills", "plugins"):
             (hermes_home / subdir).mkdir(parents=True, exist_ok=True)
 
-    def _write_config(self, agent: Agent, hermes_home: Path, system_prompt: str) -> None:
+    def _write_config(
+        self,
+        agent: Agent,
+        hermes_home: Path,
+        system_prompt: str,
+        messaging_channels: list[MessagingChannel],
+    ) -> None:
+        telegram_channel = next((item for item in messaging_channels if item.platform == "telegram"), None)
         config = {
             "model": {
                 "default": agent.model,
@@ -116,6 +132,23 @@ class HermesInstallationManager:
                 "external_dirs": [],
             },
         }
+        if telegram_channel:
+            platforms = config.setdefault("platforms", {})
+            telegram_platform = {
+                "enabled": bool(telegram_channel.enabled),
+            }
+            if telegram_channel.home_chat_id:
+                telegram_platform["home_channel"] = {
+                    "platform": "telegram",
+                    "chat_id": telegram_channel.home_chat_id,
+                    "name": telegram_channel.home_chat_name or "Home",
+                }
+            platforms["telegram"] = telegram_platform
+            config["telegram"] = {
+                "require_mention": bool(telegram_channel.require_mention),
+                "free_response_chats": list(telegram_channel.free_response_chat_ids or []),
+                "unauthorized_dm_behavior": telegram_channel.unauthorized_dm_behavior or "pair",
+            }
         config_path = hermes_home / "config.yaml"
         config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
 
@@ -337,6 +370,110 @@ class HermesInstallationManager:
         if not secret:
             raise HermesInstallationError(f"Secret '{api_key_ref}' was not found")
         return self.secret_vault.decrypt(secret.value_enc)
+
+    async def _load_messaging_channels(self, agent_id: str) -> list[MessagingChannel]:
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(MessagingChannel)
+                .where(MessagingChannel.agent_id == agent_id)
+                .order_by(MessagingChannel.platform.asc())
+            )
+            return list(result.scalars().all())
+
+    async def _sync_dotenv(
+        self,
+        agent: Agent,
+        hermes_home: Path,
+        messaging_channels: list[MessagingChannel],
+    ) -> None:
+        env_path = hermes_home / ".env"
+        managed_env = await self._build_managed_env_map(agent)
+        self._merge_env_file(env_path, managed_env)
+
+    async def _build_managed_env_map(
+        self,
+        agent: Agent,
+        platform: str | None = None,
+    ) -> dict[str, str]:
+        managed: dict[str, str] = {}
+
+        api_key = await self._resolve_api_key(agent.api_key_ref)
+        if api_key:
+            for env_name in self._provider_env_names(agent.provider):
+                managed[env_name] = api_key
+        if agent.base_url:
+            provider_base_url_env = self._provider_base_url_env_name(agent.provider)
+            if provider_base_url_env:
+                managed[provider_base_url_env] = agent.base_url
+            managed["OPENAI_BASE_URL"] = agent.base_url
+
+        channels = await self._load_messaging_channels(agent.id)
+        for channel in channels:
+            if platform and channel.platform != platform:
+                continue
+            if channel.platform == "telegram":
+                token = await self._resolve_api_key(channel.secret_ref)
+                if token:
+                    managed["TELEGRAM_BOT_TOKEN"] = token
+                if channel.allowed_user_ids:
+                    managed["TELEGRAM_ALLOWED_USERS"] = ",".join(channel.allowed_user_ids)
+                if channel.home_chat_id:
+                    managed["TELEGRAM_HOME_CHANNEL"] = channel.home_chat_id
+                if channel.home_chat_name:
+                    managed["TELEGRAM_HOME_CHANNEL_NAME"] = channel.home_chat_name
+                if channel.free_response_chat_ids:
+                    managed["TELEGRAM_FREE_RESPONSE_CHATS"] = ",".join(channel.free_response_chat_ids)
+                managed["TELEGRAM_REQUIRE_MENTION"] = "true" if channel.require_mention else "false"
+                managed["WHATSAPP_ENABLED"] = "false"
+        return managed
+
+    def _merge_env_file(self, env_path: Path, managed_env: dict[str, str]) -> None:
+        managed_keys = {
+            "OPENAI_BASE_URL",
+            "TELEGRAM_BOT_TOKEN",
+            "TELEGRAM_ALLOWED_USERS",
+            "TELEGRAM_HOME_CHANNEL",
+            "TELEGRAM_HOME_CHANNEL_NAME",
+            "TELEGRAM_FREE_RESPONSE_CHATS",
+            "TELEGRAM_REQUIRE_MENTION",
+            "WHATSAPP_ENABLED",
+            *self._provider_env_names("zai"),
+            *self._provider_env_names("openrouter"),
+            *self._provider_env_names("anthropic"),
+            *self._provider_env_names("openai"),
+        }
+        provider_base_envs = {
+            key
+            for key in (
+                self._provider_base_url_env_name("zai"),
+                self._provider_base_url_env_name("openrouter"),
+                self._provider_base_url_env_name("openai"),
+            )
+            if key
+        }
+        managed_keys.update(provider_base_envs)
+
+        preserved_lines: list[str] = []
+        if env_path.exists():
+            for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+                stripped = raw_line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    preserved_lines.append(raw_line)
+                    continue
+                key = stripped.split("=", 1)[0].strip()
+                if key not in managed_keys:
+                    preserved_lines.append(raw_line)
+
+        rendered = [
+            *preserved_lines,
+            *[f"{key}={self._format_env_value(value)}" for key, value in managed_env.items() if value],
+        ]
+        env_path.write_text("\n".join(rendered).strip() + "\n", encoding="utf-8")
+
+    def _format_env_value(self, value: str) -> str:
+        if re.fullmatch(r"[A-Za-z0-9_./:@,+-]+", value):
+            return value
+        return json.dumps(value)
 
     async def _sync_auth_store(self, agent: Agent, hermes_home: Path) -> None:
         auth_path = hermes_home / "auth.json"

@@ -5,6 +5,7 @@ import { useAgent, useAgentAction, useDeleteAgent, useUpdateAgent } from "../api
 import { useLogs } from "../api/logs";
 import { useCreateTask, useTasks } from "../api/tasks";
 import { AgentConversationPanel } from "../components/AgentConversationPanel";
+import { AgentMessagingPanel } from "../components/AgentMessagingPanel";
 import { AgentSkillsPanel } from "../components/AgentSkillsPanel";
 import { AgentTerminal } from "../components/AgentTerminal";
 import { WorkspacePanel } from "../components/WorkspacePanel";
@@ -369,6 +370,8 @@ export function AgentDetailPage() {
               <span>Workspace</span>
               <strong className="truncate text-right">{agent.workspace_path}</strong>
             </div>
+
+            <AgentMessagingPanel agentId={agent.id} isAdmin={isAdmin} />
           </div>
         </div>
       </section>

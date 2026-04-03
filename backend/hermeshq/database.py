@@ -66,3 +66,33 @@ def _run_schema_updates(sync_connection) -> None:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN logo_filename VARCHAR(255)"))
     if "favicon_filename" not in settings_columns:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN favicon_filename VARCHAR(255)"))
+    if not inspector.has_table("messaging_channels"):
+        sync_connection.execute(
+            text(
+                """
+                CREATE TABLE messaging_channels (
+                    id VARCHAR(36) PRIMARY KEY,
+                    agent_id VARCHAR(36) NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                    platform VARCHAR(32) NOT NULL,
+                    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                    mode VARCHAR(32) NOT NULL DEFAULT 'bidirectional',
+                    secret_ref VARCHAR(128) NULL,
+                    allowed_user_ids JSON NOT NULL DEFAULT '[]'::json,
+                    home_chat_id VARCHAR(128) NULL,
+                    home_chat_name VARCHAR(128) NULL,
+                    require_mention BOOLEAN NOT NULL DEFAULT FALSE,
+                    free_response_chat_ids JSON NOT NULL DEFAULT '[]'::json,
+                    unauthorized_dm_behavior VARCHAR(32) NOT NULL DEFAULT 'pair',
+                    status VARCHAR(20) NOT NULL DEFAULT 'stopped',
+                    last_error TEXT NULL,
+                    metadata_json JSON NOT NULL DEFAULT '{}'::json,
+                    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uq_messaging_channels_agent_platform UNIQUE (agent_id, platform)
+                )
+                """
+            )
+        )
+        sync_connection.execute(text("CREATE INDEX ix_messaging_channels_agent_id ON messaging_channels(agent_id)"))
+        sync_connection.execute(text("CREATE INDEX ix_messaging_channels_platform ON messaging_channels(platform)"))
+        sync_connection.execute(text("CREATE INDEX ix_messaging_channels_status ON messaging_channels(status)"))

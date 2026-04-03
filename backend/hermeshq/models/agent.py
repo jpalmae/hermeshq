@@ -53,3 +53,8 @@ class Agent(TimestampMixin, Base):
         cascade="all, delete-orphan",
         foreign_keys="Task.agent_id",
     )
+    messaging_channels = relationship(
+        "MessagingChannel",
+        back_populates="agent",
+        cascade="all, delete-orphan",
+    )

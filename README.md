@@ -29,6 +29,7 @@ Initial end-to-end implementation for a multi-agent operations panel based on th
   - settings
   - workspace editor
   - PTY terminal pane
+  - per-agent Telegram channel management
 
 ## Frontend fonts
 
@@ -87,5 +88,6 @@ URLs:
 - The Docker stack uses PostgreSQL 16 and the backend connects through `asyncpg`.
 - Task execution is strict: if `hermes-agent` is missing, the agent has no valid credentials, or the provider rejects the request, the task is marked `failed`.
 - The bundled Docker runtime uses `/bin/sh` for PTY sessions so the embedded terminal works reliably inside the container image.
+- Telegram bindings are now managed per agent. HermesHQ writes the agent's `.hermes/config.yaml` and `.hermes/.env`, then supervises `hermes gateway run` for that agent. Configure a bot token as a secret and reference it from the agent detail page.
 - Local node metrics are real. Remote node provisioning and remote node metrics are still not implemented and return `501`.
 - Redis-backed pub/sub, remote node daemon/provisioning and xterm.js-grade PTY rendering are still incomplete versus the full spec.

@@ -164,3 +164,29 @@ export interface AgentSkillState {
   installed: InstalledSkill[];
   count: number;
 }
+
+export interface MessagingChannel {
+  id: string;
+  agent_id: string;
+  platform: string;
+  enabled: boolean;
+  mode: string;
+  secret_ref: string | null;
+  allowed_user_ids: string[];
+  home_chat_id: string | null;
+  home_chat_name: string | null;
+  require_mention: boolean;
+  free_response_chat_ids: string[];
+  unauthorized_dm_behavior: string;
+  status: string;
+  last_error: string | null;
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MessagingChannelRuntime {
+  status: string;
+  pid: number | null;
+  log_path: string | null;
+}

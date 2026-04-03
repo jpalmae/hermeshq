@@ -11,13 +11,14 @@ from hermeshq.core.events import EventBroker
 from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
 from hermeshq.database import AsyncSessionLocal, init_database
 from hermeshq.models import Agent, AppSettings, Node, User
-from hermeshq.routers import agents, auth, comms, dashboard, logs, nodes, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, users
+from hermeshq.routers import agents, auth, comms, dashboard, logs, messaging_channels, nodes, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, users
 from hermeshq.schemas.common import HealthResponse
 from hermeshq.services.agent_identity import derive_agent_identity, slugify_agent_value
 from hermeshq.services.agent_supervisor import AgentSupervisor
 from hermeshq.services.comms_router import CommsRouter
 from hermeshq.services.hermes_installation import HermesInstallationManager
 from hermeshq.services.hermes_runtime import HermesRuntime
+from hermeshq.services.gateway_supervisor import GatewaySupervisor
 from hermeshq.services.pty_manager import PTYManager
 from hermeshq.services.scheduler import SchedulerService
 from hermeshq.services.secret_vault import SecretVault
@@ -87,13 +88,20 @@ async def lifespan(app: FastAPI):
     app.state.installation_manager = HermesInstallationManager(AsyncSessionLocal, app.state.secret_vault)
     app.state.runtime = HermesRuntime(AsyncSessionLocal, app.state.secret_vault, app.state.installation_manager)
     app.state.supervisor = AgentSupervisor(AsyncSessionLocal, app.state.event_broker, app.state.runtime)
+    app.state.gateway_supervisor = GatewaySupervisor(
+        AsyncSessionLocal,
+        app.state.event_broker,
+        app.state.installation_manager,
+    )
     app.state.comms_router = CommsRouter(AsyncSessionLocal, app.state.event_broker)
     app.state.pty_manager = PTYManager(settings.pty_shell)
     app.state.scheduler = SchedulerService(AsyncSessionLocal, app.state.supervisor.submit_task)
     await app.state.supervisor.bootstrap_runtime()
+    await app.state.gateway_supervisor.bootstrap_gateways()
     await app.state.scheduler.start()
     yield
     await app.state.scheduler.stop()
+    await app.state.gateway_supervisor.shutdown()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
@@ -114,6 +122,7 @@ app.include_router(comms.router, prefix=settings.api_prefix)
 app.include_router(secrets.router, prefix=settings.api_prefix)
 app.include_router(settings_router.router, prefix=settings.api_prefix)
 app.include_router(skills.router, prefix=settings.api_prefix)
+app.include_router(messaging_channels.router, prefix=settings.api_prefix)
 app.include_router(templates.router, prefix=settings.api_prefix)
 app.include_router(logs.router, prefix=settings.api_prefix)
 app.include_router(scheduled_tasks.router, prefix=settings.api_prefix)
