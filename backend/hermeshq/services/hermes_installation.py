@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hermeshq.models.agent import Agent
+from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.secret import Secret
 from hermeshq.services.secret_vault import SecretVault
@@ -35,11 +36,12 @@ class HermesInstallationManager:
     async def sync_agent_installation(self, agent: Agent) -> list[dict]:
         hermes_home = self.build_hermes_home(agent.workspace_path)
         self._ensure_home_dirs(hermes_home)
+        app_name = await self._get_instance_app_name()
         installed_skills = await self._sync_managed_skills(agent, hermes_home)
-        system_prompt = await self._build_system_prompt(agent, installed_skills)
+        system_prompt = await self._build_system_prompt(agent, installed_skills, app_name)
         messaging_channels = await self._load_messaging_channels(agent.id)
         self._write_config(agent, hermes_home, system_prompt, messaging_channels)
-        self._write_soul(agent, hermes_home)
+        self._write_soul(agent, hermes_home, app_name)
         await self._sync_auth_store(agent, hermes_home)
         await self._sync_dotenv(agent, hermes_home, messaging_channels)
         return installed_skills
@@ -66,7 +68,7 @@ class HermesInstallationManager:
 
     async def get_runtime_system_prompt(self, agent: Agent) -> str:
         installed = await self.list_installed_skills(agent)
-        return await self._build_system_prompt(agent, installed)
+        return await self._build_system_prompt(agent, installed, await self._get_instance_app_name())
 
     async def list_installed_skills(self, agent: Agent) -> list[dict]:
         hermes_home = self.build_hermes_home(agent.workspace_path)
@@ -152,9 +154,9 @@ class HermesInstallationManager:
         config_path = hermes_home / "config.yaml"
         config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
 
-    def _write_soul(self, agent: Agent, hermes_home: Path) -> None:
+    def _write_soul(self, agent: Agent, hermes_home: Path, app_name: str) -> None:
         (hermes_home / "SOUL.md").write_text(
-            agent.soul_md or "# Soul\n\nHermesHQ managed agent.",
+            agent.soul_md or f"# Soul\n\n{app_name} managed agent.",
             encoding="utf-8",
         )
 
@@ -294,9 +296,9 @@ class HermesInstallationManager:
                 return stripped[:200]
         return ""
 
-    async def _build_system_prompt(self, agent: Agent, installed_skills: list[dict]) -> str:
+    async def _build_system_prompt(self, agent: Agent, installed_skills: list[dict], app_name: str) -> str:
         roster = await self._load_agent_roster(agent)
-        return self._compose_system_prompt(agent, installed_skills, roster)
+        return self._compose_system_prompt(agent, installed_skills, roster, app_name)
 
     async def _load_agent_roster(self, agent: Agent) -> list[dict]:
         async with self.session_factory() as session:
@@ -325,11 +327,11 @@ class HermesInstallationManager:
             )
         return roster
 
-    def _compose_system_prompt(self, agent: Agent, installed_skills: list[dict], roster: list[dict]) -> str:
+    def _compose_system_prompt(self, agent: Agent, installed_skills: list[dict], roster: list[dict], app_name: str) -> str:
         parts = [agent.system_prompt.strip()] if agent.system_prompt and agent.system_prompt.strip() else []
         if installed_skills:
             lines = [
-                "HermesHQ assigned skills are installed in your Hermes home.",
+                f"{app_name} assigned skills are installed in your Hermes home.",
                 "Use the real Hermes tools `skills_list` and `skill_view` to inspect them before relying on them.",
                 "Assigned skills:",
             ]
@@ -345,7 +347,7 @@ class HermesInstallationManager:
             )
         if roster:
             lines = [
-                "HermesHQ live roster for this instance. This is factual control-plane data, not memory.",
+                f"{app_name} live roster for this instance. This is factual control-plane data, not memory.",
                 "If asked whether you know another agent, answer from this roster.",
                 "Known agents:",
             ]
@@ -360,6 +362,12 @@ class HermesInstallationManager:
                 )
             parts.append("\n".join(lines))
         return "\n\n".join(part for part in parts if part).strip()
+
+    async def _get_instance_app_name(self) -> str:
+        async with self.session_factory() as session:
+            settings = await session.get(AppSettings, "default")
+        configured = (settings.app_name or "").strip() if settings else ""
+        return configured or "HermesHQ"
 
     async def _resolve_api_key(self, api_key_ref: str | None) -> str | None:
         if not api_key_ref:

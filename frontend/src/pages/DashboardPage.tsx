@@ -26,44 +26,44 @@ export function DashboardPage() {
     <div className="space-y-8">
       <section className="grid gap-6 xl:grid-cols-[0.7fr_1.3fr]">
         <div className="grid gap-6">
-          <div className="panel-frame p-5 md:p-6">
+          <div className="panel-frame p-4 md:p-5">
             <div>
               <p className="panel-label">Primary Readout</p>
-              <div className="mt-3 flex items-end gap-3">
-                <h2 className="font-display text-[clamp(2.2rem,5.6vw,3.9rem)] leading-[0.9] text-[var(--text-display)]">
+              <div className="mt-2 flex items-end gap-3">
+                <h2 className="font-display text-[clamp(2rem,4.8vw,3.2rem)] leading-[0.9] text-[var(--text-display)]">
                   {overview?.stats.active_agents ?? 0}
                 </h2>
-                <p className="max-w-[12ch] pb-1 text-xs leading-5 text-[var(--text-secondary)]">
+                <p className="max-w-[10ch] pb-0.5 text-[11px] leading-4 text-[var(--text-secondary)]">
                   active agents live
                 </p>
               </div>
             </div>
-            <div className="mt-5 border-t border-[var(--border)] pt-4">
+            <div className="mt-4 border-t border-[var(--border)] pt-3">
               <div className="flex items-center gap-3">
-                {currentUser ? <UserAvatar user={currentUser} sizeClass="h-12 w-12 md:h-14 md:w-14" className="shrink-0" /> : null}
+                {currentUser ? <UserAvatar user={currentUser} sizeClass="h-11 w-11 md:h-12 md:w-12" className="shrink-0" /> : null}
                 <div className="min-w-0">
                   <p className="panel-label">Operator</p>
-                  <p className="mt-1 truncate text-sm leading-5 text-[var(--text-display)]">
+                  <p className="mt-1 truncate text-sm leading-4 text-[var(--text-display)]">
                     {currentUser?.display_name ?? "Unknown"}
                   </p>
-                  <p className="mt-1 text-xs uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+                  <p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
                     {currentUser?.role ?? "offline"}
                   </p>
                 </div>
               </div>
             </div>
-            <div className="mt-5 grid gap-3 border-t border-[var(--border)] pt-4 md:grid-cols-3">
+            <div className="mt-4 grid gap-3 border-t border-[var(--border)] pt-3 md:grid-cols-3">
               <div>
                 <p className="panel-label">Fleet</p>
-                <p className="mt-1.5 text-lg text-[var(--text-display)]">{overview?.stats.total_agents ?? 0}</p>
+                <p className="mt-1 text-base text-[var(--text-display)]">{overview?.stats.total_agents ?? 0}</p>
               </div>
               <div>
                 <p className="panel-label">Queue</p>
-                <p className="mt-1.5 text-lg text-[var(--text-display)]">{overview?.stats.queued_tasks ?? 0}</p>
+                <p className="mt-1 text-base text-[var(--text-display)]">{overview?.stats.queued_tasks ?? 0}</p>
               </div>
               <div>
                 <p className="panel-label">Tasks</p>
-                <p className="mt-1.5 text-lg text-[var(--text-display)]">{overview?.stats.total_tasks ?? 0}</p>
+                <p className="mt-1 text-base text-[var(--text-display)]">{overview?.stats.total_tasks ?? 0}</p>
               </div>
             </div>
           </div>

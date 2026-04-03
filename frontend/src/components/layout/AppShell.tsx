@@ -92,10 +92,7 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
-      </div>
-
-      <div className="space-y-4">
-        <div className="border-t border-[var(--border)] pt-4">
+        <div className="space-y-4 border-t border-[var(--border)] pt-4">
           <p className="panel-label">Operator</p>
           {!sidebarCollapsed ? (
             <>
@@ -106,6 +103,28 @@ export function AppShell() {
               <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[var(--text-disabled)]">
                 {(user?.role ?? "offline")} / {user?.username ?? "offline"}
               </p>
+              <NavLink
+                to="/account"
+                onClick={() => setMobileNavOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center justify-between border-b border-[var(--border)] py-3 text-sm uppercase tracking-[0.12em] ${
+                    isActive ? "text-[var(--text-display)]" : "text-[var(--text-secondary)]"
+                  }`
+                }
+              >
+                <span>My account</span>
+              </NavLink>
+              <NavLink
+                to="/manual"
+                onClick={() => setMobileNavOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center justify-between border-b border-[var(--border)] py-3 text-sm uppercase tracking-[0.12em] ${
+                    isActive ? "text-[var(--text-display)]" : "text-[var(--text-secondary)]"
+                  }`
+                }
+              >
+                <span>Manual</span>
+              </NavLink>
               <label className="panel-field mt-4">
                 <span className="panel-label">My theme</span>
                 <select
@@ -126,14 +145,40 @@ export function AppShell() {
               </label>
             </>
           ) : (
-            <div className="mt-2 flex justify-center">
-              {user ? <UserAvatar user={user} sizeClass="h-10 w-10" /> : <p className="text-center text-sm text-[var(--text-display)]">…</p>}
-            </div>
+            <>
+              <div className="mt-2 flex justify-center">
+                {user ? <UserAvatar user={user} sizeClass="h-10 w-10" /> : <p className="text-center text-sm text-[var(--text-display)]">…</p>}
+              </div>
+              <NavLink
+                to="/account"
+                onClick={() => setMobileNavOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center justify-center border-b border-[var(--border)] py-3 text-sm uppercase tracking-[0.12em] ${
+                    isActive ? "text-[var(--text-display)]" : "text-[var(--text-secondary)]"
+                  }`
+                }
+                title="My account"
+              >
+                <span>AC</span>
+              </NavLink>
+              <NavLink
+                to="/manual"
+                onClick={() => setMobileNavOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center justify-center border-b border-[var(--border)] py-3 text-sm uppercase tracking-[0.12em] ${
+                    isActive ? "text-[var(--text-display)]" : "text-[var(--text-secondary)]"
+                  }`
+                }
+                title="Manual"
+              >
+                <span>MA</span>
+              </NavLink>
+            </>
           )}
+          <button type="button" className="panel-button-secondary w-full" onClick={logout}>
+            {sidebarCollapsed ? "Out" : "Sign out"}
+          </button>
         </div>
-        <button type="button" className="panel-button-secondary w-full" onClick={logout}>
-          {sidebarCollapsed ? "Out" : "Sign out"}
-        </button>
       </div>
     </>
   );
@@ -159,7 +204,7 @@ export function AppShell() {
                 {sidebarCollapsed ? "»" : "«"}
               </button>
             </div>
-            <div className={`flex flex-1 flex-col justify-between ${sidebarCollapsed ? "w-full items-center" : "w-full"}`}>
+            <div className={`flex flex-1 flex-col ${sidebarCollapsed ? "w-full items-center" : "w-full"}`}>
               {navContent}
             </div>
           </aside>
@@ -193,7 +238,7 @@ export function AppShell() {
                 Close
               </button>
             </div>
-            <div className="flex h-[calc(100%-4rem)] flex-col justify-between">
+            <div className="flex h-[calc(100%-4rem)] flex-col">
               {navContent}
             </div>
           </aside>

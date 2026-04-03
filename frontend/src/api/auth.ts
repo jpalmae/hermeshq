@@ -36,3 +36,54 @@ export function useUpdateMyPreferences() {
     },
   });
 }
+
+export function useUpdateMyProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { display_name: string }) => {
+      const { data } = await apiClient.put<User>("/auth/me/profile", payload);
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
+export function useChangeMyPassword() {
+  return useMutation({
+    mutationFn: async (payload: { current_password: string; new_password: string }) => {
+      await apiClient.put("/auth/me/password", payload);
+    },
+  });
+}
+
+export function useUploadMyAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const { data } = await apiClient.post<User>("/auth/me/avatar", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
+export function useDeleteMyAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.delete<User>("/auth/me/avatar");
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}

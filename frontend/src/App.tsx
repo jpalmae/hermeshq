@@ -11,6 +11,8 @@ import { AgentsPage } from "./pages/AgentsPage";
 import { CommsPage } from "./pages/CommsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ManualPage } from "./pages/ManualPage";
+import { MyAccountPage } from "./pages/MyAccountPage";
 import { NodesPage } from "./pages/NodesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ScheduledTasksPage } from "./pages/ScheduledTasksPage";
@@ -65,6 +67,8 @@ export default function App() {
         <Route path="/agents/:agentId" element={<AgentDetailPage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/schedules" element={<ScheduledTasksPage />} />
+        <Route path="/account" element={<MyAccountPage />} />
+        <Route path="/manual" element={<ManualPage />} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/nodes" element={<NodesPage />} />
         <Route path="/comms" element={<CommsPage />} />
