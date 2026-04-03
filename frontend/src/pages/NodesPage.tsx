@@ -1,7 +1,22 @@
 import { useNodes } from "../api/nodes";
+import { useSessionStore } from "../stores/sessionStore";
 
 export function NodesPage() {
-  const { data: nodes } = useNodes();
+  const currentUser = useSessionStore((state) => state.user);
+  const isAdmin = currentUser?.role === "admin";
+  const { data: nodes } = useNodes(isAdmin);
+
+  if (currentUser && !isAdmin) {
+    return (
+      <section className="panel-frame p-6">
+        <p className="panel-label">Nodes</p>
+        <h2 className="mt-2 text-3xl text-[var(--text-display)]">Admin access required</h2>
+        <p className="mt-4 max-w-[42rem] text-sm leading-6 text-[var(--text-secondary)]">
+          Node inventory and runtime infrastructure controls are restricted to admins.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <div className="panel-frame p-6">
@@ -36,4 +51,3 @@ export function NodesPage() {
     </div>
   );
 }
-

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import desc, select
+from sqlalchemy import desc, false, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hermeshq.core.security import get_current_user
+from hermeshq.core.security import ensure_agent_access, get_accessible_agent_ids, get_current_user, is_admin
 from hermeshq.database import get_db_session
 from hermeshq.models.agent import Agent
 from hermeshq.models.task import Task
@@ -14,10 +14,14 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 @router.get("", response_model=list[TaskRead])
 async def list_tasks(
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> list[TaskRead]:
-    result = await db.execute(select(Task).order_by(desc(Task.queued_at)))
+    statement = select(Task).order_by(desc(Task.queued_at))
+    if not is_admin(current_user):
+        accessible_ids = await get_accessible_agent_ids(db, current_user)
+        statement = statement.where(Task.agent_id.in_(accessible_ids)) if accessible_ids else statement.where(false())
+    result = await db.execute(statement)
     return [TaskRead.model_validate(task) for task in result.scalars().all()]
 
 
@@ -25,12 +29,10 @@ async def list_tasks(
 async def create_task(
     payload: TaskCreate,
     request: Request,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> TaskRead:
-    agent = await db.get(Agent, payload.agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    agent = await ensure_agent_access(db, current_user, payload.agent_id)
     task = Task(**payload.model_dump())
     db.add(task)
     await db.commit()
@@ -43,12 +45,13 @@ async def create_task(
 @router.get("/{task_id}", response_model=TaskRead)
 async def get_task(
     task_id: str,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> TaskRead:
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    await ensure_agent_access(db, current_user, task.agent_id)
     return TaskRead.model_validate(task)
 
 
@@ -56,12 +59,13 @@ async def get_task(
 async def cancel_task(
     task_id: str,
     request: Request,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> TaskRead:
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    await ensure_agent_access(db, current_user, task.agent_id)
     await request.app.state.supervisor.cancel_task(task_id)
     await db.refresh(task)
     return TaskRead.model_validate(task)
@@ -69,11 +73,17 @@ async def cancel_task(
 
 @router.get("/queue/state")
 async def queue_state(
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
-    queued_result = await db.execute(select(Task).where(Task.status == "queued"))
-    running_result = await db.execute(select(Task).where(Task.status == "running"))
+    accessible_ids = await get_accessible_agent_ids(db, current_user)
+    queued_statement = select(Task).where(Task.status == "queued")
+    running_statement = select(Task).where(Task.status == "running")
+    if not is_admin(current_user):
+        queued_statement = queued_statement.where(Task.agent_id.in_(accessible_ids)) if accessible_ids else queued_statement.where(false())
+        running_statement = running_statement.where(Task.agent_id.in_(accessible_ids)) if accessible_ids else running_statement.where(false())
+    queued_result = await db.execute(queued_statement)
+    running_result = await db.execute(running_statement)
     return {
         "queued": len(queued_result.scalars().all()),
         "running": len(running_result.scalars().all()),

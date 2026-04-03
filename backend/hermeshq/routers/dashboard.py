@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends
+from sqlalchemy import false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hermeshq.core.security import get_current_user
+from hermeshq.core.security import get_accessible_agent_ids, get_current_user, is_admin
 from hermeshq.database import get_db_session
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
@@ -14,15 +14,33 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 @router.get("/overview")
 async def overview(
-    request: Request,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
-    total_agents = await db.scalar(select(func.count()).select_from(Agent))
-    active_agents = await db.scalar(select(func.count()).select_from(Agent).where(Agent.status == "running"))
-    total_tasks = await db.scalar(select(func.count()).select_from(Task))
-    queued_tasks = await db.scalar(select(func.count()).select_from(Task).where(Task.status == "queued"))
-    recent_activity = await request.app.state.supervisor.get_recent_activity(limit=12)
+    accessible_ids = await get_accessible_agent_ids(db, current_user)
+    agent_scope = Agent.id.in_(accessible_ids) if accessible_ids else false()
+    task_scope = Task.agent_id.in_(accessible_ids) if accessible_ids else false()
+    activity_scope = ActivityLog.agent_id.in_(accessible_ids) if accessible_ids else false()
+    total_agents = await db.scalar(
+        select(func.count()).select_from(Agent).where(agent_scope) if not is_admin(current_user) else select(func.count()).select_from(Agent)
+    )
+    active_agents = await db.scalar(
+        select(func.count()).select_from(Agent).where(Agent.status == "running", agent_scope)
+        if not is_admin(current_user)
+        else select(func.count()).select_from(Agent).where(Agent.status == "running")
+    )
+    total_tasks = await db.scalar(
+        select(func.count()).select_from(Task).where(task_scope) if not is_admin(current_user) else select(func.count()).select_from(Task)
+    )
+    queued_tasks = await db.scalar(
+        select(func.count()).select_from(Task).where(Task.status == "queued", task_scope)
+        if not is_admin(current_user)
+        else select(func.count()).select_from(Task).where(Task.status == "queued")
+    )
+    recent_activity_statement = select(ActivityLog).order_by(ActivityLog.created_at.desc()).limit(12)
+    if not is_admin(current_user):
+        recent_activity_statement = recent_activity_statement.where(activity_scope)
+    recent_activity = (await db.execute(recent_activity_statement)).scalars().all()
     return {
         "stats": {
             "total_agents": total_agents or 0,
@@ -45,10 +63,14 @@ async def overview(
 
 @router.get("/agents")
 async def agents_summary(
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> list[dict]:
-    result = await db.execute(select(Agent).order_by(Agent.created_at.asc()))
+    statement = select(Agent).order_by(Agent.created_at.asc())
+    if not is_admin(current_user):
+        accessible_ids = await get_accessible_agent_ids(db, current_user)
+        statement = statement.where(Agent.id.in_(accessible_ids)) if accessible_ids else statement.where(false())
+    result = await db.execute(statement)
     return [
         {
             "id": agent.id,
@@ -66,10 +88,14 @@ async def agents_summary(
 
 @router.get("/tokens")
 async def token_stats(
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
-    result = await db.execute(select(Agent).order_by(Agent.total_tokens_used.desc()))
+    statement = select(Agent).order_by(Agent.total_tokens_used.desc())
+    if not is_admin(current_user):
+        accessible_ids = await get_accessible_agent_ids(db, current_user)
+        statement = statement.where(Agent.id.in_(accessible_ids)) if accessible_ids else statement.where(false())
+    result = await db.execute(statement)
     agents = result.scalars().all()
     return {
         "total_tokens": sum(agent.total_tokens_used for agent in agents),
@@ -82,10 +108,14 @@ async def token_stats(
 
 @router.get("/tasks/stats")
 async def task_stats(
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
-    all_tasks = (await db.execute(select(Task))).scalars().all()
+    statement = select(Task)
+    if not is_admin(current_user):
+        accessible_ids = await get_accessible_agent_ids(db, current_user)
+        statement = statement.where(Task.agent_id.in_(accessible_ids)) if accessible_ids else statement.where(false())
+    all_tasks = (await db.execute(statement)).scalars().all()
     counts: dict[str, int] = {}
     for task in all_tasks:
         counts[task.status] = counts.get(task.status, 0) + 1
@@ -94,10 +124,14 @@ async def task_stats(
 
 @router.get("/activity")
 async def activity(
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> list[dict]:
-    result = await db.execute(select(ActivityLog).order_by(ActivityLog.created_at.desc()).limit(50))
+    statement = select(ActivityLog).order_by(ActivityLog.created_at.desc()).limit(50)
+    if not is_admin(current_user):
+        accessible_ids = await get_accessible_agent_ids(db, current_user)
+        statement = statement.where(ActivityLog.agent_id.in_(accessible_ids)) if accessible_ids else statement.where(false())
+    result = await db.execute(statement)
     return [
         {
             "id": item.id,

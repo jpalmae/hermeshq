@@ -22,7 +22,7 @@ export function useAgent(agentId: string | undefined) {
         const { data } = await apiClient.get<Agent>(`/agents/${agentId}`);
         return data;
       } catch (error) {
-        if (axios.isAxiosError(error) && (error.response?.status === 404 || !error.response)) {
+        if (axios.isAxiosError(error) && (error.response?.status === 403 || error.response?.status === 404 || !error.response)) {
           return null;
         }
         throw error;

@@ -8,6 +8,7 @@ import { AgentConversationPanel } from "../components/AgentConversationPanel";
 import { AgentSkillsPanel } from "../components/AgentSkillsPanel";
 import { AgentTerminal } from "../components/AgentTerminal";
 import { WorkspacePanel } from "../components/WorkspacePanel";
+import { useSessionStore } from "../stores/sessionStore";
 
 const DEFAULT_SECTION_STATE = {
   conversation: true,
@@ -36,6 +37,8 @@ function slugify(value: string) {
 export function AgentDetailPage() {
   const { agentId } = useParams();
   const navigate = useNavigate();
+  const currentUser = useSessionStore((state) => state.user);
+  const isAdmin = currentUser?.role === "admin";
   const { data: agent, isLoading } = useAgent(agentId);
   const { data: tasks } = useTasks();
   const { data: logs } = useLogs(agentId);
@@ -247,13 +250,15 @@ export function AgentDetailPage() {
             <Link className="panel-button-secondary" to={`/schedules?agentId=${agent.id}`}>
               Schedules
             </Link>
-            <button
-              className="panel-button-secondary border-[var(--accent)] text-[var(--accent)]"
-              onClick={onDelete}
-              disabled={deleteAgent.isPending}
-            >
-              Delete agent
-            </button>
+            {isAdmin ? (
+              <button
+                className="panel-button-secondary border-[var(--accent)] text-[var(--accent)]"
+                onClick={onDelete}
+                disabled={deleteAgent.isPending}
+              >
+                Delete agent
+              </button>
+            ) : null}
           </div>
         </div>
 

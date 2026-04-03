@@ -5,7 +5,7 @@ import psutil
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hermeshq.core.security import get_current_user
+from hermeshq.core.security import require_admin
 from hermeshq.database import get_db_session
 from hermeshq.models.node import Node
 from hermeshq.models.user import User
@@ -20,7 +20,7 @@ def _is_local_node(node: Node) -> bool:
 
 @router.get("", response_model=list[NodeRead])
 async def list_nodes(
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> list[NodeRead]:
     result = await db.execute(select(Node).order_by(Node.created_at.asc()))
@@ -30,7 +30,7 @@ async def list_nodes(
 @router.post("", response_model=NodeRead)
 async def create_node(
     payload: NodeCreate,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> NodeRead:
     node = Node(**payload.model_dump())
@@ -43,7 +43,7 @@ async def create_node(
 @router.get("/{node_id}", response_model=NodeRead)
 async def get_node(
     node_id: str,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> NodeRead:
     node = await db.get(Node, node_id)
@@ -56,7 +56,7 @@ async def get_node(
 async def update_node(
     node_id: str,
     payload: NodeUpdate,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> NodeRead:
     node = await db.get(Node, node_id)
@@ -72,7 +72,7 @@ async def update_node(
 @router.post("/{node_id}/test")
 async def test_node(
     node_id: str,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     node = await db.get(Node, node_id)
@@ -102,7 +102,7 @@ async def test_node(
 @router.post("/{node_id}/provision")
 async def provision_node(
     node_id: str,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     node = await db.get(Node, node_id)
@@ -123,7 +123,7 @@ async def provision_node(
 @router.get("/{node_id}/metrics")
 async def node_metrics(
     node_id: str,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     node = await db.get(Node, node_id)

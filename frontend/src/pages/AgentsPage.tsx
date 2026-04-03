@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { useAgentAction, useAgents, useCreateAgent, useDeleteAgent } from "../api/agents";
 import { useNodes } from "../api/nodes";
 import { useSettings } from "../api/settings";
+import { useSessionStore } from "../stores/sessionStore";
 
 const emptyForm = {
   node_id: "",
@@ -36,9 +37,11 @@ function statusTone(status: string) {
 }
 
 export function AgentsPage() {
-  const { data: nodes } = useNodes();
+  const currentUser = useSessionStore((state) => state.user);
+  const isAdmin = currentUser?.role === "admin";
+  const { data: nodes } = useNodes(isAdmin);
   const { data: agents } = useAgents();
-  const { data: settings } = useSettings();
+  const { data: settings } = useSettings(isAdmin);
   const createAgent = useCreateAgent();
   const deleteAgent = useDeleteAgent();
   const startAgent = useAgentAction("start");
@@ -106,7 +109,8 @@ export function AgentsPage() {
 
   return (
     <div className="grid gap-6">
-      <div className="grid gap-6 xl:grid-cols-[0.72fr_1.28fr]">
+      <div className={`grid gap-6 ${isAdmin ? "xl:grid-cols-[0.72fr_1.28fr]" : ""}`}>
+      {isAdmin ? (
       <section className="panel-frame p-6">
         <div className="space-y-3">
           <p className="panel-label">Create agent</p>
@@ -235,6 +239,7 @@ export function AgentsPage() {
           </button>
         </form>
       </section>
+      ) : null}
 
       <section className="panel-frame p-6">
         <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
@@ -285,13 +290,15 @@ export function AgentsPage() {
                 <button className="panel-button-secondary w-full" onClick={() => restartAgent.mutate(agent.id)}>
                   Restart
                 </button>
-                <button
-                  className="panel-button-secondary w-full border-[var(--accent)] text-[var(--accent)]"
-                  onClick={() => onDelete(agent.id, agent.name)}
-                  disabled={deleteAgent.isPending}
-                >
-                  Delete agent
-                </button>
+                {isAdmin ? (
+                  <button
+                    className="panel-button-secondary w-full border-[var(--accent)] text-[var(--accent)]"
+                    onClick={() => onDelete(agent.id, agent.name)}
+                    disabled={deleteAgent.isPending}
+                  >
+                    Delete agent
+                  </button>
+                ) : null}
               </div>
             </article>
           ))}

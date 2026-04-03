@@ -20,4 +20,5 @@ class UserRead(ORMModel):
     id: str
     username: str
     display_name: str
-
+    role: str
+    is_active: bool

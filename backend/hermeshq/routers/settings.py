@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hermeshq.config import get_settings
-from hermeshq.core.security import get_current_user
+from hermeshq.core.security import require_admin
 from hermeshq.database import get_db_session
 from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.user import User
@@ -76,7 +76,7 @@ def _validate_upload(kind: str, file: UploadFile, content: bytes) -> str:
 
 @router.get("", response_model=AppSettingsRead)
 async def get_settings(
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> AppSettingsRead:
     item = await _get_or_create_settings(db)
@@ -94,7 +94,7 @@ async def get_public_settings(
 @router.put("", response_model=AppSettingsRead)
 async def update_settings(
     payload: AppSettingsUpdate,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> AppSettingsRead:
     item = await _get_or_create_settings(db)
@@ -109,7 +109,7 @@ async def update_settings(
 async def upload_logo(
     request: Request,
     file: UploadFile = File(...),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> AppSettingsRead:
     item = await _get_or_create_settings(db)
@@ -128,7 +128,7 @@ async def upload_logo(
 async def upload_favicon(
     request: Request,
     file: UploadFile = File(...),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> AppSettingsRead:
     item = await _get_or_create_settings(db)
@@ -149,7 +149,7 @@ async def upload_favicon(
 
 @router.delete("/branding/logo", response_model=AppSettingsRead)
 async def delete_logo(
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> AppSettingsRead:
     item = await _get_or_create_settings(db)
@@ -165,7 +165,7 @@ async def delete_logo(
 
 @router.delete("/branding/favicon", response_model=AppSettingsRead)
 async def delete_favicon(
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> AppSettingsRead:
     item = await _get_or_create_settings(db)

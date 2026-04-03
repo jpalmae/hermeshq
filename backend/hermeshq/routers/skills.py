@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hermeshq.core.security import get_current_user
+from hermeshq.core.security import ensure_agent_access, get_current_user
 from hermeshq.database import get_db_session
 from hermeshq.models.agent import Agent
 from hermeshq.models.user import User
@@ -25,12 +25,10 @@ async def get_skill_catalog(
 async def get_agent_skills(
     agent_id: str,
     request: Request,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
-    agent = await db.get(Agent, agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    agent = await ensure_agent_access(db, current_user, agent_id)
     installation_manager = request.app.state.installation_manager
     installed = await installation_manager.list_installed_skills(agent)
     return {

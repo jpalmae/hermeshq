@@ -1,6 +1,7 @@
 from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
+from hermeshq.models.agent_assignment import AgentAssignment
 from hermeshq.models.base import Base
 from hermeshq.models.message import AgentMessage
 from hermeshq.models.node import Node
@@ -13,6 +14,7 @@ from hermeshq.models.user import User
 __all__ = [
     "ActivityLog",
     "Agent",
+    "AgentAssignment",
     "AgentMessage",
     "AgentTemplate",
     "AppSettings",

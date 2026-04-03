@@ -3,6 +3,8 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useSessionStore } from "../stores/sessionStore";
+
 function decodeChunk(data: string) {
   const binary = window.atob(data);
   const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
@@ -18,13 +20,14 @@ function encodeChunk(data: string) {
   return window.btoa(binary);
 }
 
-function resolvePtyUrl(agentId: string) {
+function resolvePtyUrl(agentId: string, token: string) {
   const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
   const root = apiBase.replace(/\/api$/, "");
-  return `${root.replace(/^http/, "ws")}/ws/pty/${agentId}`;
+  return `${root.replace(/^http/, "ws")}/ws/pty/${agentId}?token=${encodeURIComponent(token)}`;
 }
 
 export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string }) {
+  const token = useSessionStore((state) => state.token);
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -76,7 +79,16 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
 
-    const socket = new WebSocket(resolvePtyUrl(agentId));
+    if (!token) {
+      terminal.writeln("[SESSION REQUIRED]");
+      return () => {
+        terminal.dispose();
+        terminalRef.current = null;
+        fitAddonRef.current = null;
+      };
+    }
+
+    const socket = new WebSocket(resolvePtyUrl(agentId, token));
     socketRef.current = socket;
     socket.onopen = () => {
       setConnected(true);
@@ -138,7 +150,7 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [agentId, mode]);
+  }, [agentId, mode, token]);
 
   return (
     <section className="panel-frame p-6">

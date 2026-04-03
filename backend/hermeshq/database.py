@@ -25,6 +25,32 @@ async def init_database() -> None:
 
 def _run_schema_updates(sync_connection) -> None:
     inspector = inspect(sync_connection)
+    user_columns = {column["name"] for column in inspector.get_columns("users")}
+    if "role" not in user_columns:
+        sync_connection.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(16)"))
+        sync_connection.execute(text("UPDATE users SET role = 'admin' WHERE username = 'admin'"))
+        sync_connection.execute(text("UPDATE users SET role = 'user' WHERE role IS NULL"))
+    if "is_active" not in user_columns:
+        sync_connection.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE"))
+        sync_connection.execute(text("UPDATE users SET is_active = TRUE WHERE is_active IS NULL"))
+    if not inspector.has_table("agent_assignments"):
+        sync_connection.execute(
+            text(
+                """
+                CREATE TABLE agent_assignments (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    agent_id VARCHAR(36) NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                    assigned_by VARCHAR(36) NULL REFERENCES users(id) ON DELETE SET NULL,
+                    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uq_agent_assignments_user_agent UNIQUE (user_id, agent_id)
+                )
+                """
+            )
+        )
+        sync_connection.execute(text("CREATE INDEX ix_agent_assignments_user_id ON agent_assignments(user_id)"))
+        sync_connection.execute(text("CREATE INDEX ix_agent_assignments_agent_id ON agent_assignments(agent_id)"))
     agent_columns = {column["name"] for column in inspector.get_columns("agents")}
     if "friendly_name" not in agent_columns:
         sync_connection.execute(text("ALTER TABLE agents ADD COLUMN friendly_name VARCHAR(128)"))

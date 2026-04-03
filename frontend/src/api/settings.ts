@@ -16,13 +16,14 @@ export function resolveAssetUrl(path: string | null | undefined) {
   return `${apiRoot}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-export function useSettings() {
+export function useSettings(enabled = true) {
   return useQuery({
     queryKey: ["settings"],
     queryFn: async () => {
       const { data } = await apiClient.get<AppSettings>("/settings");
       return data;
     },
+    enabled,
   });
 }
 

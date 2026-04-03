@@ -8,10 +8,10 @@ from sqlalchemy import select
 
 from hermeshq.config import get_settings
 from hermeshq.core.events import EventBroker
-from hermeshq.core.security import hash_password
+from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
 from hermeshq.database import AsyncSessionLocal, init_database
 from hermeshq.models import Agent, AppSettings, Node, User
-from hermeshq.routers import agents, auth, comms, dashboard, logs, nodes, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates
+from hermeshq.routers import agents, auth, comms, dashboard, logs, nodes, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, users
 from hermeshq.schemas.common import HealthResponse
 from hermeshq.services.agent_identity import derive_agent_identity, slugify_agent_value
 from hermeshq.services.agent_supervisor import AgentSupervisor
@@ -29,14 +29,20 @@ settings = get_settings()
 async def bootstrap_defaults() -> None:
     async with AsyncSessionLocal() as session:
         user_result = await session.execute(select(User).where(User.username == settings.admin_username))
-        if not user_result.scalar_one_or_none():
+        admin_user = user_result.scalar_one_or_none()
+        if not admin_user:
             session.add(
                 User(
                     username=settings.admin_username,
                     display_name=settings.admin_display_name,
                     password_hash=hash_password(settings.admin_password),
+                    role="admin",
+                    is_active=True,
                 )
             )
+        else:
+            admin_user.role = "admin"
+            admin_user.is_active = True
         node_result = await session.execute(select(Node).where(Node.name == "Local Runtime"))
         if not node_result.scalar_one_or_none():
             session.add(
@@ -111,6 +117,7 @@ app.include_router(skills.router, prefix=settings.api_prefix)
 app.include_router(templates.router, prefix=settings.api_prefix)
 app.include_router(logs.router, prefix=settings.api_prefix)
 app.include_router(scheduled_tasks.router, prefix=settings.api_prefix)
+app.include_router(users.router, prefix=settings.api_prefix)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -121,7 +128,13 @@ async def health() -> HealthResponse:
 @app.websocket("/ws/stream")
 async def stream(websocket: WebSocket) -> None:
     broker: EventBroker = app.state.event_broker
-    await broker.connect(websocket)
+    async with AsyncSessionLocal() as session:
+        user = await get_websocket_user(websocket, session)
+        if not user:
+            await websocket.close(code=4401)
+            return
+        accessible_agent_ids = await get_accessible_agent_ids(session, user)
+    await broker.connect(websocket, is_admin=is_admin(user), agent_ids=accessible_agent_ids)
     try:
         while True:
             await websocket.receive_text()
@@ -133,9 +146,17 @@ async def stream(websocket: WebSocket) -> None:
 async def pty_stream(websocket: WebSocket, agent_id: str) -> None:
     mode = "hybrid"
     async with AsyncSessionLocal() as session:
+        user = await get_websocket_user(websocket, session)
+        if not user:
+            await websocket.close(code=4401)
+            return
         agent = await session.get(Agent, agent_id)
         if not agent:
             await websocket.close(code=4404)
+            return
+        accessible_agent_ids = await get_accessible_agent_ids(session, user)
+        if not is_admin(user) and agent_id not in accessible_agent_ids:
+            await websocket.close(code=4403)
             return
         mode = agent.run_mode
         if mode == "headless":

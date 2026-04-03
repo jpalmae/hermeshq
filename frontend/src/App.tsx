@@ -14,6 +14,7 @@ import { NodesPage } from "./pages/NodesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ScheduledTasksPage } from "./pages/ScheduledTasksPage";
 import { TasksPage } from "./pages/TasksPage";
+import { UsersPage } from "./pages/UsersPage";
 
 export default function App() {
   const token = useSessionStore((state) => state.token);
@@ -54,6 +55,7 @@ export default function App() {
         <Route path="/agents/:agentId" element={<AgentDetailPage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/schedules" element={<ScheduledTasksPage />} />
+        <Route path="/users" element={<UsersPage />} />
         <Route path="/nodes" element={<NodesPage />} />
         <Route path="/comms" element={<CommsPage />} />
         <Route path="/settings" element={<SettingsPage />} />

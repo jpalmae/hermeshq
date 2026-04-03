@@ -7,16 +7,6 @@ import { useWebSocket } from "../../hooks/useWebSocket";
 import { useSessionStore } from "../../stores/sessionStore";
 import { useUIStore } from "../../stores/uiStore";
 
-const navItems = [
-  { to: "/", label: "Overview" },
-  { to: "/agents", label: "Agents" },
-  { to: "/tasks", label: "Tasks" },
-  { to: "/schedules", label: "Schedules" },
-  { to: "/nodes", label: "Nodes" },
-  { to: "/comms", label: "Comms" },
-  { to: "/settings", label: "Settings" },
-];
-
 export function AppShell() {
   const token = useSessionStore((state) => state.token);
   const logout = useSessionStore((state) => state.logout);
@@ -38,6 +28,25 @@ export function AppShell() {
       setUser(user);
     }
   }, [setUser, user]);
+
+  const navItems = user?.role === "admin"
+    ? [
+        { to: "/", label: "Overview" },
+        { to: "/agents", label: "Agents" },
+        { to: "/tasks", label: "Tasks" },
+        { to: "/schedules", label: "Schedules" },
+        { to: "/users", label: "Users" },
+        { to: "/nodes", label: "Nodes" },
+        { to: "/comms", label: "Comms" },
+        { to: "/settings", label: "Settings" },
+      ]
+    : [
+        { to: "/", label: "Overview" },
+        { to: "/agents", label: "Agents" },
+        { to: "/tasks", label: "Tasks" },
+        { to: "/schedules", label: "Schedules" },
+        { to: "/comms", label: "Comms" },
+      ];
 
   const navContent = (
     <>
@@ -90,7 +99,7 @@ export function AppShell() {
             <>
               <p className="mt-2 text-sm text-[var(--text-display)]">{user?.display_name ?? "..."}</p>
               <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[var(--text-disabled)]">
-                {user?.username ?? "offline"}
+                {(user?.role ?? "offline")} / {user?.username ?? "offline"}
               </p>
             </>
           ) : (

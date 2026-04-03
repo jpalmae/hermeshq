@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import delete, false, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from hermeshq.core.security import get_current_user
+from hermeshq.core.security import ensure_agent_access, get_accessible_agent_ids, get_current_user, is_admin, require_admin
 from hermeshq.database import get_db_session
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
@@ -19,6 +19,17 @@ from hermeshq.services.agent_identity import derive_agent_identity, ensure_uniqu
 from hermeshq.services.workspace_manager import WorkspaceManager
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+USER_EDITABLE_FIELDS = {
+    "name",
+    "friendly_name",
+    "slug",
+    "description",
+    "run_mode",
+    "system_prompt",
+    "soul_md",
+    "skills",
+    "team_tags",
+}
 
 
 def _get_workspace_manager(request: Request) -> WorkspaceManager:
@@ -61,10 +72,14 @@ async def _resolve_runtime_defaults(db: AsyncSession, payload: AgentCreate) -> d
 
 @router.get("", response_model=list[AgentRead])
 async def list_agents(
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> list[AgentRead]:
-    result = await db.execute(select(Agent).options(selectinload(Agent.node)).order_by(Agent.created_at.asc()))
+    statement = select(Agent).options(selectinload(Agent.node)).order_by(Agent.created_at.asc())
+    if not is_admin(current_user):
+        accessible_ids = await get_accessible_agent_ids(db, current_user)
+        statement = statement.where(Agent.id.in_(accessible_ids)) if accessible_ids else statement.where(false())
+    result = await db.execute(statement)
     return [AgentRead.model_validate(agent) for agent in result.scalars().all()]
 
 
@@ -72,7 +87,7 @@ async def list_agents(
 async def create_agent(
     payload: AgentCreate,
     request: Request,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
     node = await db.get(Node, payload.node_id)
@@ -126,15 +141,12 @@ async def create_agent(
 @router.get("/{agent_id}", response_model=AgentRead)
 async def get_agent(
     agent_id: str,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
-    result = await db.execute(
-        select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id)
-    )
-    agent = result.scalar_one_or_none()
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    await ensure_agent_access(db, current_user, agent_id)
+    result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id))
+    agent = result.scalar_one()
     return AgentRead.model_validate(agent)
 
 
@@ -143,13 +155,18 @@ async def update_agent(
     agent_id: str,
     payload: AgentUpdate,
     request: Request,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
-    agent = await db.get(Agent, agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    agent = await ensure_agent_access(db, current_user, agent_id)
     update_data = payload.model_dump(exclude_unset=True)
+    if not is_admin(current_user):
+        restricted_fields = sorted(set(update_data) - USER_EDITABLE_FIELDS)
+        if restricted_fields:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Users cannot modify: {', '.join(restricted_fields)}",
+            )
     if "supervisor_agent_id" in update_data:
         await _validate_supervisor(db, agent_id, update_data.get("supervisor_agent_id"))
     current_friendly = (agent.friendly_name or "").strip()
@@ -202,7 +219,7 @@ async def update_agent(
 async def delete_agent(
     agent_id: str,
     request: Request,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
     agent = await db.get(Agent, agent_id)
@@ -273,7 +290,7 @@ async def create_agent_from_template(
     template_id: str,
     request: Request,
     payload: dict = Body(default={}),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
     template = await db.get(AgentTemplate, template_id)
@@ -332,9 +349,10 @@ async def create_agent_from_template(
 async def start_agent(
     agent_id: str,
     request: Request,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
+    await ensure_agent_access(db, current_user, agent_id)
     supervisor = request.app.state.supervisor
     await supervisor.start_agent(agent_id)
     result = await db.execute(
@@ -347,9 +365,10 @@ async def start_agent(
 async def stop_agent(
     agent_id: str,
     request: Request,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
+    await ensure_agent_access(db, current_user, agent_id)
     supervisor = request.app.state.supervisor
     await supervisor.stop_agent(agent_id)
     result = await db.execute(
@@ -362,9 +381,10 @@ async def stop_agent(
 async def restart_agent(
     agent_id: str,
     request: Request,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
+    await ensure_agent_access(db, current_user, agent_id)
     supervisor = request.app.state.supervisor
     await supervisor.restart_agent(agent_id)
     result = await db.execute(
@@ -377,12 +397,10 @@ async def restart_agent(
 async def set_agent_mode(
     agent_id: str,
     payload: dict,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
-    agent = await db.get(Agent, agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    agent = await ensure_agent_access(db, current_user, agent_id)
     mode = payload.get("mode")
     if mode not in {"headless", "interactive", "hybrid"}:
         raise HTTPException(status_code=400, detail="Invalid mode")
@@ -399,8 +417,10 @@ async def list_workspace(
     agent_id: str,
     request: Request,
     path: str = Query(default="."),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
 ) -> dict:
+    await ensure_agent_access(db, current_user, agent_id)
     return {
         "entries": request.app.state.workspace_manager.list_workspace_files(agent_id, path),
         "size": request.app.state.workspace_manager.get_workspace_size(agent_id),
@@ -412,8 +432,10 @@ async def read_workspace_file(
     agent_id: str,
     file_path: str,
     request: Request,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
 ) -> dict:
+    await ensure_agent_access(db, current_user, agent_id)
     return {"path": file_path, "content": request.app.state.workspace_manager.read_workspace_file(agent_id, file_path)}
 
 
@@ -423,7 +445,9 @@ async def write_workspace_file(
     file_path: str,
     payload: dict,
     request: Request,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
 ) -> dict:
+    await ensure_agent_access(db, current_user, agent_id)
     request.app.state.workspace_manager.write_workspace_file(agent_id, file_path, payload.get("content", ""))
     return {"status": "ok", "path": file_path}

@@ -4,12 +4,15 @@ import { useAgents } from "../api/agents";
 import { useCreateSecret, useSecrets } from "../api/secrets";
 import { resolveAssetUrl, useDeleteBrandAsset, useSettings, useUpdateSettings, useUploadBrandAsset } from "../api/settings";
 import { useCreateTemplate, useTemplates } from "../api/templates";
+import { useSessionStore } from "../stores/sessionStore";
 
 export function SettingsPage() {
+  const currentUser = useSessionStore((state) => state.user);
+  const isAdmin = currentUser?.role === "admin";
   const { data: agents } = useAgents();
-  const { data: secrets } = useSecrets();
-  const { data: templates } = useTemplates();
-  const { data: settings } = useSettings();
+  const { data: secrets } = useSecrets(isAdmin);
+  const { data: templates } = useTemplates(isAdmin);
+  const { data: settings } = useSettings(isAdmin);
   const createSecret = useCreateSecret();
   const createTemplate = useCreateTemplate();
   const updateSettings = useUpdateSettings();
@@ -114,6 +117,18 @@ export function SettingsPage() {
 
   const logoUrl = resolveAssetUrl(settings?.logo_url);
   const faviconUrl = resolveAssetUrl(settings?.favicon_url);
+
+  if (currentUser && !isAdmin) {
+    return (
+      <section className="panel-frame p-6">
+        <p className="panel-label">Settings</p>
+        <h2 className="mt-2 text-3xl text-[var(--text-display)]">Admin access required</h2>
+        <p className="mt-4 max-w-[42rem] text-sm leading-6 text-[var(--text-secondary)]">
+          Instance settings, branding, secrets and templates are only available to admins.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <div className="grid gap-6">

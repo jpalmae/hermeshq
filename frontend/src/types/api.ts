@@ -5,6 +5,12 @@ export interface User {
   id: string;
   username: string;
   display_name: string;
+  role: "admin" | "user";
+  is_active: boolean;
+}
+
+export interface ManagedUser extends User {
+  assigned_agent_ids: string[];
 }
 
 export interface Node {
