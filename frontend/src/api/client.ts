@@ -1,4 +1,5 @@
 import axios from "axios";
+import type { AxiosError } from "axios";
 
 import { useSessionStore } from "../stores/sessionStore";
 
@@ -16,3 +17,19 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    const status = error.response?.status;
+    const requestUrl = error.config?.url ?? "";
+    const hasSession = Boolean(useSessionStore.getState().token);
+    const isLoginAttempt = requestUrl.includes("/auth/login");
+    const hadAuthHeader = Boolean(error.config?.headers?.Authorization);
+
+    if (status === 401 && hasSession && hadAuthHeader && !isLoginAttempt) {
+      useSessionStore.getState().logout();
+    }
+
+    return Promise.reject(error);
+  },
+);
