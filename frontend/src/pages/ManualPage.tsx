@@ -22,6 +22,7 @@ const manualSections: ManualSection[] = [
     bullets: [
       "El menú izquierdo es la navegación principal. Desde ahí accedes a Dashboard, Agents, Tasks, Schedules, Comms, Manual y, si eres admin, Users, Nodes y Settings.",
       "El tema visual se resuelve con dos niveles: tema por defecto de la instancia y preferencia personal del usuario.",
+      "El idioma sigue la misma lógica: la instancia define un idioma por defecto y cada usuario puede sobrescribirlo entre inglés y español desde My Account o desde la sección Operator del sidebar.",
       "Las secciones visibles dependen de tu rol. Un usuario normal solo ve lo que le fue asignado por un administrador.",
       "Los cambios relevantes en agentes, tareas y canales se reflejan en tiempo real mediante el runtime stream y los paneles de detalle.",
     ],
@@ -170,7 +171,7 @@ const manualSections: ManualSection[] = [
       "Además del registro administrativo de usuarios, cada operador dispone de una página personal para gestionar su propia identidad y seguridad.",
     bullets: [
       "My Account está disponible desde la sección Operator del sidebar, sin necesidad de privilegios de administrador.",
-      "Desde ahí puedes cambiar display name, icono/avatar y preferencia de tema personal.",
+      "Desde ahí puedes cambiar display name, icono/avatar, preferencia de tema personal y preferencia personal de idioma.",
       "También puedes cambiar tu propia contraseña validando primero la contraseña actual.",
       "La política de contraseña sigue siendo la misma en todo el sistema: mínimo ocho caracteres, una mayúscula, un número y un carácter especial.",
     ],
@@ -190,8 +191,9 @@ const manualSections: ManualSection[] = [
     bullets: [
       "Branding permite definir nombre de la app, short name, logo y favicon persistentes.",
       "Default Theme establece el modo base de la instancia; cada usuario puede luego aplicar su override personal desde el shell.",
+      "Default Language define el idioma base de la interfaz. Cada usuario puede mantener ese valor o elegir su propio override entre inglés y español.",
       "Runtime defaults controla provider, modelo, base URL y secreto por defecto para los nuevos agentes.",
-      "Los usuarios sin privilegios no pueden modificar estos parámetros, pero sí elegir su tema personal.",
+      "Los usuarios sin privilegios no pueden modificar estos parámetros globales, pero sí elegir su tema e idioma personales.",
     ],
   },
   {

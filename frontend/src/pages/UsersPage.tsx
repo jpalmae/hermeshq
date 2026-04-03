@@ -3,6 +3,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { useAgents } from "../api/agents";
 import { useCreateUser, useDeleteUser, useDeleteUserAvatar, useUpdateUser, useUploadUserAvatar, useUsers } from "../api/users";
 import { UserAvatar } from "../components/UserAvatar";
+import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../stores/sessionStore";
 
 const emptyCreateForm = {
@@ -53,6 +54,7 @@ function extractErrorMessage(error: unknown) {
 export function UsersPage() {
   const currentUser = useSessionStore((state) => state.user);
   const isAdmin = currentUser?.role === "admin";
+  const { t } = useI18n();
   const { data: agents } = useAgents();
   const { data: users } = useUsers(isAdmin);
   const createUser = useCreateUser();
@@ -75,10 +77,10 @@ export function UsersPage() {
   if (currentUser && !isAdmin) {
     return (
       <section className="panel-frame p-6">
-        <p className="panel-label">Users</p>
-        <h2 className="mt-2 text-3xl text-[var(--text-display)]">Admin access required</h2>
+        <p className="panel-label">{t("users.users")}</p>
+        <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("nodes.adminRequired")}</h2>
         <p className="mt-4 max-w-[42rem] text-sm leading-6 text-[var(--text-secondary)]">
-          User management is restricted to admins. Standard users can only operate agents assigned to them.
+          {t("users.adminOnly")}
         </p>
       </section>
     );
@@ -96,14 +98,14 @@ export function UsersPage() {
     try {
       await createUser.mutateAsync(createForm);
       setCreateForm(emptyCreateForm);
-      setCreateInfo("User created.");
+      setCreateInfo(t("users.created"));
     } catch (error) {
       setCreateError(extractErrorMessage(error));
     }
   }
 
   async function onDeleteUser(userId: string, username: string) {
-    const confirmed = window.confirm(`Delete user "${username}"?`);
+    const confirmed = window.confirm(t("users.deleteConfirm", { username }));
     if (!confirmed) {
       return;
     }
@@ -128,22 +130,22 @@ export function UsersPage() {
   return (
     <div className="grid gap-6 xl:grid-cols-[0.68fr_1.32fr]">
       <form className="panel-frame p-6" onSubmit={onCreateUser}>
-        <p className="panel-label">Users</p>
-        <h2 className="mt-2 text-3xl text-[var(--text-display)]">Create operator</h2>
+        <p className="panel-label">{t("users.users")}</p>
+        <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("users.createOperator")}</h2>
         <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-          Admins can create instance users and pre-assign the agents they are allowed to manage.
+          {t("users.createCopy")}
         </p>
         <div className="mt-6 space-y-4">
           <label className="panel-field">
-            <span className="panel-label">Username</span>
+            <span className="panel-label">{t("login.username")}</span>
             <input value={createForm.username} onChange={(event) => setCreateForm((current) => ({ ...current, username: event.target.value }))} />
           </label>
           <label className="panel-field">
-            <span className="panel-label">Display name</span>
+            <span className="panel-label">{t("users.displayName")}</span>
             <input value={createForm.display_name} onChange={(event) => setCreateForm((current) => ({ ...current, display_name: event.target.value }))} />
           </label>
           <label className="panel-field">
-            <span className="panel-label">Password</span>
+            <span className="panel-label">{t("login.password")}</span>
             <input
               type="password"
               minLength={8}
@@ -155,18 +157,18 @@ export function UsersPage() {
               }}
             />
             <p className="mt-2 text-xs uppercase tracking-[0.08em] text-[var(--text-disabled)]">
-              Minimum 8 characters / 1 uppercase / 1 number / 1 special
+              {t("users.passwordHint")}
             </p>
           </label>
           <label className="panel-field">
-            <span className="panel-label">Role</span>
+            <span className="panel-label">{t("users.role")}</span>
             <select value={createForm.role} onChange={(event) => setCreateForm((current) => ({ ...current, role: event.target.value as "admin" | "user" }))}>
               <option value="user">User</option>
               <option value="admin">Admin</option>
             </select>
           </label>
           <label className="panel-field">
-            <span className="panel-label">Assigned agents</span>
+            <span className="panel-label">{t("users.assignedAgents")}</span>
             <select
               multiple
               value={createForm.assigned_agent_ids}
@@ -192,10 +194,10 @@ export function UsersPage() {
               onChange={(event) => setCreateForm((current) => ({ ...current, is_active: event.target.checked }))}
               className="h-4 w-4"
             />
-            Active account
+            {t("users.activeAccount")}
           </label>
           <button className="panel-button-primary w-full" type="submit" disabled={createUser.isPending}>
-            {createUser.isPending ? "[LOADING]" : "Create user"}
+            {createUser.isPending ? t("common.loading") : t("users.create")}
           </button>
           {createError ? <p className="text-sm text-[var(--accent)]">{createError}</p> : null}
           {createInfo ? <p className="text-sm text-[var(--success)]">{createInfo}</p> : null}
@@ -205,10 +207,10 @@ export function UsersPage() {
       <section className="panel-frame p-6">
         <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
           <div>
-            <p className="panel-label">Directory</p>
-            <h2 className="mt-2 text-3xl text-[var(--text-display)]">Access registry</h2>
+            <p className="panel-label">{t("users.directory")}</p>
+            <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("users.accessRegistry")}</h2>
           </div>
-          <p className="panel-label">{users?.length ?? 0} accounts</p>
+          <p className="panel-label">{t("users.accounts", { count: users?.length ?? 0 })}</p>
         </div>
         <div className="mt-2">
           {(users ?? []).map((user) => (
@@ -220,7 +222,7 @@ export function UsersPage() {
                     <p className="panel-label">{user.username}</p>
                     <div className="mt-2 grid gap-3">
                       <label className="panel-field">
-                        <span className="panel-label">Display name</span>
+                        <span className="panel-label">{t("users.displayName")}</span>
                         <input
                           value={displayNameDrafts[user.id] ?? user.display_name}
                           onChange={(event) =>
@@ -235,7 +237,7 @@ export function UsersPage() {
                           onClick={async () => {
                             const displayName = (displayNameDrafts[user.id] ?? user.display_name).trim();
                             if (!displayName) {
-                              setRowMessages((current) => ({ ...current, [user.id]: "Display name cannot be empty." }));
+                              setRowMessages((current) => ({ ...current, [user.id]: `${t("users.displayName")} cannot be empty.` }));
                               return;
                             }
                             try {
@@ -243,20 +245,20 @@ export function UsersPage() {
                                 userId: user.id,
                                 payload: { display_name: displayName },
                               });
-                              setRowMessages((current) => ({ ...current, [user.id]: "Display name updated." }));
+                              setRowMessages((current) => ({ ...current, [user.id]: t("users.displayNameUpdated") }));
                             } catch (error) {
                               setRowMessages((current) => ({ ...current, [user.id]: extractErrorMessage(error) }));
                             }
                           }}
                         >
-                          Save display name
+                          {t("users.saveDisplayName")}
                         </button>
                       </div>
                       <div className="border-t border-[var(--border)] pt-3">
-                        <p className="panel-label">Operator icon</p>
+                        <p className="panel-label">{t("users.icon")}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <label className="panel-button-secondary cursor-pointer">
-                            Upload icon
+                            {t("users.uploadIcon")}
                             <input
                               className="hidden"
                               type="file"

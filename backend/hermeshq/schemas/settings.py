@@ -10,6 +10,7 @@ class AppSettingsUpdate(BaseModel):
     app_name: str | None = None
     app_short_name: str | None = None
     theme_mode: Literal["dark", "light", "system"] | None = None
+    default_locale: Literal["en", "es"] | None = None
     default_provider: str | None = None
     default_model: str | None = None
     default_api_key_ref: str | None = None
@@ -21,6 +22,7 @@ class AppSettingsRead(ORMModel):
     app_name: str | None
     app_short_name: str | None
     theme_mode: Literal["dark", "light", "system"]
+    default_locale: Literal["en", "es"]
     default_provider: str | None
     default_model: str | None
     default_api_key_ref: str | None

@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAgents } from "../api/agents";
 import { useBroadcast, useCommsHistory, useCommsTopology, useSendMessage } from "../api/comms";
 import { AgentAvatar } from "../components/AgentAvatar";
+import { useI18n } from "../lib/i18n";
 import type { Agent } from "../types/api";
 
 function agentLabel(agent: { friendly_name: string | null; name: string }) {
@@ -78,6 +79,7 @@ function routingTone(reason: string) {
 }
 
 export function CommsPage() {
+  const { t, formatDateTime } = useI18n();
   const { data: agents } = useAgents();
   const { data: history } = useCommsHistory();
   const { data: topology } = useCommsTopology();
@@ -179,24 +181,20 @@ export function CommsPage() {
     <div className="grid gap-6 xl:grid-cols-[0.7fr_1.3fr]">
       <form className="panel-frame p-6" onSubmit={onSubmit}>
         <div className="space-y-3">
-          <p className="panel-label">Comms router</p>
-          <h2 className="text-3xl text-[var(--text-display)]">Inter-agent exchange</h2>
+          <p className="panel-label">{t("comms.router")}</p>
+          <h2 className="text-3xl text-[var(--text-display)]">{t("comms.exchange")}</h2>
           <p className="text-sm leading-6 text-[var(--text-secondary)]">
-            <code>Delegate</code> dispatches a one-off task to another agent. It does not create a recurring
-            schedule even if the message says “cada 15 minutos”. For recurring execution use{" "}
-            <code>Settings &gt; Timed tasks</code>.
+            {t("comms.copy1")}
           </p>
           <p className="text-sm leading-6 text-[var(--text-secondary)]">
-            Hierarchy rules now apply only to <code>Delegate</code>: independent agents can delegate freely, subordinates
-            can escalate to supervisors or delegate within their own branch, and cross-branch lateral delegation is blocked.
-            <code>Direct</code> messages remain unrestricted inside the user's access scope.
+            {t("comms.copy2")}
           </p>
         </div>
         <div className="mt-8 space-y-5">
           <label className="panel-field">
-            <span className="panel-label">From</span>
-            <select value={fromAgentId} onChange={(event) => setFromAgentId(event.target.value)}>
-                <option value="">Select source</option>
+              <span className="panel-label">{t("comms.from")}</span>
+              <select value={fromAgentId} onChange={(event) => setFromAgentId(event.target.value)}>
+                <option value="">{t("comms.selectSource")}</option>
                 {(agents ?? []).map((agent) => (
                   <option key={agent.id} value={agent.id}>
                     {agentLabel(agent)}
@@ -205,23 +203,23 @@ export function CommsPage() {
               </select>
           </label>
           <label className="panel-field">
-            <span className="panel-label">Mode</span>
-            <select value={messageType} onChange={(event) => setMessageType(event.target.value)}>
-              <option value="direct">Direct</option>
-              <option value="delegate">Delegate</option>
-              <option value="broadcast">Broadcast</option>
+              <span className="panel-label">{t("comms.mode")}</span>
+              <select value={messageType} onChange={(event) => setMessageType(event.target.value)}>
+              <option value="direct">{t("comms.direct")}</option>
+              <option value="delegate">{t("comms.delegate")}</option>
+              <option value="broadcast">{t("comms.broadcast")}</option>
             </select>
           </label>
           {messageType === "broadcast" ? (
             <label className="panel-field">
-              <span className="panel-label">Team tag</span>
+              <span className="panel-label">{t("comms.teamTag")}</span>
               <input value={teamTag} onChange={(event) => setTeamTag(event.target.value)} />
             </label>
           ) : (
             <label className="panel-field">
-              <span className="panel-label">To</span>
+              <span className="panel-label">{t("comms.to")}</span>
               <select value={toAgentId} onChange={(event) => setToAgentId(event.target.value)}>
-                <option value="">Select target</option>
+                <option value="">{t("comms.selectTarget")}</option>
                 {(messageType === "delegate" ? delegateOptions : (agents ?? []).map((agent) => ({ agent, state: null }))).map((item) => (
                   <option
                     key={item.agent.id}
@@ -242,13 +240,13 @@ export function CommsPage() {
                 ? selectedDelegateState && !selectedDelegateState.disabled
                   ? `Allowed: ${selectedDelegateState.reason}`
                   : sourceAgent.supervisor_agent_id
-                    ? "Allowed targets: supervisors above or agents below in the same branch."
-                    : "Independent agent: delegation is unrestricted."
-                : "Select a source agent to evaluate hierarchy rules."}
+                    ? t("comms.allowedTargets")
+                    : t("comms.independentAgent")
+                : t("comms.selectSourceToEvaluate")}
             </p>
           ) : null}
           <label className="panel-field">
-            <span className="panel-label">Content</span>
+            <span className="panel-label">{t("comms.content")}</span>
             <textarea rows={7} value={content} onChange={(event) => setContent(event.target.value)} />
           </label>
           <button
@@ -256,7 +254,7 @@ export function CommsPage() {
             className="panel-button-primary w-full"
             disabled={messageType !== "broadcast" && (!fromAgentId || !toAgentId || (messageType === "delegate" && Boolean(selectedDelegateState?.disabled)))}
           >
-            Dispatch
+            {t("comms.dispatch")}
           </button>
         </div>
       </form>
@@ -265,17 +263,16 @@ export function CommsPage() {
         {messageType === "delegate" && sourceAgent ? (
           <section className="panel-frame p-6">
             <div className="border-b border-[var(--border)] pb-4">
-              <p className="panel-label">Hierarchy routing</p>
-              <h3 className="mt-2 text-2xl text-[var(--text-display)]">Allowed delegate map</h3>
+              <p className="panel-label">{t("comms.hierarchyRouting")}</p>
+              <h3 className="mt-2 text-2xl text-[var(--text-display)]">{t("comms.allowedDelegateMap")}</h3>
               <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                Visual scope for <span className="text-[var(--text-display)]">{agentLabel(sourceAgent)}</span>. This map reflects the same
-                hierarchy rules enforced by the backend.
+                {t("comms.allowedDelegateCopy", { agent: agentLabel(sourceAgent) })}
               </p>
             </div>
 
             <div className="mt-5 grid gap-4 xl:grid-cols-[0.8fr_0.9fr_1.3fr]">
               <div className="space-y-3">
-                <p className="panel-label">Escalate upward</p>
+                <p className="panel-label">{t("comms.escalateUpward")}</p>
                 {routingPreview.upward.length ? (
                   routingPreview.upward.map(({ agent, state }) => (
                     <div key={agent.id} className="border border-[var(--interactive)]/40 p-3">
@@ -289,33 +286,33 @@ export function CommsPage() {
                     </div>
                   ))
                 ) : (
-                  <p className="panel-inline-status">[NONE] no supervisors above this agent</p>
+                  <p className="panel-inline-status">{t("comms.noneSupervisors")}</p>
                 )}
               </div>
 
               <div className="border border-[var(--border-visible)] p-4">
-                <p className="panel-label">Source</p>
+                <p className="panel-label">{t("comms.source")}</p>
                 <div className="mt-3 flex items-center gap-3">
                   <AgentAvatar agent={sourceAgent} sizeClass="h-12 w-12" className="shrink-0" />
                   <div className="min-w-0">
                     <p className="truncate text-lg text-[var(--text-display)]">{agentLabel(sourceAgent)}</p>
                     <p className="mt-1 text-xs uppercase tracking-[0.1em] text-[var(--text-secondary)]">
-                      {sourceAgent.supervisor_agent_id ? "subordinate agent" : "independent agent"}
+                      {sourceAgent.supervisor_agent_id ? t("comms.subordinateAgent") : t("comms.independentNode")}
                     </p>
                   </div>
                 </div>
                 <div className="mt-4 border-t border-[var(--border)] pt-3">
                   <p className="text-sm leading-6 text-[var(--text-secondary)]">
                     {sourceAgent.supervisor_agent_id
-                      ? "May escalate to any supervisor above and delegate downward inside its own branch."
-                      : "Independent agents can delegate freely because they do not report to a supervisor."}
+                      ? t("comms.sourceSubordinateCopy")
+                      : t("comms.sourceIndependentCopy")}
                   </p>
                 </div>
               </div>
 
               <div className="space-y-3">
                 <p className="panel-label">
-                  {sourceAgent.supervisor_agent_id ? "Delegate downward" : "Reachable targets"}
+                  {sourceAgent.supervisor_agent_id ? t("comms.delegateDownward") : t("comms.reachableTargets")}
                 </p>
                 {(sourceAgent.supervisor_agent_id ? routingPreview.downward : routingPreview.unrestricted).length ? (
                   <div className="grid gap-3 md:grid-cols-2">
@@ -332,7 +329,7 @@ export function CommsPage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="panel-inline-status">[NONE] no descendants available for delegation</p>
+                  <p className="panel-inline-status">{t("comms.noDescendants")}</p>
                 )}
               </div>
             </div>
@@ -341,12 +338,12 @@ export function CommsPage() {
               <div className="mt-5 border-t border-[var(--border)] pt-4">
                 <div className="flex items-end justify-between gap-4">
                   <div>
-                    <p className="panel-label">Blocked routes</p>
+                    <p className="panel-label">{t("comms.blockedRoutes")}</p>
                     <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                      Cross-branch siblings and unrelated branches are visible here so operators know upfront where delegation is not allowed.
+                      {t("comms.blockedCopy")}
                     </p>
                   </div>
-                  <p className="panel-label">{routingPreview.blocked.length} blocked</p>
+                  <p className="panel-label">{t("comms.blockedCount", { count: routingPreview.blocked.length })}</p>
                 </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   {routingPreview.blocked.map(({ agent, state }) => (
@@ -360,7 +357,7 @@ export function CommsPage() {
                       </div>
                     </div>
                   ))}
-                  {!routingPreview.blocked.length ? <p className="panel-inline-status">[CLEAR] no blocked cross-branch routes</p> : null}
+                  {!routingPreview.blocked.length ? <p className="panel-inline-status">{t("comms.clearBlocked")}</p> : null}
                 </div>
               </div>
             ) : null}
@@ -369,8 +366,8 @@ export function CommsPage() {
 
         <section className="panel-frame p-6">
           <div className="border-b border-[var(--border)] pb-4">
-            <p className="panel-label">Topology</p>
-            <h3 className="mt-2 text-2xl text-[var(--text-display)]">Message edges</h3>
+            <p className="panel-label">{t("comms.topology")}</p>
+            <h3 className="mt-2 text-2xl text-[var(--text-display)]">{t("comms.messageEdges")}</h3>
           </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             {edgeSummary.map((edge) => {
@@ -393,15 +390,15 @@ export function CommsPage() {
 
         <section className="panel-frame p-6">
           <div className="border-b border-[var(--border)] pb-4">
-            <p className="panel-label">History</p>
-            <h3 className="mt-2 text-2xl text-[var(--text-display)]">Recent messages</h3>
+            <p className="panel-label">{t("comms.history")}</p>
+            <h3 className="mt-2 text-2xl text-[var(--text-display)]">{t("comms.recentMessages")}</h3>
           </div>
           <div className="mt-2">
             {(history ?? []).map((message) => (
               <article key={message.id} className="border-b border-[var(--border)] py-4">
                 <div className="flex items-center justify-between gap-4">
                   <p className="panel-label">{message.message_type}</p>
-                  <p className="panel-label">{new Date(message.created_at).toLocaleString()}</p>
+                  <p className="panel-label">{formatDateTime(message.created_at)}</p>
                 </div>
                 <p className="mt-2 text-sm text-[var(--text-primary)]">{message.content}</p>
               </article>

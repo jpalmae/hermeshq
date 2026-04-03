@@ -16,6 +16,7 @@ class User(TimestampMixin, Base):
     role: Mapped[str] = mapped_column(String(16), default="user", index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     theme_preference: Mapped[str] = mapped_column(String(16), default="default")
+    locale_preference: Mapped[str] = mapped_column(String(16), default="default")
     avatar_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     agent_assignments = relationship(

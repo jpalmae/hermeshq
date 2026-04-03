@@ -2,6 +2,7 @@ import { FormEvent, useMemo, useState } from "react";
 
 import { useAgents } from "../api/agents";
 import { useCancelTask, useCreateTask, useTasks } from "../api/tasks";
+import { useI18n } from "../lib/i18n";
 import type { Task } from "../types/api";
 
 const taskColumns = ["queued", "running", "completed", "cancelled"];
@@ -20,6 +21,7 @@ function agentLabel(agent: { friendly_name: string | null; name: string }) {
 export function TasksPage() {
   const { data: agents } = useAgents();
   const { data: tasks } = useTasks();
+  const { t } = useI18n();
   const createTask = useCreateTask();
   const cancelTask = useCancelTask();
 
@@ -56,15 +58,15 @@ export function TasksPage() {
       <section className="grid gap-6 xl:grid-cols-[0.68fr_1.32fr]">
         <form className="panel-frame p-6" onSubmit={onSubmit}>
           <div className="space-y-3">
-            <p className="panel-label">Dispatch</p>
-            <h2 className="text-3xl text-[var(--text-display)]">Submit task</h2>
+            <p className="panel-label">{t("tasks.dispatch")}</p>
+            <h2 className="text-3xl text-[var(--text-display)]">{t("tasks.submitTask")}</h2>
           </div>
 
           <div className="mt-8 space-y-5">
             <label className="panel-field">
-              <span className="panel-label">Agent</span>
+              <span className="panel-label">{t("tasks.agent")}</span>
               <select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
-                <option value="">Select runtime</option>
+                <option value="">{t("tasks.selectRuntime")}</option>
                 {(agents ?? []).map((agent) => (
                   <option key={agent.id} value={agent.id}>
                     {agentLabel(agent)}
@@ -74,17 +76,17 @@ export function TasksPage() {
             </label>
 
             <label className="panel-field">
-              <span className="panel-label">Title</span>
+              <span className="panel-label">{t("tasks.title")}</span>
               <input value={title} onChange={(event) => setTitle(event.target.value)} />
             </label>
 
             <label className="panel-field">
-              <span className="panel-label">Prompt</span>
+              <span className="panel-label">{t("tasks.prompt")}</span>
               <textarea rows={6} value={prompt} onChange={(event) => setPrompt(event.target.value)} />
             </label>
 
             <button type="submit" className="panel-button-primary w-full" disabled={createTask.isPending}>
-              {createTask.isPending ? "[LOADING]" : "Send task"}
+              {createTask.isPending ? t("common.loading") : t("tasks.sendTask")}
             </button>
           </div>
         </form>
@@ -103,7 +105,7 @@ export function TasksPage() {
                   <article key={task.id} className="border border-[var(--border)] p-4">
                     <p className={`panel-label ${statusTone(task.status)}`}>{task.status}</p>
                     <h3 className="mt-2 text-sm text-[var(--text-display)]">
-                      {task.title ?? "Operator task"}
+                      {task.title ?? t("tasks.operatorTask")}
                     </h3>
                     <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
                       {task.prompt}
@@ -118,7 +120,7 @@ export function TasksPage() {
                         className="panel-button-secondary mt-4 w-full"
                         onClick={() => cancelTask.mutate(task.id)}
                       >
-                        Cancel
+                        {t("tasks.cancel")}
                       </button>
                     ) : null}
                   </article>

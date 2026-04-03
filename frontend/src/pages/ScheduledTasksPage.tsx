@@ -3,12 +3,14 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { useAgents } from "../api/agents";
 import { useCreateScheduledTask, useDeleteScheduledTask, useScheduledTasks } from "../api/scheduledTasks";
+import { useI18n } from "../lib/i18n";
 
 function agentLabel(agent: { friendly_name: string | null; name: string }) {
   return agent.friendly_name || agent.name;
 }
 
 export function ScheduledTasksPage() {
+  const { t, formatDateTime } = useI18n();
   const { data: agents } = useAgents();
   const { data: schedules } = useScheduledTasks();
   const createScheduledTask = useCreateScheduledTask();
@@ -69,7 +71,7 @@ export function ScheduledTasksPage() {
   }
 
   async function onDelete(scheduleId: string, name: string) {
-    const confirmed = window.confirm(`Delete scheduled task "${name}"?`);
+    const confirmed = window.confirm(`${t("schedules.delete")} "${name}"?`);
     if (!confirmed) {
       return;
     }
@@ -80,23 +82,23 @@ export function ScheduledTasksPage() {
     <div className="grid gap-6 xl:grid-cols-[0.72fr_1.28fr]">
       <form className="panel-frame p-6" onSubmit={onSubmit}>
         <div className="space-y-3">
-          <p className="panel-label">Scheduler</p>
-          <h2 className="text-3xl text-[var(--text-display)]">Timed tasks</h2>
+          <p className="panel-label">{t("schedules.scheduler")}</p>
+          <h2 className="text-3xl text-[var(--text-display)]">{t("schedules.timedTasks")}</h2>
           <p className="text-sm leading-6 text-[var(--text-secondary)]">
-            Create recurring prompts for any agent. This is the place for “cada 15 minutos”, not `Comms`.
+            {t("schedules.description")}
           </p>
           {requestedAgent ? (
             <p className="panel-inline-status">
-              [FILTER] creating schedules for {agentLabel(requestedAgent)}
+              {t("schedules.filtering", { agent: agentLabel(requestedAgent) })}
             </p>
           ) : null}
         </div>
 
         <div className="mt-8 space-y-5">
           <label className="panel-field">
-            <span className="panel-label">Agent</span>
+            <span className="panel-label">{t("tasks.agent")}</span>
             <select value={scheduleAgentId} onChange={(event) => setScheduleAgentId(event.target.value)}>
-              <option value="">Select runtime</option>
+              <option value="">{t("tasks.selectRuntime")}</option>
               {(agents ?? []).map((agent) => (
                 <option key={agent.id} value={agent.id}>
                   {agentLabel(agent)}
@@ -105,19 +107,19 @@ export function ScheduledTasksPage() {
             </select>
           </label>
           <label className="panel-field">
-            <span className="panel-label">Name</span>
+            <span className="panel-label">{t("schedules.name")}</span>
             <input value={scheduleName} onChange={(event) => setScheduleName(event.target.value)} />
           </label>
           <label className="panel-field">
-            <span className="panel-label">Cron</span>
+            <span className="panel-label">{t("schedules.cron")}</span>
             <input value={cronExpression} onChange={(event) => setCronExpression(event.target.value)} />
           </label>
           <label className="panel-field">
-            <span className="panel-label">Prompt</span>
+            <span className="panel-label">{t("tasks.prompt")}</span>
             <textarea rows={6} value={schedulePrompt} onChange={(event) => setSchedulePrompt(event.target.value)} />
           </label>
           <button type="submit" className="panel-button-primary w-full" disabled={createScheduledTask.isPending}>
-            {createScheduledTask.isPending ? "[LOADING]" : "Create schedule"}
+            {createScheduledTask.isPending ? t("common.loading") : t("schedules.create")}
           </button>
         </div>
       </form>
@@ -125,10 +127,10 @@ export function ScheduledTasksPage() {
       <section className="panel-frame p-6">
         <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
           <div>
-            <p className="panel-label">Active schedules</p>
-            <h2 className="mt-2 text-3xl text-[var(--text-display)]">Recurring dispatch</h2>
+            <p className="panel-label">{t("schedules.activeSchedules")}</p>
+            <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("schedules.recurringDispatch")}</h2>
           </div>
-          <p className="panel-label">{visibleSchedules.length} configured</p>
+          <p className="panel-label">{t("schedules.configured", { count: visibleSchedules.length })}</p>
         </div>
 
         <div className="mt-2">
@@ -142,22 +144,22 @@ export function ScheduledTasksPage() {
                     <p className="mt-2 text-sm text-[var(--text-secondary)]">{schedule.prompt}</p>
                   </div>
                   <div>
-                    <p className="panel-label">Agent</p>
+                    <p className="panel-label">{t("tasks.agent")}</p>
                     <p className="mt-2 text-sm text-[var(--text-display)]">
                       {schedule.agent ? agentLabel(schedule.agent) : schedule.agent_id}
                     </p>
                     <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
-                      next {schedule.next_run ? new Date(schedule.next_run).toLocaleString() : "pending"}
+                      {t("schedules.next", { value: schedule.next_run ? formatDateTime(schedule.next_run) : t("schedules.pending") })}
                     </p>
                     <p className="mt-1 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
-                      last {schedule.last_run ? new Date(schedule.last_run).toLocaleString() : "never"}
+                      {t("schedules.last", { value: schedule.last_run ? formatDateTime(schedule.last_run) : t("schedules.never") })}
                     </p>
                   </div>
                 </div>
                 <div className="grid min-w-[14rem] gap-2">
                   {schedule.agent ? (
                     <Link className="panel-button-secondary w-full text-center" to={`/agents/${schedule.agent.id}`}>
-                      Open agent
+                      {t("schedules.openAgent")}
                     </Link>
                   ) : null}
                   <button
@@ -166,14 +168,14 @@ export function ScheduledTasksPage() {
                     onClick={() => onDelete(schedule.id, schedule.name)}
                     disabled={deleteScheduledTask.isPending}
                   >
-                    Delete schedule
+                    {t("schedules.delete")}
                   </button>
                 </div>
               </article>
             ))
           ) : (
             <p className="panel-inline-status mt-4">
-              [EMPTY] no recurring tasks configured for this scope
+              {t("schedules.empty")}
             </p>
           )}
         </div>

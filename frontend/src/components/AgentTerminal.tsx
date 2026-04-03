@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../stores/sessionStore";
 
 function decodeChunk(data: string) {
@@ -27,6 +28,7 @@ function resolvePtyUrl(agentId: string, token: string) {
 }
 
 export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string }) {
+  const { t } = useI18n();
   const token = useSessionStore((state) => state.token);
   const [connected, setConnected] = useState(false);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
@@ -93,7 +95,7 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
 
     if (!token) {
       terminal.writeln("[SESSION REQUIRED]");
-      setConnectionMessage("Session required");
+      setConnectionMessage(t("agent.sessionRequired"));
       return () => {
         terminal.dispose();
         terminalRef.current = null;
@@ -124,16 +126,16 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
       terminal.writeln("[PTY CLOSED]");
       const shouldRetry = shouldReconnectRef.current && ![4400, 4401, 4403, 4404].includes(event.code);
       if ([4401, 4403].includes(event.code)) {
-        setConnectionMessage("Terminal access denied. Refresh your session and try again.");
+        setConnectionMessage(t("agent.terminalAccessDenied"));
       } else if (event.code === 4404) {
-        setConnectionMessage("Agent terminal was not found.");
+        setConnectionMessage(t("agent.terminalNotFound"));
       } else if (shouldRetry) {
-        setConnectionMessage("PTY connection lost. Reconnecting...");
+        setConnectionMessage(t("agent.ptyLost"));
         reconnectTimerRef.current = window.setTimeout(() => {
           setReconnectNonce((value) => value + 1);
         }, 1200);
       } else {
-        setConnectionMessage("PTY connection closed.");
+        setConnectionMessage(t("agent.ptyClosed"));
       }
     };
     socket.onmessage = (event) => {
@@ -222,17 +224,16 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
     <section className={`${panelClassName} ${shellClassName}`.trim()}>
       <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] pb-4">
         <div>
-          <p className="panel-label">Terminal</p>
+          <p className="panel-label">{t("agent.terminal")}</p>
           <p className="mt-2 text-lg text-[var(--text-display)]">
-            {connected ? "Hermes TUI attached" : "Hermes TUI offline"}
+            {connected ? t("agent.tuiAttached") : t("agent.tuiOffline")}
           </p>
           <p className="mt-2 max-w-[44rem] text-sm leading-6 text-[var(--text-secondary)]">
-            This is the real Hermes terminal for this agent installation. It runs with the agent&apos;s own{" "}
-            <code>HERMES_HOME</code>, config, sessions and installed skills.
+            {t("agent.terminalCopy")}
           </p>
         </div>
         <p className={`panel-label ${connected ? "text-[var(--success)]" : "text-[var(--warning)]"}`}>
-          {connected ? "[LIVE]" : "[IDLE]"}
+          {connected ? t("agent.live") : t("agent.idle")}
         </p>
       </div>
 
@@ -241,7 +242,7 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
           <div ref={containerRef} className={terminalViewportClassName} />
         ) : (
           <div className="border border-[var(--border)] bg-[var(--surface-raised)] p-4 font-mono text-sm text-[var(--text-secondary)]">
-            Terminal unavailable in this mode.
+            {t("agent.terminalUnavailable")}
           </div>
         )}
       </div>
@@ -253,18 +254,18 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
           onClick={() => terminalRef.current?.clear()}
           disabled={!readOnly}
         >
-          Clear
+          {t("agent.clear")}
         </button>
         <button
           className="panel-button-secondary"
           type="button"
           onClick={() => {
-            setConnectionMessage("Reattaching terminal...");
+            setConnectionMessage(t("agent.reattaching"));
             setReconnectNonce((value) => value + 1);
           }}
           disabled={!readOnly}
         >
-          Reconnect
+          {t("agent.reconnect")}
         </button>
         <button
           className="panel-button-secondary"
@@ -277,7 +278,7 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
           }}
           disabled={!readOnly}
         >
-          {isFloating ? "Dock" : "Float"}
+          {isFloating ? t("agent.dock") : t("agent.float")}
         </button>
         <button
           className="panel-button-secondary"
@@ -292,12 +293,12 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
           }}
           disabled={!readOnly}
         >
-          {isFullscreen ? "Windowed" : "Fullscreen"}
+          {isFullscreen ? t("agent.windowed") : t("agent.fullscreen")}
         </button>
         <p className="panel-inline-status">
           {connected
-            ? "[LIVE] running hermes in the agent installation"
-            : connectionMessage || "[BOOT] opening Hermes terminal"}
+            ? t("agent.liveHermes")
+            : connectionMessage || t("agent.bootTerminal")}
         </p>
       </div>
     </section>

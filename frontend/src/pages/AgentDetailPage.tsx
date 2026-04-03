@@ -10,6 +10,7 @@ import { AgentMessagingPanel } from "../components/AgentMessagingPanel";
 import { AgentSkillsPanel } from "../components/AgentSkillsPanel";
 import { AgentTerminal } from "../components/AgentTerminal";
 import { WorkspacePanel } from "../components/WorkspacePanel";
+import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../stores/sessionStore";
 
 const DEFAULT_SECTION_STATE = {
@@ -42,6 +43,7 @@ export function AgentDetailPage() {
   const navigate = useNavigate();
   const currentUser = useSessionStore((state) => state.user);
   const isAdmin = currentUser?.role === "admin";
+  const { t, formatDateTime } = useI18n();
   const { data: agent, isLoading } = useAgent(agentId);
   const { data: tasks } = useTasks();
   const { data: logs } = useLogs(agentId);
@@ -142,7 +144,7 @@ export function AgentDetailPage() {
           <div className="text-right">
             <p className="panel-label">{meta}</p>
             <p className="mt-2 font-mono text-xs uppercase tracking-[0.1em] text-[var(--text-secondary)]">
-              {isOpen ? "Collapse" : "Expand"}
+              {isOpen ? t("agent.collapse") : t("agent.expand")}
             </p>
           </div>
         </button>
@@ -152,13 +154,13 @@ export function AgentDetailPage() {
   }
 
   if (isLoading || !agent) {
-    return <p className="panel-inline-status">[LOADING] agent profile</p>;
+    return <p className="panel-inline-status">{t("common.loading")} {t("agent.loadingProfile")}</p>;
   }
 
   const currentAgent = agent;
 
   async function onDelete() {
-    const confirmed = window.confirm(`Delete agent "${currentAgent.name}"? This will remove its workspace and task history.`);
+    const confirmed = window.confirm(t("agents.deleteConfirm", { name: currentAgent.name }));
     if (!confirmed) {
       return;
     }
@@ -167,7 +169,7 @@ export function AgentDetailPage() {
       navigate("/agents");
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Delete request failed. Reload the page and try again.";
+        error instanceof Error ? error.message : t("agents.deleteFailed");
       window.alert(message);
     }
   }
@@ -237,14 +239,14 @@ export function AgentDetailPage() {
                 {agent.name} / {agent.slug}
               </p>
               <p className="mt-4 max-w-[34rem] text-base leading-7 text-[var(--text-secondary)]">
-                {agent.description ?? "No operator description yet."}
+                {agent.description ?? t("agent.noDescription")}
               </p>
             </div>
             <div className="flex flex-col items-end gap-3">
               <AgentAvatar agent={agent} sizeClass="h-28 w-28" />
               <div className="flex flex-wrap justify-end gap-2">
                 <label className="panel-button-secondary cursor-pointer">
-                  Upload avatar
+                  {t("agent.uploadAvatar")}
                   <input
                     className="hidden"
                     type="file"
@@ -258,7 +260,7 @@ export function AgentDetailPage() {
                   onClick={() => void onRemoveAvatar()}
                   disabled={!agent.has_avatar || deleteAgentAvatar.isPending}
                 >
-                  Remove
+                  {t("agent.remove")}
                 </button>
               </div>
             </div>
@@ -266,34 +268,34 @@ export function AgentDetailPage() {
 
           <div className="mt-10 grid gap-6 border-t border-[var(--border)] pt-6 md:grid-cols-4">
             <div>
-              <p className="panel-label">Status</p>
+              <p className="panel-label">{t("dashboard.status")}</p>
               <p className={`mt-2 text-lg uppercase tracking-[0.1em] ${statusTone(agent.status)}`}>
                 {agent.status}
               </p>
             </div>
             <div>
-              <p className="panel-label">Mode</p>
+              <p className="panel-label">{t("agent.mode")}</p>
               <p className="mt-2 text-lg text-[var(--text-display)]">{agent.run_mode}</p>
             </div>
             <div>
-              <p className="panel-label">Tasks</p>
+              <p className="panel-label">{t("dashboard.tasks")}</p>
               <p className="mt-2 text-lg text-[var(--text-display)]">{agent.total_tasks}</p>
             </div>
             <div>
-              <p className="panel-label">Tokens</p>
+              <p className="panel-label">{t("agent.tokens")}</p>
               <p className="mt-2 text-lg text-[var(--text-display)]">{agent.total_tokens_used}</p>
             </div>
           </div>
 
           <div className="mt-8 flex flex-wrap gap-3">
             <button className="panel-button-primary" onClick={() => startAgent.mutate(agent.id)}>
-              Start runtime
+              {t("agent.startRuntime")}
             </button>
             <button className="panel-button-secondary" onClick={() => stopAgent.mutate(agent.id)}>
-              Stop runtime
+              {t("agent.stopRuntime")}
             </button>
             <Link className="panel-button-secondary" to={`/schedules?agentId=${agent.id}`}>
-              Schedules
+              {t("nav.schedules")}
             </Link>
             {isAdmin ? (
               <button
@@ -301,7 +303,7 @@ export function AgentDetailPage() {
                 onClick={onDelete}
                 disabled={deleteAgent.isPending}
               >
-                Delete agent
+                {t("agent.delete")}
               </button>
             ) : null}
           </div>
@@ -314,8 +316,8 @@ export function AgentDetailPage() {
             onClick={() => toggleSection("configuration")}
           >
             <div>
-              <p className="panel-label">Configuration</p>
-              <h3 className="mt-2 text-2xl text-[var(--text-display)]">Runtime settings</h3>
+              <p className="panel-label">{t("agent.configuration")}</p>
+              <h3 className="mt-2 text-2xl text-[var(--text-display)]">{t("agent.runtimeSettings")}</h3>
             </div>
             <div className="text-right">
               <p className="panel-label">{agent.provider} / {agent.model}</p>
@@ -328,7 +330,7 @@ export function AgentDetailPage() {
             <div className="mt-5">
               <div className="border-b border-[var(--border)] pb-5">
                 <label className="panel-field">
-                  <span className="panel-label">Friendly name</span>
+                  <span className="panel-label">{t("agents.friendlyName")}</span>
                   <input
                     value={identityForm.friendly_name}
                     onChange={(event) =>
@@ -344,11 +346,11 @@ export function AgentDetailPage() {
                         return next;
                       })
                     }
-                    placeholder="Display name for humans"
+                    placeholder={t("agent.displayNameHumans")}
                   />
                 </label>
                 <label className="panel-field mt-4">
-                  <span className="panel-label">Technical name</span>
+                  <span className="panel-label">{t("agent.technicalName")}</span>
                   <input
                     value={identityForm.name}
                     onChange={(event) => {
@@ -362,18 +364,18 @@ export function AgentDetailPage() {
                         return next;
                       });
                     }}
-                    placeholder="Runtime/operator name"
+                    placeholder={t("agent.runtimeName")}
                   />
                 </label>
                 <label className="panel-field mt-4">
-                  <span className="panel-label">Slug</span>
+                  <span className="panel-label">{t("agents.slug")}</span>
                   <input
                     value={identityForm.slug}
                     onChange={(event) => {
                       setSlugTouched(true);
                       setIdentityForm((current) => ({ ...current, slug: event.target.value }));
                     }}
-                    placeholder="Unique short identifier"
+                    placeholder={t("agent.uniqueIdentifier")}
                   />
                 </label>
                 <div className="mt-4 flex items-center gap-3">
@@ -383,15 +385,15 @@ export function AgentDetailPage() {
                     disabled={updateAgent.isPending}
                     onClick={onSaveIdentity}
                   >
-                    {updateAgent.isPending ? "[LOADING]" : "Save identity"}
+                    {updateAgent.isPending ? t("common.loading") : t("agent.saveIdentity")}
                   </button>
-                  <p className="panel-inline-status">Friendly name autocompletes technical name and slug until you override them manually.</p>
+                  <p className="panel-inline-status">{t("agent.identityHint")}</p>
                 </div>
               </div>
               <div className="mt-6 space-y-4">
                 <div className="border-b border-[var(--border)] pb-5">
                   <label className="panel-field">
-                    <span className="panel-label">System prompt</span>
+                    <span className="panel-label">{t("agents.systemPrompt")}</span>
                     <textarea
                       rows={6}
                       value={systemPromptDraft}
@@ -406,26 +408,26 @@ export function AgentDetailPage() {
                       disabled={updateAgent.isPending}
                       onClick={onSaveSystemPrompt}
                     >
-                      {updateAgent.isPending ? "[LOADING]" : "Save system prompt"}
+                      {updateAgent.isPending ? t("common.loading") : t("agent.saveSystemPrompt")}
                     </button>
-                    <p className="panel-inline-status">This updates the persistent runtime instructions for future tasks and TUI sessions.</p>
+                    <p className="panel-inline-status">{t("agent.systemPromptHint")}</p>
                   </div>
                 </div>
                 <div className="panel-stat-row">
-                  <span>Model</span>
+                  <span>{t("agents.model")}</span>
                   <strong>{agent.model}</strong>
                 </div>
                 <div className="panel-stat-row">
-                  <span>Provider</span>
+                  <span>{t("agents.provider")}</span>
                   <strong>{agent.provider}</strong>
                 </div>
                 <div className="panel-stat-row">
-                  <span>Secret ref</span>
-                  <strong>{agent.api_key_ref ?? "none"}</strong>
+                  <span>{t("agents.secretRef")}</span>
+                  <strong>{agent.api_key_ref ?? t("agent.none")}</strong>
                 </div>
                 <div className="panel-stat-row">
-                  <span>Node</span>
-                  <strong>{agent.node?.name ?? "Local Runtime"}</strong>
+                  <span>{t("agents.node")}</span>
+                  <strong>{agent.node?.name ?? t("agent.localRuntime")}</strong>
                 </div>
                 <div className="panel-stat-row">
                   <span>Workspace</span>
@@ -443,9 +445,9 @@ export function AgentDetailPage() {
 
       {renderSectionShell(
         "conversation",
-        "Conversation",
-        "Talk to this agent",
-        agent.status === "running" ? "Live runtime" : "Auto-start on send",
+        t("agent.conversation"),
+        t("agent.talkToAgent"),
+        agent.status === "running" ? t("agent.liveRuntime") : t("agent.autoStartOnSend"),
         <AgentConversationPanel
           tasks={agentTasks}
           agentStatus={agent.status}
@@ -457,19 +459,19 @@ export function AgentDetailPage() {
 
       {renderSectionShell(
         "ledger",
-        "Task history",
-        "Runtime ledger",
-        `${agentTasks.length} records`,
+        t("agent.taskHistory"),
+        t("agent.runtimeLedger"),
+        t("agent.records", { count: agentTasks.length }),
         <div className="mt-0">
           {ledgerTasks.map((task) => (
             <article key={task.id} className="grid gap-4 border-b border-[var(--border)] py-5 md:grid-cols-[0.7fr_1.3fr]">
               <div>
                 <p className="panel-label">{task.status}</p>
                 <p className="mt-2 text-sm text-[var(--text-primary)]">
-                  {task.title ?? "Operator task"}
+                  {task.title ?? t("tasks.operatorTask")}
                 </p>
                 <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
-                  {new Date(task.queued_at).toLocaleString()}
+                  {formatDateTime(task.queued_at)}
                 </p>
               </div>
               <div>
@@ -487,24 +489,24 @@ export function AgentDetailPage() {
 
       {renderSectionShell(
         "skills",
-        "Skills",
-        "Hermes skill registry",
+        t("agent.skills"),
+        t("agent.skillRegistry"),
         `${agent.skills.length} assigned`,
         <AgentSkillsPanel agent={agent} embedded />,
       )}
 
       {renderSectionShell(
         "logs",
-        "Logs",
-        "Activity stream",
-        `${logs?.length ?? 0} events`,
+        t("agent.logs"),
+        t("agent.activityStream"),
+        t("agent.events", { count: logs?.length ?? 0 }),
         <div className="mt-0">
           {(logs ?? []).map((entry) => (
             <article key={String(entry.id)} className="grid gap-3 border-b border-[var(--border)] py-4 md:grid-cols-[0.45fr_1.55fr]">
               <div>
                 <p className="panel-label">{String(entry.event_type)}</p>
                 <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
-                  {new Date(String(entry.created_at)).toLocaleString()}
+                  {formatDateTime(String(entry.created_at))}
                 </p>
               </div>
               <div>
@@ -517,8 +519,8 @@ export function AgentDetailPage() {
 
       {renderSectionShell(
         "workspace",
-        "Workspace",
-        "Filesystem and editor",
+        t("agent.workspace"),
+        t("agent.filesystemEditor"),
         agent.workspace_path,
         <WorkspacePanel agentId={agent.id} />,
       )}

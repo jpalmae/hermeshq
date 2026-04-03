@@ -11,6 +11,7 @@ class AppSettings(TimestampMixin, Base):
     app_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     app_short_name: Mapped[str | None] = mapped_column(String(48), nullable=True)
     theme_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    default_locale: Mapped[str | None] = mapped_column(String(8), nullable=True)
     default_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
     default_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     default_api_key_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { useI18n } from "../lib/i18n";
 import { useWorkspace, useWorkspaceFile, useWriteWorkspaceFile } from "../api/workspace";
 
 export function WorkspacePanel({ agentId }: { agentId: string }) {
+  const { t } = useI18n();
   const [path, setPath] = useState(".");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -31,7 +33,7 @@ export function WorkspacePanel({ agentId }: { agentId: string }) {
       <div className="panel-frame p-6">
         <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
           <div>
-            <p className="panel-label">Workspace</p>
+            <p className="panel-label">{t("agent.workspace")}</p>
             <p className="mt-2 text-lg text-[var(--text-display)]">{path}</p>
           </div>
           <p className="panel-label">{listing?.size ?? 0} bytes</p>
@@ -46,7 +48,7 @@ export function WorkspacePanel({ agentId }: { agentId: string }) {
               setPath(parts.length <= 1 ? "." : parts.slice(0, -1).join("/"));
             }}
           >
-            Go up
+            {t("agent.goUp")}
           </button>
         ) : null}
 
@@ -61,7 +63,7 @@ export function WorkspacePanel({ agentId }: { agentId: string }) {
                 setSelectedFile(null);
               }}
             >
-              <p className="panel-label">Dir</p>
+              <p className="panel-label">{t("agent.dir")}</p>
               <p className="mt-1 text-sm text-[var(--text-display)]">{entry.name}</p>
             </button>
           ))}
@@ -72,7 +74,7 @@ export function WorkspacePanel({ agentId }: { agentId: string }) {
               className="block w-full border-b border-[var(--border)] py-3 text-left"
               onClick={() => setSelectedFile(entry.path)}
             >
-              <p className="panel-label">File</p>
+              <p className="panel-label">{t("agent.file")}</p>
               <p className="mt-1 text-sm text-[var(--text-display)]">{entry.name}</p>
             </button>
           ))}
@@ -82,9 +84,9 @@ export function WorkspacePanel({ agentId }: { agentId: string }) {
       <div className="panel-frame p-6">
         <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
           <div>
-            <p className="panel-label">Editor</p>
+            <p className="panel-label">{t("agent.editor")}</p>
             <p className="mt-2 text-lg text-[var(--text-display)]">
-              {selectedFile ?? "Select a file"}
+              {selectedFile ?? t("agent.selectFile")}
             </p>
           </div>
           {selectedFile ? (
@@ -93,7 +95,7 @@ export function WorkspacePanel({ agentId }: { agentId: string }) {
               className="panel-button-primary"
               onClick={() => selectedFile && writeFile.mutate({ filePath: selectedFile, content: draft })}
             >
-              Save file
+              {t("users.save")}
             </button>
           ) : null}
         </div>
@@ -101,11 +103,10 @@ export function WorkspacePanel({ agentId }: { agentId: string }) {
           className="mt-4 min-h-[360px]"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="Workspace file contents"
+          placeholder={t("agent.workspacePlaceholder")}
           disabled={!selectedFile}
         />
       </div>
     </section>
   );
 }
-

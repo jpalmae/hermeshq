@@ -42,6 +42,7 @@ def _settings_to_read(item: AppSettings) -> AppSettingsRead:
         app_name=item.app_name or settings.app_name,
         app_short_name=item.app_short_name or (item.app_name or settings.app_name),
         theme_mode=item.theme_mode or "dark",
+        default_locale=item.default_locale or "en",
         default_provider=item.default_provider,
         default_model=item.default_model,
         default_api_key_ref=item.default_api_key_ref,

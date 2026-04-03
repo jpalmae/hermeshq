@@ -24,12 +24,14 @@ class UserRead(ORMModel):
     role: str
     is_active: bool
     theme_preference: str
+    locale_preference: str
     avatar_url: str | None = None
     has_avatar: bool = False
 
 
 class UserPreferencesUpdate(BaseModel):
-    theme_preference: str
+    theme_preference: str | None = None
+    locale_preference: str | None = None
 
 
 class UserProfileUpdate(BaseModel):

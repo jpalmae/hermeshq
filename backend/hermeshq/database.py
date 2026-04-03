@@ -36,6 +36,9 @@ def _run_schema_updates(sync_connection) -> None:
     if "theme_preference" not in user_columns:
         sync_connection.execute(text("ALTER TABLE users ADD COLUMN theme_preference VARCHAR(16)"))
         sync_connection.execute(text("UPDATE users SET theme_preference = 'default' WHERE theme_preference IS NULL"))
+    if "locale_preference" not in user_columns:
+        sync_connection.execute(text("ALTER TABLE users ADD COLUMN locale_preference VARCHAR(16)"))
+        sync_connection.execute(text("UPDATE users SET locale_preference = 'default' WHERE locale_preference IS NULL"))
     if "avatar_filename" not in user_columns:
         sync_connection.execute(text("ALTER TABLE users ADD COLUMN avatar_filename VARCHAR(255)"))
     if not inspector.has_table("agent_assignments"):
@@ -69,6 +72,8 @@ def _run_schema_updates(sync_connection) -> None:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN app_short_name VARCHAR(48)"))
     if "theme_mode" not in settings_columns:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN theme_mode VARCHAR(16)"))
+    if "default_locale" not in settings_columns:
+        sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN default_locale VARCHAR(8)"))
     if "logo_filename" not in settings_columns:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN logo_filename VARCHAR(255)"))
     if "favicon_filename" not in settings_columns:

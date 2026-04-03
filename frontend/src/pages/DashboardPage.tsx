@@ -4,6 +4,7 @@ import { useAgents } from "../api/agents";
 import { AgentAvatar } from "../components/AgentAvatar";
 import { useDashboardOverview } from "../api/dashboard";
 import { AgentOrgChart } from "../components/AgentOrgChart";
+import { useI18n } from "../lib/i18n";
 import { UserAvatar } from "../components/UserAvatar";
 import { useRealtimeStore } from "../stores/realtimeStore";
 import { useSessionStore } from "../stores/sessionStore";
@@ -20,6 +21,7 @@ export function DashboardPage() {
   const { data: agents } = useAgents();
   const realtime = useRealtimeStore((state) => state.events);
   const currentUser = useSessionStore((state) => state.user);
+  const { t, formatDateTime } = useI18n();
   const liveFeed = realtime.slice(0, 5);
 
   return (
@@ -28,13 +30,13 @@ export function DashboardPage() {
         <div className="grid gap-6">
           <div className="panel-frame p-4 md:p-5">
             <div>
-              <p className="panel-label">Primary Readout</p>
+              <p className="panel-label">{t("dashboard.primaryReadout")}</p>
               <div className="mt-2 flex items-end gap-3">
                 <h2 className="font-display text-[clamp(2rem,4.8vw,3.2rem)] leading-[0.9] text-[var(--text-display)]">
                   {overview?.stats.active_agents ?? 0}
                 </h2>
                 <p className="max-w-[10ch] pb-0.5 text-[11px] leading-4 text-[var(--text-secondary)]">
-                  active agents live
+                  {t("dashboard.activeAgentsLive")}
                 </p>
               </div>
             </div>
@@ -42,9 +44,9 @@ export function DashboardPage() {
               <div className="flex items-center gap-3">
                 {currentUser ? <UserAvatar user={currentUser} sizeClass="h-11 w-11 md:h-12 md:w-12" className="shrink-0" /> : null}
                 <div className="min-w-0">
-                  <p className="panel-label">Operator</p>
+                  <p className="panel-label">{t("dashboard.operator")}</p>
                   <p className="mt-1 truncate text-sm leading-4 text-[var(--text-display)]">
-                    {currentUser?.display_name ?? "Unknown"}
+                    {currentUser?.display_name ?? t("common.unknown")}
                   </p>
                   <p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
                     {currentUser?.role ?? "offline"}
@@ -54,15 +56,15 @@ export function DashboardPage() {
             </div>
             <div className="mt-4 grid gap-3 border-t border-[var(--border)] pt-3 md:grid-cols-3">
               <div>
-                <p className="panel-label">Fleet</p>
+                  <p className="panel-label">{t("dashboard.fleet")}</p>
                 <p className="mt-1 text-base text-[var(--text-display)]">{overview?.stats.total_agents ?? 0}</p>
               </div>
               <div>
-                <p className="panel-label">Queue</p>
+                  <p className="panel-label">{t("dashboard.queue")}</p>
                 <p className="mt-1 text-base text-[var(--text-display)]">{overview?.stats.queued_tasks ?? 0}</p>
               </div>
               <div>
-                <p className="panel-label">Tasks</p>
+                  <p className="panel-label">{t("dashboard.tasks")}</p>
                 <p className="mt-1 text-base text-[var(--text-display)]">{overview?.stats.total_tasks ?? 0}</p>
               </div>
             </div>
@@ -71,10 +73,10 @@ export function DashboardPage() {
           <div className="panel-frame p-5">
             <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-3">
               <div>
-                <p className="panel-label">Live Feed</p>
-                <h3 className="mt-2 text-xl text-[var(--text-display)]">Runtime stream</h3>
+                <p className="panel-label">{t("dashboard.liveFeed")}</p>
+                <h3 className="mt-2 text-xl text-[var(--text-display)]">{t("dashboard.runtimeStream")}</h3>
               </div>
-              <p className="panel-label">{liveFeed.length} lines</p>
+              <p className="panel-label">{t("dashboard.lines", { count: liveFeed.length })}</p>
             </div>
             <div className="mt-3 space-y-2">
               {liveFeed.map((event, index) => (
@@ -88,11 +90,11 @@ export function DashboardPage() {
                     </span>
                   </div>
                   <p className="mt-1 line-clamp-2 text-sm text-[var(--text-primary)]">
-                    {event.message ?? event.response ?? "Awaiting runtime output"}
+                    {event.message ?? event.response ?? t("dashboard.awaitingRuntimeOutput")}
                   </p>
                 </div>
               ))}
-              {!liveFeed.length ? <p className="panel-inline-status">[LOADING] event stream idle</p> : null}
+              {!liveFeed.length ? <p className="panel-inline-status">{t("dashboard.eventStreamIdle")}</p> : null}
             </div>
           </div>
         </div>
@@ -100,11 +102,11 @@ export function DashboardPage() {
         <section className="panel-frame p-6">
           <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
             <div>
-              <p className="panel-label">Agent map</p>
-              <h3 className="mt-2 text-2xl text-[var(--text-display)]">Dependency canvas</h3>
+              <p className="panel-label">{t("dashboard.agentMap")}</p>
+              <h3 className="mt-2 text-2xl text-[var(--text-display)]">{t("dashboard.dependencyCanvas")}</h3>
             </div>
             <Link to="/agents" className="panel-button-secondary">
-              Open agent studio
+              {t("dashboard.openAgentStudio")}
             </Link>
           </div>
           <div className="mt-4">
@@ -117,11 +119,11 @@ export function DashboardPage() {
         <div className="panel-frame p-6">
           <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
             <div>
-              <p className="panel-label">Agents</p>
-              <h3 className="mt-2 text-2xl text-[var(--text-display)]">Current fleet</h3>
+              <p className="panel-label">{t("dashboard.agents")}</p>
+              <h3 className="mt-2 text-2xl text-[var(--text-display)]">{t("dashboard.currentFleet")}</h3>
             </div>
             <Link to="/agents" className="panel-button-secondary">
-              Open agents
+              {t("dashboard.openAgents")}
             </Link>
           </div>
           <div className="mt-2">
@@ -142,11 +144,11 @@ export function DashboardPage() {
                   </div>
                 </div>
                 <div>
-                  <p className="panel-label">Model</p>
+                  <p className="panel-label">{t("dashboard.model")}</p>
                   <p className="mt-2 text-sm text-[var(--text-primary)]">{agent.model}</p>
                 </div>
                 <div className="text-left md:text-right">
-                  <p className="panel-label">Status</p>
+                  <p className="panel-label">{t("dashboard.status")}</p>
                   <p className={`mt-2 text-sm uppercase tracking-[0.1em] ${statusTone(agent.status)}`}>
                     {agent.status}
                   </p>
@@ -157,14 +159,14 @@ export function DashboardPage() {
         </div>
 
         <div className="panel-frame p-6">
-          <p className="panel-label">Recent activity</p>
+          <p className="panel-label">{t("dashboard.recentActivity")}</p>
           <div className="mt-6 space-y-4">
             {overview?.activity.map((item) => (
               <div key={item.id} className="border-b border-[var(--border)] pb-4">
                 <p className="panel-label">{item.event_type}</p>
-                <p className="mt-2 text-sm text-[var(--text-primary)]">{item.message ?? "No message"}</p>
+                <p className="mt-2 text-sm text-[var(--text-primary)]">{item.message ?? t("dashboard.noMessage")}</p>
                 <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
-                  {new Date(item.created_at).toLocaleString()}
+                  {formatDateTime(item.created_at)}
                 </p>
               </div>
             ))}

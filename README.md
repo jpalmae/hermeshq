@@ -7,6 +7,8 @@ Initial end-to-end implementation for a multi-agent operations panel based on th
 - FastAPI backend with:
   - JWT auth
   - per-user theme preference override
+  - per-user language preference override
+  - instance-wide default language
   - self-service profile and password change for the current user
   - admin/user RBAC with assigned-agent scope
   - local node bootstrap
@@ -24,6 +26,7 @@ Initial end-to-end implementation for a multi-agent operations panel based on th
   - local PTY websocket
 - React/Vite frontend with:
   - Nothing-inspired dark mode foundation
+  - English/Spanish UI localization
   - login screen
   - dashboard overview
   - agents list/detail
@@ -102,7 +105,9 @@ URLs:
 - Agent avatars are stored per agent under the persistent workspaces volume and are rendered across the agent detail page, dashboard and dependency canvas.
 - User avatars are stored separately from branding and can be managed from the `Users` page. The active operator avatar is reflected in the shell and dashboard.
 - Instance theme is still controlled by admins in `Settings`, but each user can now override the theme from the left shell without needing admin access.
+- Instance language is controlled by admins in `Settings`, but each user can now override the UI language between English and Spanish from the left shell or `My Account`.
 - The left shell exposes `My Account` for any user, including profile edits, avatar management and password changes without admin intervention.
+- UI localization intentionally affects the application chrome only. It does not rewrite backend error payloads, Hermes TUI output or model-generated content already stored in tasks/logs.
 - The in-app `Manual` is available from the operator section in the sidebar and includes annotated screenshots of the main operational surfaces.
 - Local node metrics are real. Remote node provisioning and remote node metrics are still not implemented and return `501`.
 - Redis-backed pub/sub, remote node daemon/provisioning and xterm.js-grade PTY rendering are still incomplete versus the full spec.

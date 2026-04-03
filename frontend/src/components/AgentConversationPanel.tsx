@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import { useI18n } from "../lib/i18n";
 import type { Task } from "../types/api";
 
 type ConversationEntry = {
@@ -27,10 +28,10 @@ function buildAssistantContent(task: Task) {
     return task.error_message;
   }
   if (task.status === "queued") {
-    return "Queued. HermesHQ is waiting for runtime execution.";
+    return "__QUEUED__";
   }
   if (task.status === "running") {
-    return "Running...";
+    return "__RUNNING__";
   }
   return "";
 }
@@ -55,6 +56,7 @@ export function AgentConversationPanel({
   isSubmitting: boolean;
   embedded?: boolean;
 }) {
+  const { t, formatDateTime } = useI18n();
   const [draftPrompt, setDraftPrompt] = useState("");
   const feedRef = useRef<HTMLDivElement | null>(null);
 
@@ -113,11 +115,11 @@ export function AgentConversationPanel({
       {embedded ? null : (
         <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
           <div>
-            <p className="panel-label">Conversation</p>
-            <h3 className="mt-2 text-2xl text-[var(--text-display)]">Talk to this agent</h3>
+            <p className="panel-label">{t("agent.conversation")}</p>
+            <h3 className="mt-2 text-2xl text-[var(--text-display)]">{t("agent.talkToAgent")}</h3>
           </div>
           <p className="panel-label">
-            {agentStatus === "running" ? "Live runtime" : "Auto-start on send"}
+            {agentStatus === "running" ? t("agent.liveRuntime") : t("agent.autoStartOnSend")}
           </p>
         </div>
       )}
@@ -144,7 +146,7 @@ export function AgentConversationPanel({
               >
                 <div className="flex items-center justify-between gap-4">
                   <p className={`panel-label ${isUser ? "[color:var(--contrast-muted)]" : ""}`}>
-                    {isUser ? "Operator" : isSystem ? "Runtime error" : "Agent"}
+                    {isUser ? t("agent.operator") : isSystem ? t("agent.runtimeError") : "Agent"}
                   </p>
                   <p className={`text-xs uppercase tracking-[0.1em] ${isUser ? "[color:var(--contrast-muted)]" : statusTone(entry.status)}`}>
                     {entry.status}
@@ -156,29 +158,33 @@ export function AgentConversationPanel({
                   </p>
                 ) : null}
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
-                  {entry.content}
+                  {entry.content === "__QUEUED__"
+                    ? t("agent.queuedWaiting")
+                    : entry.content === "__RUNNING__"
+                      ? t("agent.running")
+                      : entry.content}
                 </p>
                 <p className={`mt-3 text-xs uppercase tracking-[0.1em] ${isUser ? "[color:var(--contrast-muted)]" : "text-[var(--text-disabled)]"}`}>
-                  {new Date(entry.timestamp).toLocaleString()}
+                  {formatDateTime(entry.timestamp)}
                 </p>
               </article>
             );
           })
         ) : (
           <p className="panel-inline-status">
-            [EMPTY] send the first message to start a conversation thread
+            {t("agent.emptyConversation")}
           </p>
         )}
       </div>
 
       <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
         <label className="panel-field">
-          <span className="panel-label">Message</span>
+          <span className="panel-label">{t("agent.message")}</span>
           <textarea
             rows={4}
             value={draftPrompt}
             onChange={(event) => setDraftPrompt(event.target.value)}
-            placeholder="Ask for a task, request a response or continue the conversation."
+            placeholder={t("agent.messagePlaceholder")}
           />
         </label>
 
@@ -188,12 +194,12 @@ export function AgentConversationPanel({
             className="panel-button-primary"
             disabled={isSubmitting || !draftPrompt.trim()}
           >
-            {isSubmitting ? "[LOADING]" : "Send message"}
+            {isSubmitting ? t("common.loading") : t("agent.sendMessage")}
           </button>
           <p className="panel-inline-status">
             {agentStatus === "running"
-              ? "[LIVE] message dispatches immediately"
-              : "[AUTO] HermesHQ will start the runtime before dispatching"}
+              ? t("agent.liveDispatch")
+              : t("agent.autoDispatch")}
           </p>
         </div>
       </form>

@@ -26,7 +26,10 @@ export function useMe(enabled: boolean) {
 export function useUpdateMyPreferences() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { theme_preference: "default" | "dark" | "light" | "system" }) => {
+    mutationFn: async (payload: {
+      theme_preference?: "default" | "dark" | "light" | "system";
+      locale_preference?: "default" | "en" | "es";
+    }) => {
       const { data } = await apiClient.put<User>("/auth/me/preferences", payload);
       return data;
     },

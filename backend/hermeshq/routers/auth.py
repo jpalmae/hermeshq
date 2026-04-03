@@ -91,9 +91,14 @@ async def update_preferences(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> UserRead:
-    if payload.theme_preference not in {"default", "dark", "light", "system"}:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid theme preference")
-    current_user.theme_preference = payload.theme_preference
+    if payload.theme_preference is not None:
+        if payload.theme_preference not in {"default", "dark", "light", "system"}:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid theme preference")
+        current_user.theme_preference = payload.theme_preference
+    if payload.locale_preference is not None:
+        if payload.locale_preference not in {"default", "en", "es"}:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid locale preference")
+        current_user.locale_preference = payload.locale_preference
     await db.commit()
     await db.refresh(current_user)
     return _serialize_user(request, current_user)

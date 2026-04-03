@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useMessagingChannel, useMessagingChannelAction, useMessagingChannelLogs, useMessagingChannelRuntime, useUpdateMessagingChannel } from "../api/messagingChannels";
 import { useSecrets } from "../api/secrets";
+import { useI18n } from "../lib/i18n";
 
 function parseListInput(value: string) {
   return value
@@ -15,6 +16,7 @@ function formatList(values: string[]) {
 }
 
 export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isAdmin: boolean }) {
+  const { t } = useI18n();
   const { data: telegram } = useMessagingChannel(agentId, "telegram");
   const { data: runtime } = useMessagingChannelRuntime(agentId, "telegram");
   const { data: logs } = useMessagingChannelLogs(agentId, "telegram", Boolean(telegram?.enabled));
@@ -79,14 +81,14 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
     <div className="mt-6 border-t border-[var(--border)] pt-6">
       <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] pb-4">
         <div>
-          <p className="panel-label">Messaging channels</p>
+          <p className="panel-label">{t("agent.messagingChannels")}</p>
           <p className="mt-2 text-lg text-[var(--text-display)]">Telegram</p>
           <p className="mt-2 max-w-[36rem] text-sm leading-6 text-[var(--text-secondary)]">
-            Persistent Hermes gateway binding for this agent. The allowlist uses Telegram user IDs, exactly like Hermes setup.
+            {t("agent.telegramCopy")}
           </p>
         </div>
         <div className="text-right">
-          <p className="panel-label">Runtime</p>
+          <p className="panel-label">{t("agent.runtime")}</p>
           <p className="mt-2 text-sm uppercase tracking-[0.1em] text-[var(--text-display)]">
             {runtime?.status ?? telegram?.status ?? "stopped"}
           </p>
@@ -96,7 +98,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
       {isAdmin ? (
         <div className="mt-5 space-y-4">
           <label className="panel-field">
-            <span className="panel-label">Bot token secret ref</span>
+            <span className="panel-label">{t("agent.botTokenSecretRef")}</span>
             <input
               list={`telegram-secrets-${agentId}`}
               value={form.secret_ref}
@@ -111,7 +113,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
           </label>
 
           <label className="panel-field">
-            <span className="panel-label">Allowed Telegram user IDs</span>
+            <span className="panel-label">{t("agent.allowedTelegramUsers")}</span>
             <textarea
               rows={3}
               value={form.allowed_user_ids}
@@ -122,7 +124,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="panel-field">
-              <span className="panel-label">Home chat ID</span>
+              <span className="panel-label">{t("agent.homeChatId")}</span>
               <input
                 value={form.home_chat_id}
                 onChange={(event) => setForm((current) => ({ ...current, home_chat_id: event.target.value }))}
@@ -130,7 +132,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
               />
             </label>
             <label className="panel-field">
-              <span className="panel-label">Home chat name</span>
+              <span className="panel-label">{t("agent.homeChatName")}</span>
               <input
                 value={form.home_chat_name}
                 onChange={(event) => setForm((current) => ({ ...current, home_chat_name: event.target.value }))}
@@ -140,7 +142,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
           </div>
 
           <label className="panel-field">
-            <span className="panel-label">Free-response group chat IDs</span>
+            <span className="panel-label">{t("agent.freeResponseChatIds")}</span>
             <textarea
               rows={2}
               value={form.free_response_chat_ids}
@@ -151,7 +153,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="panel-field">
-              <span className="panel-label">Unauthorized DM behavior</span>
+              <span className="panel-label">{t("agent.unauthorizedDmBehavior")}</span>
               <select
                 value={form.unauthorized_dm_behavior}
                 onChange={(event) =>
@@ -163,7 +165,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
               </select>
             </label>
             <label className="panel-field justify-end">
-              <span className="panel-label">Mention gating in groups</span>
+              <span className="panel-label">{t("agent.mentionGating")}</span>
               <label className="mt-3 flex items-center gap-3 text-sm text-[var(--text-primary)]">
                 <input
                   checked={form.require_mention}
@@ -172,7 +174,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
                   }
                   type="checkbox"
                 />
-                Require mention unless the chat is in free-response allowlist
+                {t("agent.requireMention")}
               </label>
             </label>
           </div>
@@ -183,7 +185,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
               onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))}
               type="checkbox"
             />
-            Enable Telegram gateway for this agent
+            {t("agent.enableTelegram")}
           </label>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -193,7 +195,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
               onClick={() => void onSave()}
               disabled={updateChannel.isPending}
             >
-              {updateChannel.isPending ? "[LOADING]" : "Save Telegram channel"}
+              {updateChannel.isPending ? t("common.loading") : t("agent.saveTelegram")}
             </button>
             <button
               type="button"
@@ -201,7 +203,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
               onClick={() => startChannel.mutate({ agentId, platform: "telegram" })}
               disabled={startChannel.isPending}
             >
-              Start gateway
+              {t("agent.startGateway")}
             </button>
             <button
               type="button"
@@ -209,27 +211,27 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
               onClick={() => stopChannel.mutate({ agentId, platform: "telegram" })}
               disabled={stopChannel.isPending}
             >
-              Stop gateway
+              {t("agent.stopGateway")}
             </button>
             <p className="panel-inline-status">
               {runtime?.status === "running"
                 ? `[LIVE] telegram gateway pid ${runtime.pid ?? "?"}`
-                : telegram?.last_error || "Gateway stopped"}
+                : telegram?.last_error || t("agent.gatewayStopped")}
             </p>
           </div>
         </div>
       ) : (
         <div className="mt-5 space-y-3 text-sm leading-6 text-[var(--text-secondary)]">
-          <p>Enabled: {telegram?.enabled ? "yes" : "no"}</p>
-          <p>Allowed users: {telegram?.allowed_user_ids?.length ? telegram.allowed_user_ids.join(", ") : "none"}</p>
-          <p>Home chat: {telegram?.home_chat_id ?? "none"}</p>
+          <p>{t("agent.enabled")}: {telegram?.enabled ? t("agent.yes") : t("agent.no")}</p>
+          <p>{t("agent.allowedUsers")}: {telegram?.allowed_user_ids?.length ? telegram.allowed_user_ids.join(", ") : t("agent.none")}</p>
+          <p>{t("agent.homeChat")}: {telegram?.home_chat_id ?? t("agent.none")}</p>
         </div>
       )}
 
       <div className="mt-5 border-t border-[var(--border)] pt-4">
-        <p className="panel-label">Gateway log tail</p>
+        <p className="panel-label">{t("agent.gatewayLogTail")}</p>
         <pre className="mt-3 max-h-60 overflow-auto whitespace-pre-wrap border border-[var(--border)] bg-[var(--surface-raised)] p-4 text-xs leading-6 text-[var(--text-secondary)]">
-          {logs?.trim() ? logs : "No Telegram gateway output yet."}
+          {logs?.trim() ? logs : t("agent.noGatewayOutput")}
         </pre>
       </div>
     </div>

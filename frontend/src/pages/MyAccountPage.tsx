@@ -9,6 +9,7 @@ import {
   useUploadMyAvatar,
 } from "../api/auth";
 import { UserAvatar } from "../components/UserAvatar";
+import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../stores/sessionStore";
 
 function validatePassword(value: string) {
@@ -51,6 +52,7 @@ export function MyAccountPage() {
   const token = useSessionStore((state) => state.token);
   const setUser = useSessionStore((state) => state.setUser);
   const currentUser = useSessionStore((state) => state.user);
+  const { t } = useI18n();
   const { data: me } = useMe(Boolean(token));
   const updateProfile = useUpdateMyProfile();
   const updatePreferences = useUpdateMyPreferences();
@@ -76,13 +78,13 @@ export function MyAccountPage() {
     event.preventDefault();
     const normalized = displayName.trim();
     if (!normalized) {
-      setProfileMessage("Display name cannot be empty.");
+      setProfileMessage(`${t("users.displayName")} cannot be empty.`);
       return;
     }
     try {
       const updated = await updateProfile.mutateAsync({ display_name: normalized });
       setUser(updated);
-      setProfileMessage("Profile updated.");
+      setProfileMessage(t("account.profileUpdated"));
     } catch (error) {
       setProfileMessage(extractErrorMessage(error));
     }
@@ -113,7 +115,7 @@ export function MyAccountPage() {
       setNewPassword("");
       setConfirmPassword("");
       setPasswordError(null);
-      setPasswordMessage("Password updated.");
+      setPasswordMessage(t("account.passwordUpdated"));
     } catch (error) {
       setPasswordError(extractErrorMessage(error));
     }
@@ -126,7 +128,7 @@ export function MyAccountPage() {
     try {
       const updated = await uploadAvatar.mutateAsync(file);
       setUser(updated);
-      setProfileMessage("Operator icon updated.");
+      setProfileMessage(t("account.iconUpdated"));
     } catch (error) {
       setProfileMessage(extractErrorMessage(error));
     }
@@ -135,16 +137,16 @@ export function MyAccountPage() {
   return (
     <div className="grid gap-6 xl:grid-cols-[0.72fr_1.28fr]">
       <section className="panel-frame p-6">
-        <p className="panel-label">My account</p>
-        <h2 className="mt-2 text-3xl text-[var(--text-display)]">Operator profile</h2>
+        <p className="panel-label">{t("account.myAccount")}</p>
+        <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("account.operatorProfile")}</h2>
         <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-          Update the identity and personal preferences attached to your session without going through the admin user registry.
+          {t("account.profileCopy")}
         </p>
 
         <div className="mt-6 flex items-start gap-4">
           {currentUser ? <UserAvatar user={currentUser} sizeClass="h-20 w-20" className="shrink-0" /> : null}
           <div className="min-w-0">
-            <p className="panel-label">Username</p>
+            <p className="panel-label">{t("account.username")}</p>
             <p className="mt-2 text-lg text-[var(--text-display)]">{currentUser?.username ?? "..."}</p>
             <p className="mt-2 text-sm uppercase tracking-[0.1em] text-[var(--text-secondary)]">
               {currentUser?.role ?? "offline"}
@@ -154,12 +156,12 @@ export function MyAccountPage() {
 
         <form className="mt-6 space-y-4" onSubmit={onSaveProfile}>
           <label className="panel-field">
-            <span className="panel-label">Display name</span>
+            <span className="panel-label">{t("users.displayName")}</span>
             <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
           </label>
 
           <label className="panel-field">
-            <span className="panel-label">My theme</span>
+            <span className="panel-label">{t("account.myTheme")}</span>
             <select
               value={currentUser?.theme_preference ?? "default"}
               onChange={(event) => {
@@ -169,25 +171,49 @@ export function MyAccountPage() {
                   })
                   .then((updated) => {
                     setUser(updated);
-                    setProfileMessage("Theme preference updated.");
+                    setProfileMessage(`${t("account.myTheme")} updated.`);
                   })
                   .catch((error: unknown) => {
                     setProfileMessage(extractErrorMessage(error));
                   });
               }}
             >
-              <option value="default">Use instance default</option>
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-              <option value="system">System</option>
+              <option value="default">{t("common.useInstanceDefault")}</option>
+              <option value="dark">{t("common.dark")}</option>
+              <option value="light">{t("common.light")}</option>
+              <option value="system">{t("common.system")}</option>
+            </select>
+          </label>
+
+          <label className="panel-field">
+            <span className="panel-label">{t("account.myLanguage")}</span>
+            <select
+              value={currentUser?.locale_preference ?? "default"}
+              onChange={(event) => {
+                void updatePreferences
+                  .mutateAsync({
+                    locale_preference: event.target.value as "default" | "en" | "es",
+                  })
+                  .then((updated) => {
+                    setUser(updated);
+                    setProfileMessage(`${t("account.myLanguage")} updated.`);
+                  })
+                  .catch((error: unknown) => {
+                    setProfileMessage(extractErrorMessage(error));
+                  });
+              }}
+            >
+              <option value="default">{t("common.useInstanceDefault")}</option>
+              <option value="en">{t("common.english")}</option>
+              <option value="es">{t("common.spanish")}</option>
             </select>
           </label>
 
           <div className="border-t border-[var(--border)] pt-4">
-            <p className="panel-label">Operator icon</p>
+            <p className="panel-label">{t("account.operatorIcon")}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <label className="panel-button-secondary cursor-pointer">
-                Upload icon
+                {t("users.uploadIcon")}
                 <input
                   className="hidden"
                   type="file"
@@ -199,26 +225,29 @@ export function MyAccountPage() {
                 type="button"
                 className="panel-button-secondary"
                 onClick={() =>
-                  void deleteAvatar.mutateAsync().then((updated) => {
-                    setUser(updated);
-                    setProfileMessage("Operator icon removed.");
-                  }).catch((error: unknown) => {
-                    setProfileMessage(extractErrorMessage(error));
-                  })
+                  void deleteAvatar
+                    .mutateAsync()
+                    .then((updated) => {
+                      setUser(updated);
+                      setProfileMessage(t("account.iconRemoved"));
+                    })
+                    .catch((error: unknown) => {
+                      setProfileMessage(extractErrorMessage(error));
+                    })
                 }
                 disabled={!currentUser?.has_avatar || deleteAvatar.isPending}
               >
-                Remove icon
+                {t("users.removeIcon")}
               </button>
             </div>
           </div>
 
           <button className="panel-button-primary w-full" type="submit" disabled={updateProfile.isPending}>
-            Save profile
+            {t("account.saveProfile")}
           </button>
 
           {profileMessage ? (
-            <p className={`text-sm ${profileMessage.includes("updated") || profileMessage.includes("removed") ? "text-[var(--success)]" : "text-[var(--accent)]"}`}>
+            <p className={`text-sm ${profileMessage.includes("updated") || profileMessage.includes("removed") || profileMessage.includes("actualiz") || profileMessage.includes("elim") ? "text-[var(--success)]" : "text-[var(--accent)]"}`}>
               {profileMessage}
             </p>
           ) : null}
@@ -226,15 +255,15 @@ export function MyAccountPage() {
       </section>
 
       <section className="panel-frame p-6">
-        <p className="panel-label">Security</p>
-        <h2 className="mt-2 text-3xl text-[var(--text-display)]">Change password</h2>
+        <p className="panel-label">{t("account.security")}</p>
+        <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("account.changePassword")}</h2>
         <p className="mt-3 max-w-[44rem] text-sm leading-6 text-[var(--text-secondary)]">
-          To protect the instance, you must confirm your current password before setting a new one. The new password must contain at least 8 characters, 1 uppercase letter, 1 number and 1 special character.
+          {t("account.passwordCopy")}
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={onSavePassword}>
           <label className="panel-field">
-            <span className="panel-label">Current password</span>
+            <span className="panel-label">{t("account.currentPassword")}</span>
             <input
               type="password"
               value={currentPassword}
@@ -246,7 +275,7 @@ export function MyAccountPage() {
             />
           </label>
           <label className="panel-field">
-            <span className="panel-label">New password</span>
+            <span className="panel-label">{t("account.newPassword")}</span>
             <input
               type="password"
               value={newPassword}
@@ -258,7 +287,7 @@ export function MyAccountPage() {
             />
           </label>
           <label className="panel-field">
-            <span className="panel-label">Confirm new password</span>
+            <span className="panel-label">{t("account.confirmPassword")}</span>
             <input
               type="password"
               value={confirmPassword}
@@ -270,10 +299,10 @@ export function MyAccountPage() {
             />
           </label>
           <p className="text-xs uppercase tracking-[0.08em] text-[var(--text-disabled)]">
-            Minimum 8 characters / 1 uppercase / 1 number / 1 special
+            {t("users.passwordHint")}
           </p>
           <button className="panel-button-primary w-full" type="submit" disabled={changePassword.isPending}>
-            Save password
+            {t("account.savePassword")}
           </button>
           {passwordError ? <p className="text-sm text-[var(--accent)]">{passwordError}</p> : null}
           {passwordMessage ? <p className="text-sm text-[var(--success)]">{passwordMessage}</p> : null}

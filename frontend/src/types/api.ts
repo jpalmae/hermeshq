@@ -8,6 +8,7 @@ export interface User {
   role: "admin" | "user";
   is_active: boolean;
   theme_preference: "default" | "dark" | "light" | "system";
+  locale_preference: "default" | "en" | "es";
   avatar_url: string | null;
   has_avatar: boolean;
 }
@@ -68,6 +69,7 @@ export interface AppSettings {
   app_name: string | null;
   app_short_name: string | null;
   theme_mode: "dark" | "light" | "system";
+  default_locale: "en" | "es";
   default_provider: string | null;
   default_model: string | null;
   default_api_key_ref: string | null;

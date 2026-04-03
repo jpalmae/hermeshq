@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { resolveAssetUrl, usePublicBranding } from "../api/settings";
 import { login } from "../api/auth";
+import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../stores/sessionStore";
 
 export function LoginPage() {
@@ -13,6 +14,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { data: branding } = usePublicBranding();
+  const { t } = useI18n();
   const logoUrl = resolveAssetUrl(branding?.logo_url);
   const appName = branding?.app_name || "HermesHQ";
   const appShortName = branding?.app_short_name || appName;
@@ -26,7 +28,7 @@ export function LoginPage() {
       setSession(data.access_token, null);
       navigate("/");
     } catch {
-      setError("Invalid operator credentials");
+      setError(t("login.invalidCredentials"));
     } finally {
       setLoading(false);
     }
@@ -37,13 +39,13 @@ export function LoginPage() {
       <div className="mx-auto grid max-w-[1440px] gap-8 md:grid-cols-[1.2fr_0.8fr]">
         <section className="flex min-h-[65vh] flex-col justify-between border border-[var(--border)] bg-[var(--surface)] p-8 md:p-12">
           <div>
-            <p className="panel-label">Instance Branding</p>
+            <p className="panel-label">{t("login.instanceBranding")}</p>
             <p className="mt-3 text-sm text-[var(--text-secondary)]">
-              Global identity for this Hermes control surface.
+              {t("login.globalIdentity")}
             </p>
           </div>
           <div className="space-y-6">
-            <p className="panel-label">Fleet Status</p>
+            <p className="panel-label">{t("login.fleetStatus")}</p>
             {logoUrl ? (
               <img src={logoUrl} alt={appName} className="h-24 w-auto max-w-[18rem] object-contain" />
             ) : (
@@ -52,22 +54,21 @@ export function LoginPage() {
               </h1>
             )}
             <p className="max-w-[30rem] text-lg leading-relaxed text-[var(--text-primary)]">
-              {appName} is the industrial command surface for orchestrating autonomous Hermes agents across
-              long-running operational tasks.
+              {t("login.heroDescription", { appName })}
             </p>
           </div>
           <div className="grid gap-6 border-t border-[var(--border)] pt-6 md:grid-cols-3">
             <div>
-              <p className="panel-label">Primary</p>
-              <p className="mt-2 text-sm text-[var(--text-secondary)]">Fleet control</p>
+              <p className="panel-label">{t("login.primary")}</p>
+              <p className="mt-2 text-sm text-[var(--text-secondary)]">{t("login.fleetControl")}</p>
             </div>
             <div>
-              <p className="panel-label">Secondary</p>
-              <p className="mt-2 text-sm text-[var(--text-secondary)]">Task visibility</p>
+              <p className="panel-label">{t("login.secondary")}</p>
+              <p className="mt-2 text-sm text-[var(--text-secondary)]">{t("login.taskVisibility")}</p>
             </div>
             <div>
-              <p className="panel-label">Tertiary</p>
-              <p className="mt-2 text-sm text-[var(--text-secondary)]">Operational telemetry</p>
+              <p className="panel-label">{t("login.tertiary")}</p>
+              <p className="mt-2 text-sm text-[var(--text-secondary)]">{t("login.operationalTelemetry")}</p>
             </div>
           </div>
         </section>
@@ -75,12 +76,12 @@ export function LoginPage() {
         <section className="panel-frame flex items-end p-8 md:p-10">
           <form className="w-full space-y-6" onSubmit={onSubmit}>
             <div className="space-y-3">
-              <p className="panel-label">Operator Access</p>
-              <h2 className="text-3xl text-[var(--text-display)]">Authenticate into {appName}</h2>
+              <p className="panel-label">{t("login.operatorAccess")}</p>
+              <h2 className="text-3xl text-[var(--text-display)]">{t("login.authenticate", { appName })}</h2>
             </div>
 
             <label className="panel-field">
-              <span className="panel-label">Username</span>
+              <span className="panel-label">{t("login.username")}</span>
               <input
                 autoComplete="username"
                 value={username}
@@ -89,7 +90,7 @@ export function LoginPage() {
             </label>
 
             <label className="panel-field">
-              <span className="panel-label">Password</span>
+              <span className="panel-label">{t("login.password")}</span>
               <input
                 type="password"
                 autoComplete="current-password"
@@ -101,7 +102,7 @@ export function LoginPage() {
             {error ? <p className="panel-inline-status text-[var(--accent)]">[ERROR] {error}</p> : null}
 
             <button type="submit" className="panel-button-primary w-full" disabled={loading}>
-              {loading ? "[LOADING]" : "Enter Control Surface"}
+              {loading ? t("common.loading") : t("login.enterControlSurface")}
             </button>
           </form>
         </section>

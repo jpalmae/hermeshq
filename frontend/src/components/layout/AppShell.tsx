@@ -5,6 +5,7 @@ import { useMe, useUpdateMyPreferences } from "../../api/auth";
 import { UserAvatar } from "../UserAvatar";
 import { resolveAssetUrl, usePublicBranding } from "../../api/settings";
 import { useWebSocket } from "../../hooks/useWebSocket";
+import { useI18n } from "../../lib/i18n";
 import { useSessionStore } from "../../stores/sessionStore";
 import { useUIStore } from "../../stores/uiStore";
 
@@ -19,6 +20,7 @@ export function AppShell() {
   const { data: user } = useMe(Boolean(token));
   const { data: branding } = usePublicBranding();
   const updatePreferences = useUpdateMyPreferences();
+  const { t } = useI18n();
   const logoUrl = resolveAssetUrl(branding?.logo_url);
   const appName = branding?.app_name || "HermesHQ";
   const appShortName = branding?.app_short_name || appName;
@@ -50,11 +52,16 @@ export function AppShell() {
         { to: "/comms", label: "Comms" },
       ];
 
+  const localizedNavItems = navItems.map((item) => ({
+    ...item,
+    label: t(`nav.${item.label.charAt(0).toLowerCase()}${item.label.slice(1)}`),
+  }));
+
   const navContent = (
     <>
       <div className="space-y-10">
         <Link to="/" className="block">
-          <p className="panel-label">{sidebarCollapsed ? appShortName : `${appName} / Node Control`}</p>
+          <p className="panel-label">{sidebarCollapsed ? appShortName : t("shell.nodeControl", { appName })}</p>
           <div className="mt-4">
             {logoUrl ? (
               <img
@@ -69,13 +76,13 @@ export function AppShell() {
             )}
             {!sidebarCollapsed ? (
               <p className="mt-3 max-w-[18ch] text-sm text-[var(--text-secondary)]">
-                Multi-agent control surface for continuous operations.
+                {t("shell.multiAgent")}
               </p>
             ) : null}
           </div>
         </Link>
         <nav className="space-y-2">
-          {navItems.map((item) => (
+          {localizedNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -93,7 +100,7 @@ export function AppShell() {
           ))}
         </nav>
         <div className="space-y-4 border-t border-[var(--border)] pt-4">
-          <p className="panel-label">Operator</p>
+          <p className="panel-label">{t("shell.operator")}</p>
           {!sidebarCollapsed ? (
             <>
               <div className="mt-2 flex items-center gap-3">
@@ -101,7 +108,7 @@ export function AppShell() {
                 <p className="text-sm text-[var(--text-display)]">{user?.display_name ?? "..."}</p>
               </div>
               <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[var(--text-disabled)]">
-                {(user?.role ?? "offline")} / {user?.username ?? "offline"}
+                {(user?.role ?? t("shell.offline"))} / {user?.username ?? t("shell.offline")}
               </p>
               <NavLink
                 to="/account"
@@ -112,7 +119,7 @@ export function AppShell() {
                   }`
                 }
               >
-                <span>My account</span>
+                <span>{t("nav.myAccount")}</span>
               </NavLink>
               <NavLink
                 to="/manual"
@@ -123,10 +130,10 @@ export function AppShell() {
                   }`
                 }
               >
-                <span>Manual</span>
+                <span>{t("nav.manual")}</span>
               </NavLink>
               <label className="panel-field mt-4">
-                <span className="panel-label">My theme</span>
+                <span className="panel-label">{t("shell.myTheme")}</span>
                 <select
                   value={user?.theme_preference ?? "default"}
                   onChange={(event) => {
@@ -137,10 +144,27 @@ export function AppShell() {
                     });
                   }}
                 >
-                  <option value="default">Use instance default</option>
-                  <option value="dark">Dark</option>
-                  <option value="light">Light</option>
-                  <option value="system">System</option>
+                  <option value="default">{t("common.useInstanceDefault")}</option>
+                  <option value="dark">{t("common.dark")}</option>
+                  <option value="light">{t("common.light")}</option>
+                  <option value="system">{t("common.system")}</option>
+                </select>
+              </label>
+              <label className="panel-field">
+                <span className="panel-label">{t("shell.myLanguage")}</span>
+                <select
+                  value={user?.locale_preference ?? "default"}
+                  onChange={(event) => {
+                    void updatePreferences.mutateAsync({
+                      locale_preference: event.target.value as "default" | "en" | "es",
+                    }).then((updatedUser) => {
+                      setUser(updatedUser);
+                    });
+                  }}
+                >
+                  <option value="default">{t("common.useInstanceDefault")}</option>
+                  <option value="en">{t("common.english")}</option>
+                  <option value="es">{t("common.spanish")}</option>
                 </select>
               </label>
             </>
@@ -157,7 +181,7 @@ export function AppShell() {
                     isActive ? "text-[var(--text-display)]" : "text-[var(--text-secondary)]"
                   }`
                 }
-                title="My account"
+                title={t("nav.myAccount")}
               >
                 <span>AC</span>
               </NavLink>
@@ -169,14 +193,14 @@ export function AppShell() {
                     isActive ? "text-[var(--text-display)]" : "text-[var(--text-secondary)]"
                   }`
                 }
-                title="Manual"
+                title={t("nav.manual")}
               >
                 <span>MA</span>
               </NavLink>
             </>
           )}
           <button type="button" className="panel-button-secondary w-full" onClick={logout}>
-            {sidebarCollapsed ? "Out" : "Sign out"}
+            {sidebarCollapsed ? "Out" : t("nav.signOut")}
           </button>
         </div>
       </div>
@@ -217,10 +241,10 @@ export function AppShell() {
               className="panel-button-secondary"
               onClick={() => setMobileNavOpen(true)}
             >
-              Menu
+              {t("nav.menu")}
             </button>
             <button type="button" className="panel-button-secondary" onClick={toggleSidebar}>
-              {sidebarCollapsed ? "Expand nav" : "Collapse nav"}
+              {sidebarCollapsed ? t("nav.expand") : t("nav.collapse")}
             </button>
           </div>
           <Outlet />
@@ -235,7 +259,7 @@ export function AppShell() {
           >
             <div className="mb-6 flex justify-end">
               <button type="button" className="panel-button-secondary !min-h-0 px-4 py-2" onClick={() => setMobileNavOpen(false)}>
-                Close
+                {t("nav.close")}
               </button>
             </div>
             <div className="flex h-[calc(100%-4rem)] flex-col">

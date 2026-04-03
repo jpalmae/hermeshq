@@ -4,11 +4,13 @@ import { useAgents } from "../api/agents";
 import { useCreateSecret, useSecrets } from "../api/secrets";
 import { resolveAssetUrl, useDeleteBrandAsset, useSettings, useUpdateSettings, useUploadBrandAsset } from "../api/settings";
 import { useCreateTemplate, useTemplates } from "../api/templates";
+import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../stores/sessionStore";
 
 export function SettingsPage() {
   const currentUser = useSessionStore((state) => state.user);
   const isAdmin = currentUser?.role === "admin";
+  const { t } = useI18n();
   const { data: agents } = useAgents();
   const { data: secrets } = useSecrets(isAdmin);
   const { data: templates } = useTemplates(isAdmin);
@@ -24,6 +26,7 @@ export function SettingsPage() {
   const [appName, setAppName] = useState("");
   const [appShortName, setAppShortName] = useState("");
   const [themeMode, setThemeMode] = useState<"dark" | "light" | "system">("dark");
+  const [defaultLocale, setDefaultLocale] = useState<"en" | "es">("en");
   const [secretName, setSecretName] = useState("");
   const [secretProvider, setSecretProvider] = useState("");
   const [secretValue, setSecretValue] = useState("");
@@ -40,6 +43,7 @@ export function SettingsPage() {
     setAppName(settings?.app_name ?? "");
     setAppShortName(settings?.app_short_name ?? "");
     setThemeMode(settings?.theme_mode ?? "dark");
+    setDefaultLocale(settings?.default_locale ?? "en");
     setDefaultProvider(settings?.default_provider ?? "");
     setDefaultModel(settings?.default_model ?? "");
     setDefaultApiKeyRef(settings?.default_api_key_ref ?? "");
@@ -84,6 +88,7 @@ export function SettingsPage() {
       app_name: appName || null,
       app_short_name: appShortName || null,
       theme_mode: themeMode,
+      default_locale: defaultLocale,
     });
   }
 
@@ -121,10 +126,10 @@ export function SettingsPage() {
   if (currentUser && !isAdmin) {
     return (
       <section className="panel-frame p-6">
-        <p className="panel-label">Settings</p>
-        <h2 className="mt-2 text-3xl text-[var(--text-display)]">Admin access required</h2>
+        <p className="panel-label">{t("settings.settings")}</p>
+        <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("settings.adminRequired")}</h2>
         <p className="mt-4 max-w-[42rem] text-sm leading-6 text-[var(--text-secondary)]">
-          Instance settings, branding, secrets and templates are only available to admins.
+          {t("settings.adminCopy")}
         </p>
       </section>
     );
@@ -134,74 +139,81 @@ export function SettingsPage() {
     <div className="grid gap-6">
       <section className="grid gap-6 xl:grid-cols-4">
         <form className="panel-frame p-6" onSubmit={submitBranding}>
-          <p className="panel-label">Branding</p>
-          <h2 className="mt-2 text-2xl text-[var(--text-display)]">Instance identity</h2>
+          <p className="panel-label">{t("settings.branding")}</p>
+          <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("settings.instanceIdentity")}</h2>
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-            Define the app name visible in the UI, browser title, login shell and the instance default theme.
+            {t("settings.identityCopy")}
           </p>
           <div className="mt-6 space-y-4">
             <label className="panel-field">
-              <span className="panel-label">App name</span>
+              <span className="panel-label">{t("settings.appName")}</span>
               <input value={appName} onChange={(event) => setAppName(event.target.value)} placeholder="HermesHQ" />
             </label>
             <label className="panel-field">
-              <span className="panel-label">Short name</span>
+              <span className="panel-label">{t("settings.shortName")}</span>
               <input value={appShortName} onChange={(event) => setAppShortName(event.target.value)} placeholder="HQ" />
             </label>
             <label className="panel-field">
-              <span className="panel-label">Theme</span>
+              <span className="panel-label">{t("settings.theme")}</span>
               <select value={themeMode} onChange={(event) => setThemeMode(event.target.value as "dark" | "light" | "system")}>
-                <option value="dark">Dark</option>
-                <option value="light">Light</option>
-                <option value="system">System</option>
+                <option value="dark">{t("common.dark")}</option>
+                <option value="light">{t("common.light")}</option>
+                <option value="system">{t("common.system")}</option>
+              </select>
+            </label>
+            <label className="panel-field">
+              <span className="panel-label">{t("settings.language")}</span>
+              <select value={defaultLocale} onChange={(event) => setDefaultLocale(event.target.value as "en" | "es")}>
+                <option value="en">{t("common.english")}</option>
+                <option value="es">{t("common.spanish")}</option>
               </select>
             </label>
             <button className="panel-button-primary w-full" type="submit">
-              Save branding
+              {t("settings.saveBranding")}
             </button>
           </div>
         </form>
 
         <form className="panel-frame p-6" onSubmit={submitDefaults}>
-          <p className="panel-label">Runtime defaults</p>
-          <h2 className="mt-2 text-2xl text-[var(--text-display)]">Instance providers</h2>
+          <p className="panel-label">{t("settings.runtimeDefaults")}</p>
+          <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("settings.instanceProviders")}</h2>
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-            These defaults prefill new agents unless you override them per agent.
+            {t("settings.providersCopy")}
           </p>
           <div className="mt-6 space-y-4">
             <label className="panel-field">
-              <span className="panel-label">Provider</span>
+              <span className="panel-label">{t("agents.provider")}</span>
               <input value={defaultProvider} onChange={(event) => setDefaultProvider(event.target.value)} />
             </label>
             <label className="panel-field">
-              <span className="panel-label">Model</span>
+              <span className="panel-label">{t("agents.model")}</span>
               <input value={defaultModel} onChange={(event) => setDefaultModel(event.target.value)} />
             </label>
             <label className="panel-field">
-              <span className="panel-label">Secret ref</span>
+              <span className="panel-label">{t("agents.secretRef")}</span>
               <input value={defaultApiKeyRef} onChange={(event) => setDefaultApiKeyRef(event.target.value)} />
             </label>
             <label className="panel-field">
-              <span className="panel-label">Base URL</span>
+              <span className="panel-label">{t("agents.baseUrl")}</span>
               <input value={defaultBaseUrl} onChange={(event) => setDefaultBaseUrl(event.target.value)} />
             </label>
             <button className="panel-button-primary w-full" type="submit">
-              Save runtime defaults
+              {t("settings.saveRuntimeDefaults")}
             </button>
           </div>
         </form>
 
         <section className="panel-frame p-6">
-          <p className="panel-label">Active branding</p>
-          <h2 className="mt-2 text-2xl text-[var(--text-display)]">Assets</h2>
+          <p className="panel-label">{t("settings.activeBranding")}</p>
+          <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("settings.assets")}</h2>
           <div className="mt-6 space-y-5">
             <div className="border-b border-[var(--border)] pb-4">
-              <p className="panel-label">Logo</p>
+              <p className="panel-label">{t("settings.logo")}</p>
               <div className="mt-3 flex items-center gap-3">
                 {logoUrl ? (
                   <img src={logoUrl} alt={settings?.app_name ?? "Logo"} className="h-12 w-auto max-w-[8rem] object-contain" />
                 ) : (
-                  <p className="text-sm text-[var(--text-secondary)]">No logo configured</p>
+                  <p className="text-sm text-[var(--text-secondary)]">{t("settings.noLogo")}</p>
                 )}
               </div>
               <div className="mt-4 flex flex-wrap gap-3">
@@ -226,18 +238,18 @@ export function SettingsPage() {
                   }}
                   disabled={!settings?.has_logo}
                 >
-                  Remove logo
+                  {t("settings.removeLogo")}
                 </button>
               </div>
             </div>
 
             <div className="border-b border-[var(--border)] pb-4">
-              <p className="panel-label">Favicon</p>
+              <p className="panel-label">{t("settings.favicon")}</p>
               <div className="mt-3 flex items-center gap-3">
                 {faviconUrl ? (
                   <img src={faviconUrl} alt="Favicon" className="h-10 w-10 rounded border border-[var(--border)] object-contain" />
                 ) : (
-                  <p className="text-sm text-[var(--text-secondary)]">No favicon configured</p>
+                  <p className="text-sm text-[var(--text-secondary)]">{t("settings.noFavicon")}</p>
                 )}
               </div>
               <div className="mt-4 flex flex-wrap gap-3">
@@ -262,7 +274,7 @@ export function SettingsPage() {
                   }}
                   disabled={!settings?.has_favicon}
                 >
-                  Remove favicon
+                  {t("settings.removeFavicon")}
                 </button>
               </div>
             </div>

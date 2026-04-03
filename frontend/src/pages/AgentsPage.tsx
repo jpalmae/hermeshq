@@ -5,6 +5,7 @@ import { useAgentAction, useAgents, useCreateAgent, useDeleteAgent } from "../ap
 import { AgentAvatar } from "../components/AgentAvatar";
 import { useNodes } from "../api/nodes";
 import { useSettings } from "../api/settings";
+import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../stores/sessionStore";
 
 const emptyForm = {
@@ -40,6 +41,7 @@ function statusTone(status: string) {
 export function AgentsPage() {
   const currentUser = useSessionStore((state) => state.user);
   const isAdmin = currentUser?.role === "admin";
+  const { t } = useI18n();
   const { data: nodes } = useNodes(isAdmin);
   const { data: agents } = useAgents();
   const { data: settings } = useSettings(isAdmin);
@@ -95,7 +97,7 @@ export function AgentsPage() {
   }
 
   async function onDelete(agentId: string, agentName: string) {
-    const confirmed = window.confirm(`Delete agent "${agentName}"? This will remove its workspace and task history.`);
+    const confirmed = window.confirm(t("agents.deleteConfirm", { name: agentName }));
     if (!confirmed) {
       return;
     }
@@ -103,7 +105,7 @@ export function AgentsPage() {
       await deleteAgent.mutateAsync(agentId);
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Delete request failed. Reload the page and try again.";
+        error instanceof Error ? error.message : t("agents.deleteFailed");
       window.alert(message);
     }
   }
@@ -114,17 +116,16 @@ export function AgentsPage() {
       {isAdmin ? (
       <section className="panel-frame p-6">
         <div className="space-y-3">
-          <p className="panel-label">Create agent</p>
-          <h2 className="text-3xl text-[var(--text-display)]">Local runtime bootstrap</h2>
+          <p className="panel-label">{t("agents.createAgent")}</p>
+          <h2 className="text-3xl text-[var(--text-display)]">{t("agents.localRuntimeBootstrap")}</h2>
           <p className="text-sm leading-6 text-[var(--text-secondary)]">
-            Start with a local agent profile. Workspaces, config files and runtime status are
-            provisioned automatically.
+            {t("agents.createDescription")}
           </p>
         </div>
 
         <form className="mt-8 space-y-5" onSubmit={onSubmit}>
           <label className="panel-field">
-            <span className="panel-label">Node</span>
+            <span className="panel-label">{t("agents.node")}</span>
             <select
               value={form.node_id || activeNodeId}
               onChange={(event) => setForm((current) => ({ ...current, node_id: event.target.value }))}
@@ -138,7 +139,7 @@ export function AgentsPage() {
           </label>
 
           <label className="panel-field">
-            <span className="panel-label">Friendly name</span>
+            <span className="panel-label">{t("agents.friendlyName")}</span>
             <input
               value={form.friendly_name}
               onChange={(event) =>
@@ -154,12 +155,12 @@ export function AgentsPage() {
                   return next;
                 })
               }
-              placeholder="What humans should call this agent"
+              placeholder={t("agents.friendlyNamePlaceholder")}
             />
           </label>
 
           <label className="panel-field">
-            <span className="panel-label">Name</span>
+            <span className="panel-label">{t("agents.name")}</span>
             <input
               value={form.name}
               onChange={(event) => {
@@ -173,12 +174,12 @@ export function AgentsPage() {
                   return next;
                 });
               }}
-              placeholder="Technical operator name"
+              placeholder={t("agents.namePlaceholder")}
             />
           </label>
 
           <label className="panel-field">
-            <span className="panel-label">Slug</span>
+            <span className="panel-label">{t("agents.slug")}</span>
             <input
               value={form.slug}
               onChange={(event) => {
@@ -189,7 +190,7 @@ export function AgentsPage() {
           </label>
 
           <label className="panel-field">
-            <span className="panel-label">Model</span>
+            <span className="panel-label">{t("agents.model")}</span>
             <input
               value={form.model}
               onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}
@@ -198,7 +199,7 @@ export function AgentsPage() {
           </label>
 
           <label className="panel-field">
-            <span className="panel-label">Provider</span>
+            <span className="panel-label">{t("agents.provider")}</span>
             <input
               value={form.provider}
               onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value }))}
@@ -207,7 +208,7 @@ export function AgentsPage() {
           </label>
 
           <label className="panel-field">
-            <span className="panel-label">Secret ref</span>
+            <span className="panel-label">{t("agents.secretRef")}</span>
             <input
               value={form.api_key_ref}
               onChange={(event) => setForm((current) => ({ ...current, api_key_ref: event.target.value }))}
@@ -216,7 +217,7 @@ export function AgentsPage() {
           </label>
 
           <label className="panel-field">
-            <span className="panel-label">Base URL</span>
+            <span className="panel-label">{t("agents.baseUrl")}</span>
             <input
               value={form.base_url}
               onChange={(event) => setForm((current) => ({ ...current, base_url: event.target.value }))}
@@ -225,7 +226,7 @@ export function AgentsPage() {
           </label>
 
           <label className="panel-field">
-            <span className="panel-label">System prompt</span>
+            <span className="panel-label">{t("agents.systemPrompt")}</span>
             <textarea
               rows={4}
               value={form.system_prompt}
@@ -236,7 +237,7 @@ export function AgentsPage() {
           </label>
 
           <button type="submit" className="panel-button-primary w-full" disabled={createAgent.isPending}>
-            {createAgent.isPending ? "[LOADING]" : "Create agent"}
+            {createAgent.isPending ? t("common.loading") : t("agents.create")}
           </button>
         </form>
       </section>
@@ -245,10 +246,10 @@ export function AgentsPage() {
       <section className="panel-frame p-6">
         <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
           <div>
-            <p className="panel-label">Fleet inventory</p>
-            <h2 className="mt-2 text-3xl text-[var(--text-display)]">Agent matrix</h2>
+            <p className="panel-label">{t("agents.fleetInventory")}</p>
+            <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("agents.agentMatrix")}</h2>
           </div>
-          <p className="panel-label">{agents?.length ?? 0} registered</p>
+          <p className="panel-label">{t("agents.registered", { count: agents?.length ?? 0 })}</p>
         </div>
         <div className="mt-2">
           {(agents ?? []).map((agent) => (
