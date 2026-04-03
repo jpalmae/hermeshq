@@ -199,6 +199,7 @@ const manualSections: ManualSection[] = [
       "TUI Skin permite subir un archivo YAML de skin de Hermes y usarlo como apariencia global para todas las TUI de agentes.",
       "Runtime defaults controla provider, modelo, base URL y secreto por defecto para los nuevos agentes, ahora apoyándose en presets del catálogo de providers.",
       "Provider registry permite mantener los providers soportados por la instancia, editando nombre, URL base, modelo por defecto y estado habilitado sin necesidad de tocar código.",
+      "Si usas Kimi Coding, el preset correcto queda apuntando al endpoint oficial de Moonshot (`https://api.moonshot.ai/v1`).",
       "Los usuarios sin privilegios no pueden modificar estos parámetros globales, pero sí elegir su tema e idioma personales.",
     ],
   },

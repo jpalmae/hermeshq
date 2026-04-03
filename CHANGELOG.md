@@ -31,3 +31,4 @@
 - `Settings` now controls the instance default language, while `My Account` and the sidebar operator section expose a personal language override for every user.
 - `Settings` now also controls a shared Hermes TUI skin, which HermesHQ propagates into each agent `HERMES_HOME` and activates through `display.skin`.
 - `Settings` now includes a provider registry where admins can edit provider names, base URLs, enabled state and default models. Agent creation and instance runtime defaults can start from those presets instead of typing provider/model/base URL/secret ref by hand.
+- The `Kimi Coding` preset was corrected to use Moonshot's official endpoint `https://api.moonshot.ai/v1` instead of the incompatible `api.kimi.com/coding` URL.

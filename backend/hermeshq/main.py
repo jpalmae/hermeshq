@@ -65,6 +65,11 @@ async def bootstrap_defaults() -> None:
                 session.add(ProviderDefinition(**payload))
             else:
                 seed_provider_defaults(provider, payload)
+                if provider.slug == "kimi-coding":
+                    if (provider.base_url or "").strip().rstrip("/") == "https://api.kimi.com/coding":
+                        provider.base_url = "https://api.moonshot.ai/v1"
+                    if (provider.default_model or "").strip() in {"kimi-for-coding", "kimi-k2-turbo-preview"}:
+                        provider.default_model = "kimi-k2.5"
         obsolete_openai_oauth = await session.get(ProviderDefinition, "openai-oauth")
         if obsolete_openai_oauth:
             await session.delete(obsolete_openai_oauth)
