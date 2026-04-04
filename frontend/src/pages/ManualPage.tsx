@@ -229,6 +229,7 @@ const manualSections: ManualSection[] = [
       "Si después de suspender el laptop la app se ve vacía, vuelve a iniciar sesión. HermesHQ ya corta la sesión expirada en vez de mostrar datos en falso.",
       "Si el PTY muestra caracteres extraños con dos usuarios conectados al mismo agente, recuerda que la TUI compartida no está pensada para multi-control intensivo.",
       "Mantén friendly names claros y describe bien el rol del agente para que la delegación, los schedules y los canales externos sean más comprensibles.",
+      "Para respaldo de instancia, el repositorio incluye scripts de backup y restore que guardan PostgreSQL, workspaces, `.env` y el token de `cloudflared` sin depender de procedimientos manuales externos.",
     ],
   },
 ];

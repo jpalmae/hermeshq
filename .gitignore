@@ -1,5 +1,6 @@
 .DS_Store
 .env
+.cloudflared.env
 .venv/
 __pycache__/
 *.pyc
@@ -7,4 +8,5 @@ backend/hermeshq.db
 frontend/node_modules/
 frontend/dist/
 workspaces/
+backups/
 tmp-*.png

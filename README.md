@@ -84,6 +84,33 @@ Useful overrides:
 - `FRONTEND_PORT=3420`
 - `BACKEND_PORT=8000`
 
+## Backup and restore
+
+HermesHQ now includes instance-level backup and restore scripts in [`scripts/backup-instance.sh`](/Users/jpalmae/dev/hermeshq/scripts/backup-instance.sh) and [`scripts/restore-instance.sh`](/Users/jpalmae/dev/hermeshq/scripts/restore-instance.sh).
+
+What the backup captures:
+
+- PostgreSQL as a custom-format dump
+- the persistent Docker volume mounted at `/app/workspaces`
+- `.env` if present
+- `.cloudflared.env` if present
+
+Create a backup bundle:
+
+```bash
+./scripts/backup-instance.sh
+```
+
+This writes a timestamped archive under `./backups/`.
+
+Restore an instance from a bundle:
+
+```bash
+./scripts/restore-instance.sh ./backups/hermeshq-backup-YYYYMMDDTHHMMSSZ.tar.gz
+```
+
+The restore script also restarts `cloudflared` if `.cloudflared.env` is present and contains a `TUNNEL_TOKEN`.
+
 ## Run backend
 
 ```bash
@@ -133,6 +160,7 @@ URLs:
 - The Docker stack uses PostgreSQL 16 and the backend connects through `asyncpg`.
 - `docker-compose.yml` now reads its runtime ports, admin bootstrap credentials, PostgreSQL credentials, CORS origins and frontend API base from `.env`, so local installs and remote server installs can share the same stack definition.
 - The bundled `install.sh` supports `curl | bash` deployment from GitHub and generates a first-run `.env` when needed.
+- The codebase now bundles first-party backup and restore scripts for PostgreSQL, workspaces, `.env` and `cloudflared` token state.
 - The frontend now falls back to the current browser hostname for API and WebSocket calls if `VITE_API_BASE_URL` is not explicitly set, which makes remote deployments behave correctly without being pinned to `localhost`.
 - Task execution is strict: if `hermes-agent` is missing, the agent has no valid credentials, or the provider rejects the request, the task is marked `failed`.
 - The bundled Docker runtime uses `/bin/sh` for PTY sessions so the embedded terminal works reliably inside the container image.

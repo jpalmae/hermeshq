@@ -5,6 +5,7 @@
 - added a first-run `install.sh` so HermesHQ can be installed with a single `curl | bash` command from GitHub
 - parameterized the Docker stack through `.env` for ports, bootstrap admin credentials, PostgreSQL credentials, CORS origins and frontend API base URL
 - updated the frontend API/WebSocket base resolution so remote installs no longer depend on `localhost`
+- added built-in `scripts/backup-instance.sh` and `scripts/restore-instance.sh` to preserve and rehydrate PostgreSQL, workspaces, `.env` and `cloudflared` token state
 
 ## 2026-04-03
 
