@@ -15,7 +15,7 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - hermeshq_postgres:/var/lib/postgresql/data
-    restart: unless-stopped
+    restart: always
 
   backend:
     build:
@@ -39,7 +39,7 @@ services:
       - hermeshq_workspaces:/app/workspaces
     ports:
       - "${BACKEND_PORT:-8000}:8000"
-    restart: unless-stopped
+    restart: always
 
   frontend:
     build:
@@ -52,7 +52,7 @@ services:
       - backend
     ports:
       - "${FRONTEND_PORT:-3420}:80"
-    restart: unless-stopped
+    restart: always
 
 volumes:
   hermeshq_postgres:
