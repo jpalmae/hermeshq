@@ -3,16 +3,16 @@ services:
     image: postgres:16
     container_name: hermeshq-postgres
     environment:
-      POSTGRES_DB: hermeshq
-      POSTGRES_USER: hermeshq
-      POSTGRES_PASSWORD: hermeshq
+      POSTGRES_DB: ${POSTGRES_DB:-hermeshq}
+      POSTGRES_USER: ${POSTGRES_USER:-hermeshq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hermeshq}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hermeshq -d hermeshq"]
       interval: 5s
       timeout: 5s
       retries: 12
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - hermeshq_postgres:/var/lib/postgresql/data
     restart: unless-stopped
@@ -26,19 +26,19 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+asyncpg://hermeshq:hermeshq@postgres:5432/hermeshq
-      JWT_SECRET: change-me
-      ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: admin123
-      ADMIN_DISPLAY_NAME: Hermes Operator
-      WORKSPACES_ROOT: /app/workspaces
-      BRANDING_ROOT: /app/workspaces/_branding
-      PTY_SHELL: /bin/sh
-      CORS_ORIGINS: '["http://localhost:3420","http://frontend"]'
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hermeshq}:${POSTGRES_PASSWORD:-hermeshq}@postgres:5432/${POSTGRES_DB:-hermeshq}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      ADMIN_DISPLAY_NAME: ${ADMIN_DISPLAY_NAME:-Hermes Operator}
+      WORKSPACES_ROOT: ${WORKSPACES_ROOT:-/app/workspaces}
+      BRANDING_ROOT: ${BRANDING_ROOT:-/app/workspaces/_branding}
+      PTY_SHELL: ${PTY_SHELL:-/bin/sh}
+      CORS_ORIGINS: '${CORS_ORIGINS_JSON:-["http://localhost:3420","http://frontend"]}'
     volumes:
       - hermeshq_workspaces:/app/workspaces
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     restart: unless-stopped
 
   frontend:
@@ -46,12 +46,12 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        VITE_API_BASE_URL: http://localhost:8000/api
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
     container_name: hermeshq-frontend
     depends_on:
       - backend
     ports:
-      - "3420:80"
+      - "${FRONTEND_PORT:-3420}:80"
     restart: unless-stopped
 
 volumes:

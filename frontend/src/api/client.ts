@@ -1,9 +1,10 @@
 import axios from "axios";
 import type { AxiosError } from "axios";
 
+import { resolveApiBase } from "../lib/apiBase";
 import { useSessionStore } from "../stores/sessionStore";
 
-const baseURL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
+const baseURL = resolveApiBase();
 
 export const apiClient = axios.create({
   baseURL,

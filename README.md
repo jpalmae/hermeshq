@@ -52,6 +52,38 @@ The UI loads these Google Fonts globally:
 - `Space Grotesk`
 - `Space Mono`
 
+## One-line install
+
+For a clean server install with Docker already available:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jpalmae/hermeshq/main/install.sh | bash
+```
+
+Recommended when the server has multiple interfaces:
+
+```bash
+HERMESHQ_HOST=100.72.224.83 curl -fsSL https://raw.githubusercontent.com/jpalmae/hermeshq/main/install.sh | bash
+```
+
+What the installer does:
+
+- downloads the current `main` branch tarball
+- installs it into `~/hermeshq`
+- preserves an existing `.env` if present
+- generates a new `.env` with bootstrap credentials if this is the first install
+- builds and starts the Docker stack
+
+Useful overrides:
+
+- `INSTALL_DIR=/srv/hermeshq`
+- `BRANCH=main`
+- `HERMESHQ_HOST=your-server-ip-or-dns`
+- `ADMIN_USERNAME=admin`
+- `ADMIN_PASSWORD=YourPassword123!`
+- `FRONTEND_PORT=3420`
+- `BACKEND_PORT=8000`
+
 ## Run backend
 
 ```bash
@@ -99,12 +131,15 @@ URLs:
 ## Notes
 
 - The Docker stack uses PostgreSQL 16 and the backend connects through `asyncpg`.
+- `docker-compose.yml` now reads its runtime ports, admin bootstrap credentials, PostgreSQL credentials, CORS origins and frontend API base from `.env`, so local installs and remote server installs can share the same stack definition.
+- The bundled `install.sh` supports `curl | bash` deployment from GitHub and generates a first-run `.env` when needed.
+- The frontend now falls back to the current browser hostname for API and WebSocket calls if `VITE_API_BASE_URL` is not explicitly set, which makes remote deployments behave correctly without being pinned to `localhost`.
 - Task execution is strict: if `hermes-agent` is missing, the agent has no valid credentials, or the provider rejects the request, the task is marked `failed`.
 - The bundled Docker runtime uses `/bin/sh` for PTY sessions so the embedded terminal works reliably inside the container image.
 - Admins can upload a single Hermes skin YAML in `Settings`. HermesHQ distributes it to every agent installation under `.hermes/skins/`, writes `display.skin` into each agent `config.yaml`, and new TUI sessions pick up that shared look automatically.
 - Telegram bindings are now managed per agent. HermesHQ writes the agent's `.hermes/config.yaml` and `.hermes/.env`, then supervises `hermes gateway run` for that agent. Configure a bot token as a secret and reference it from the agent detail page.
 - Admins now manage a provider registry in `Settings`. Presets exist for Kimi Coding, Z.AI Coding Plan, OpenRouter API, OpenAI API, Gemini API and Anthropic API. Their base URLs and default models remain editable so the catalog can adapt if a provider changes its endpoint conventions.
-- The bundled `Kimi Coding` preset now targets Moonshot's official API endpoint at `https://api.moonshot.ai/v1`, which aligns with Hermes' `kimi-coding` provider wiring.
+- The bundled `Kimi Coding` preset now targets `https://api.kimi.com/coding/v1`.
 - New agents no longer depend only on free-text provider fields. The create flow can start from a provider preset, auto-filling runtime provider, model, base URL and secret selection while still allowing manual overrides when needed.
 - `Comms` now enforces real hierarchy rules for `Delegate`: independent agents can delegate freely, subordinate agents can escalate upward or delegate downward inside their own branch, and cross-branch lateral delegation is blocked.
 - The `Comms` screen reflects those rules before sending by disabling invalid targets and visualizing upward, downward and blocked routes for the selected source agent.

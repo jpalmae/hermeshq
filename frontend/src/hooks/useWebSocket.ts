@@ -1,13 +1,11 @@
 import { useEffect } from "react";
 
+import { resolveWsRoot } from "../lib/apiBase";
 import { useRealtimeStore } from "../stores/realtimeStore";
 import { useSessionStore } from "../stores/sessionStore";
 
 function resolveWsUrl(token: string) {
-  const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
-  const root = apiBase.replace(/\/api$/, "");
-  const wsRoot = root.replace(/^http/, "ws");
-  return `${wsRoot}/ws/stream?token=${encodeURIComponent(token)}`;
+  return `${resolveWsRoot()}/ws/stream?token=${encodeURIComponent(token)}`;
 }
 
 export function useWebSocket() {
@@ -31,4 +29,3 @@ export function useWebSocket() {
     };
   }, [token, pushEvent]);
 }
-

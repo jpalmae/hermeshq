@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { resolveWsRoot } from "../lib/apiBase";
 import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../stores/sessionStore";
 
@@ -22,9 +23,7 @@ function encodeChunk(data: string) {
 }
 
 function resolvePtyUrl(agentId: string, token: string) {
-  const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
-  const root = apiBase.replace(/\/api$/, "");
-  return `${root.replace(/^http/, "ws")}/ws/pty/${agentId}?token=${encodeURIComponent(token)}`;
+  return `${resolveWsRoot()}/ws/pty/${agentId}?token=${encodeURIComponent(token)}`;
 }
 
 export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string }) {

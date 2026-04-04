@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient } from "./client";
+import { resolveApiBase } from "../lib/apiBase";
 import type { AppSettings } from "../types/api";
 
-const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
+const apiBase = resolveApiBase();
 const apiRoot = apiBase.replace(/\/api$/, "");
 
 export function resolveAssetUrl(path: string | null | undefined) {

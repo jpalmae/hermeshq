@@ -20,11 +20,25 @@ const manualSections: ManualSection[] = [
     summary:
       "HermesHQ es un panel operativo para crear, supervisar y conversar con agentes Hermes desde una sola interfaz. La app separa tareas globales de instancia y tareas específicas de cada agente.",
     bullets: [
-      "El menú izquierdo es la navegación principal. Desde ahí accedes a Dashboard, Agents, Tasks, Schedules, Comms, Manual y, si eres admin, Users, Nodes y Settings.",
+      "El menú izquierdo es la navegación principal. Desde ahí accedes a Dashboard, Agents, Tasks, Schedules y Comms; si eres admin también verás Users, Nodes y Settings.",
       "El tema visual se resuelve con dos niveles: tema por defecto de la instancia y preferencia personal del usuario.",
       "El idioma sigue la misma lógica: la instancia define un idioma por defecto y cada usuario puede sobrescribirlo entre inglés y español desde My Account o desde la sección Operator del sidebar.",
       "Las secciones visibles dependen de tu rol. Un usuario normal solo ve lo que le fue asignado por un administrador.",
       "Los cambios relevantes en agentes, tareas y canales se reflejan en tiempo real mediante el runtime stream y los paneles de detalle.",
+    ],
+  },
+  {
+    id: "install",
+    eyebrow: "Despliegue",
+    title: "Instalación rápida con una sola línea",
+    summary:
+      "HermesHQ puede instalarse en un servidor limpio con Docker mediante un instalador remoto estilo curl pipe bash.",
+    bullets: [
+      "El instalador descarga la rama main desde GitHub, instala la app en `~/hermeshq`, preserva un `.env` existente y genera uno nuevo cuando se trata de una primera instalación.",
+      "El comando base es `curl -fsSL https://raw.githubusercontent.com/jpalmae/hermeshq/main/install.sh | bash`.",
+      "Si el servidor tiene varias interfaces o una IP fija conocida, conviene invocarlo con `HERMESHQ_HOST=<ip-o-dns>` para que el frontend quede apuntando al backend correcto.",
+      "La stack Docker queda parametrizada por `.env`, incluyendo puertos, credenciales bootstrap, PostgreSQL, CORS y base URL del frontend.",
+      "Después de instalar, puedes entrar al frontend y continuar la configuración desde Settings, Users, Providers y los detalles de cada agente.",
     ],
   },
   {
@@ -175,6 +189,7 @@ const manualSections: ManualSection[] = [
       "Además del registro administrativo de usuarios, cada operador dispone de una página personal para gestionar su propia identidad y seguridad.",
     bullets: [
       "My Account está disponible desde la sección Operator del sidebar, sin necesidad de privilegios de administrador.",
+      "Manual también vive dentro de la sección Operator, de modo que la ayuda quede cerca del perfil del usuario y no mezclada con el menú operativo principal.",
       "Desde ahí puedes cambiar display name, icono/avatar, preferencia de tema personal y preferencia personal de idioma.",
       "También puedes cambiar tu propia contraseña validando primero la contraseña actual.",
       "La política de contraseña sigue siendo la misma en todo el sistema: mínimo ocho caracteres, una mayúscula, un número y un carácter especial.",
@@ -199,7 +214,7 @@ const manualSections: ManualSection[] = [
       "TUI Skin permite subir un archivo YAML de skin de Hermes y usarlo como apariencia global para todas las TUI de agentes.",
       "Runtime defaults controla provider, modelo, base URL y secreto por defecto para los nuevos agentes, ahora apoyándose en presets del catálogo de providers.",
       "Provider registry permite mantener los providers soportados por la instancia, editando nombre, URL base, modelo por defecto y estado habilitado sin necesidad de tocar código.",
-      "Si usas Kimi Coding, el preset correcto queda apuntando al endpoint oficial de Moonshot (`https://api.moonshot.ai/v1`).",
+      "Si usas Kimi Coding, el preset correcto queda apuntando a `https://api.kimi.com/coding/v1`.",
       "Los usuarios sin privilegios no pueden modificar estos parámetros globales, pero sí elegir su tema e idioma personales.",
     ],
   },
