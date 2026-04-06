@@ -159,7 +159,9 @@ const manualSections: ManualSection[] = [
       "Los IDs permitidos determinan quién puede interactuar con el agente desde Telegram. Cualquier usuario fuera de esa lista queda excluido.",
       "El token del bot debe guardarse como secreto y luego asociarse al agente desde su configuración de mensajería.",
       "El estado del canal se supervisa desde HermesHQ, pero el procesamiento real ocurre en la instalación Hermes del agente.",
+      "Cada mensaje nuevo que entra o sale por Telegram queda trazado en el `Activity stream` del agente como evento `channel.telegram.inbound` o `channel.telegram.outbound`, lo que permite auditoría sin mezclarlo con el runtime ledger.",
       "Si una delegación nace desde Telegram, HermesHQ conserva el contexto del chat de origen. Cuando el agente subordinado termina, el resultado puede volver automáticamente a ese mismo chat de Telegram.",
+      "No conectes el mismo bot a dos instancias activas de HermesHQ al mismo tiempo. Telegram solo permite un polling activo por token y, si hay conflicto, se rompe tanto la entrega de mensajes como la trazabilidad.",
     ],
   },
   {

@@ -1,10 +1,11 @@
 import asyncio
 import contextlib
+import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hermeshq.core.events import EventBroker
@@ -23,6 +24,9 @@ class GatewayProcessHandle:
     log_path: str
     log_handle: object
     monitor_task: asyncio.Task | None = None
+    activity_task: asyncio.Task | None = None
+    known_activity_keys: set[str] | None = None
+    session_file_state: dict[str, tuple[int, int]] | None = None
 
 
 class GatewaySupervisor:
@@ -118,7 +122,19 @@ class GatewaySupervisor:
             )
             await session.commit()
 
+        sessions_dir = self._sessions_dir(agent_row.workspace_path)
+        known_activity_keys, session_file_state = await asyncio.to_thread(self._snapshot_session_activity, sessions_dir)
         monitor = asyncio.create_task(self._monitor_process(agent_id, platform, process, log_path.as_posix(), log_handle))
+        activity_task = asyncio.create_task(
+            self._activity_sync_loop(
+                agent_row.id,
+                agent_row.node_id,
+                agent_row.workspace_path,
+                platform,
+                known_activity_keys,
+                session_file_state,
+            )
+        )
         self.processes[key] = GatewayProcessHandle(
             agent_id=agent_id,
             platform=platform,
@@ -126,6 +142,9 @@ class GatewaySupervisor:
             log_path=log_path.as_posix(),
             log_handle=log_handle,
             monitor_task=monitor,
+            activity_task=activity_task,
+            known_activity_keys=known_activity_keys,
+            session_file_state=session_file_state,
         )
         await self.event_broker.publish(
             {"type": "messaging.status_changed", "agent_id": agent_id, "status": "running", "message": platform}
@@ -137,6 +156,8 @@ class GatewaySupervisor:
         if handle:
             if handle.monitor_task:
                 handle.monitor_task.cancel()
+            if handle.activity_task:
+                handle.activity_task.cancel()
             if handle.process.poll() is None:
                 handle.process.terminate()
                 try:
@@ -203,7 +224,9 @@ class GatewaySupervisor:
                 log_handle.flush()
                 log_handle.close()
 
-        self.processes.pop((agent_id, platform), None)
+        handle = self.processes.pop((agent_id, platform), None)
+        if handle and handle.activity_task:
+            handle.activity_task.cancel()
         async with self.session_factory() as session:
             agent = await session.get(Agent, agent_id)
             channel = await self._get_channel(session, agent_id, platform)
@@ -231,6 +254,76 @@ class GatewaySupervisor:
             }
         )
 
+    async def _activity_sync_loop(
+        self,
+        agent_id: str,
+        node_id: str | None,
+        workspace_path: str,
+        platform: str,
+        known_activity_keys: set[str],
+        session_file_state: dict[str, tuple[int, int]],
+    ) -> None:
+        if platform != "telegram":
+            return
+
+        sessions_dir = self._sessions_dir(workspace_path)
+        while True:
+            try:
+                await asyncio.sleep(5)
+                new_entries = await asyncio.to_thread(
+                    self._collect_new_session_activity,
+                    sessions_dir,
+                    known_activity_keys,
+                    session_file_state,
+                )
+                if not new_entries:
+                    continue
+                async with self.session_factory() as session:
+                    existing_keys = {
+                        source_key
+                        for source_key in await self._recent_activity_source_keys(session, agent_id)
+                        if source_key
+                    }
+                    for entry in new_entries:
+                        if entry["key"] in existing_keys:
+                            continue
+                        session.add(
+                            ActivityLog(
+                                agent_id=agent_id,
+                                node_id=node_id,
+                                event_type=f"channel.telegram.{entry['direction']}",
+                                severity="info",
+                                message=entry["content"],
+                                details={
+                                    "platform": "telegram",
+                                    "direction": entry["direction"],
+                                    "session_id": entry["session_id"],
+                                    "session_file": entry["session_file"],
+                                    "session_format": entry["session_format"],
+                                    "message_index": entry["message_index"],
+                                    "message_timestamp": entry.get("message_timestamp"),
+                                    "source_key": entry["key"],
+                                },
+                            )
+                        )
+                    await session.commit()
+                for entry in new_entries:
+                    if entry["key"] in existing_keys:
+                        continue
+                    await self.event_broker.publish(
+                        {
+                            "type": "messaging.activity",
+                            "agent_id": agent_id,
+                            "message": entry["content"],
+                            "platform": "telegram",
+                            "direction": entry["direction"],
+                        }
+                    )
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                continue
+
     async def _get_channel(self, session: AsyncSession, agent_id: str, platform: str) -> MessagingChannel | None:
         result = await session.execute(
             select(MessagingChannel).where(
@@ -240,5 +333,131 @@ class GatewaySupervisor:
         )
         return result.scalar_one_or_none()
 
+    async def _recent_activity_source_keys(self, session: AsyncSession, agent_id: str) -> list[str]:
+        result = await session.execute(
+            select(ActivityLog.details)
+            .where(
+                ActivityLog.agent_id == agent_id,
+                ActivityLog.event_type.in_(("channel.telegram.inbound", "channel.telegram.outbound")),
+            )
+            .order_by(desc(ActivityLog.created_at))
+            .limit(1000)
+        )
+        keys: list[str] = []
+        for details in result.scalars():
+            if isinstance(details, dict):
+                source_key = details.get("source_key")
+                if isinstance(source_key, str) and source_key:
+                    keys.append(source_key)
+        return keys
+
     def _log_path(self, workspace_path: str, platform: str) -> Path:
         return self.installation_manager.build_hermes_home(workspace_path) / "logs" / f"{platform}-gateway.log"
+
+    def _sessions_dir(self, workspace_path: str) -> Path:
+        return self.installation_manager.build_hermes_home(workspace_path) / "sessions"
+
+    def _snapshot_session_activity(self, sessions_dir: Path) -> tuple[set[str], dict[str, tuple[int, int]]]:
+        known_activity_keys: set[str] = set()
+        session_file_state: dict[str, tuple[int, int]] = {}
+        if not sessions_dir.exists():
+            return known_activity_keys, session_file_state
+        for path in sorted(sessions_dir.glob("*.jsonl")):
+            if not path.is_file():
+                continue
+            stat = path.stat()
+            session_file_state[path.as_posix()] = (stat.st_mtime_ns, stat.st_size)
+            for entry in self._read_telegram_session_entries(path):
+                known_activity_keys.add(entry["key"])
+        return known_activity_keys, session_file_state
+
+    def _collect_new_session_activity(
+        self,
+        sessions_dir: Path,
+        known_activity_keys: set[str],
+        session_file_state: dict[str, tuple[int, int]],
+    ) -> list[dict]:
+        if not sessions_dir.exists():
+            return []
+
+        new_entries: list[dict] = []
+        current_files: set[str] = set()
+        for path in sorted(sessions_dir.glob("*.jsonl")):
+            if not path.is_file():
+                continue
+            current_files.add(path.as_posix())
+            stat = path.stat()
+            fingerprint = (stat.st_mtime_ns, stat.st_size)
+            if session_file_state.get(path.as_posix()) == fingerprint:
+                continue
+            session_file_state[path.as_posix()] = fingerprint
+            for entry in self._read_telegram_session_entries(path):
+                if entry["key"] in known_activity_keys:
+                    continue
+                known_activity_keys.add(entry["key"])
+                new_entries.append(entry)
+
+        for tracked in list(session_file_state):
+            if tracked not in current_files:
+                session_file_state.pop(tracked, None)
+        return new_entries
+
+    def _read_telegram_session_entries(self, path: Path) -> list[dict]:
+        try:
+            if path.suffix != ".jsonl":
+                return []
+            lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            if not lines:
+                return []
+            payloads = []
+            for line in lines:
+                try:
+                    payloads.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+            if not payloads or payloads[0].get("platform") != "telegram":
+                return []
+            messages = [item for item in payloads if item.get("role") in {"user", "assistant"}]
+            return self._extract_entries_from_messages(
+                messages=messages,
+                session_id=path.stem,
+                session_file=path.name,
+                session_format="jsonl",
+            )
+        except Exception:
+            return []
+        return []
+
+    def _extract_entries_from_messages(
+        self,
+        messages: list[dict],
+        session_id: str,
+        session_file: str,
+        session_format: str,
+    ) -> list[dict]:
+        entries: list[dict] = []
+        for index, message in enumerate(messages):
+            role = message.get("role")
+            if role not in {"user", "assistant"}:
+                continue
+            content = message.get("content")
+            if not isinstance(content, str):
+                continue
+            content = content.strip()
+            if not content:
+                continue
+            direction = "inbound" if role == "user" else "outbound"
+            message_timestamp = message.get("timestamp")
+            entries.append(
+                {
+                    "key": f"{session_id}:{role}:{message_timestamp or ''}:{content}",
+                    "direction": direction,
+                    "content": content,
+                    "session_id": session_id,
+                    "session_file": session_file,
+                    "session_format": session_format,
+                    "message_index": index,
+                    "message_timestamp": message_timestamp,
+                }
+            )
+        return entries
