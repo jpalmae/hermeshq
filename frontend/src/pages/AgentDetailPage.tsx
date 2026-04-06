@@ -183,6 +183,10 @@ export function AgentDetailPage() {
       title: "Chat message",
       prompt,
       priority: 5,
+      metadata: {
+        conversation: true,
+        source: "agent_conversation",
+      },
     });
   }
 

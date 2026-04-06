@@ -58,6 +58,8 @@ class HermesRuntime:
         agent: Agent,
         task: Task,
         stream_callback,
+        conversation_history: list[dict] | None = None,
+        session_id: str | None = None,
     ) -> RuntimeExecutionResult:
         if not self._agent_class:
             raise RuntimeExecutionError("hermes-agent runtime is not installed in the backend environment")
@@ -67,7 +69,15 @@ class HermesRuntime:
         await self.installation_manager.sync_agent_installation(agent)
         runtime_system_prompt = await self.installation_manager.get_runtime_system_prompt(agent)
         try:
-            return await self._run_real(agent, task, stream_callback, api_key, runtime_system_prompt)
+            return await self._run_real(
+                agent,
+                task,
+                stream_callback,
+                api_key,
+                runtime_system_prompt,
+                conversation_history=conversation_history,
+                session_id=session_id,
+            )
         except RuntimeExecutionError:
             raise
         except Exception as exc:
@@ -80,6 +90,8 @@ class HermesRuntime:
         stream_callback,
         api_key: str | None,
         runtime_system_prompt: str,
+        conversation_history: list[dict] | None = None,
+        session_id: str | None = None,
     ) -> RuntimeExecutionResult:
         workspace_path = self.installation_manager.resolve_workspace_path(agent.workspace_path)
         hermes_home = self.installation_manager.build_hermes_home(agent.workspace_path)
@@ -98,6 +110,8 @@ class HermesRuntime:
             "system_prompt": runtime_system_prompt,
             "cwd": str(workspace_path),
             "hermes_home": str(hermes_home),
+            "conversation_history": conversation_history or [],
+            "session_id": session_id,
         }
 
         process = await asyncio.create_subprocess_exec(

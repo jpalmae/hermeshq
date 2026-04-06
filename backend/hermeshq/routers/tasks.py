@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hermeshq.core.security import ensure_agent_access, get_accessible_agent_ids, get_current_user, is_admin
 from hermeshq.database import get_db_session
 from hermeshq.models.agent import Agent
+from hermeshq.models.conversation_thread import ConversationThread
 from hermeshq.models.task import Task
 from hermeshq.models.user import User
 from hermeshq.schemas.task import TaskCreate, TaskRead
@@ -33,8 +34,36 @@ async def create_task(
     db: AsyncSession = Depends(get_db_session),
 ) -> TaskRead:
     agent = await ensure_agent_access(db, current_user, payload.agent_id)
-    task = Task(**payload.model_dump())
+    payload_data = payload.model_dump()
+    metadata = payload_data.pop("metadata", {}) or {}
+    inferred_conversation = (payload.title or "").strip() == "Chat message"
+    if inferred_conversation and not metadata.get("conversation"):
+        metadata["conversation"] = True
+        metadata.setdefault("source", "agent_conversation")
+    thread = None
+    if metadata.get("conversation"):
+        result = await db.execute(
+            select(ConversationThread).where(
+                ConversationThread.agent_id == payload.agent_id,
+                ConversationThread.user_id == current_user.id,
+            )
+        )
+        thread = result.scalar_one_or_none()
+        if not thread:
+            thread = ConversationThread(
+                agent_id=payload.agent_id,
+                user_id=current_user.id,
+                title=(payload.title or payload.prompt[:80]).strip() or "Conversation",
+            )
+            db.add(thread)
+            await db.flush()
+        metadata["thread_id"] = thread.id
+        metadata["thread_user_id"] = current_user.id
+    task = Task(**payload_data, metadata_json=metadata)
     db.add(task)
+    await db.flush()
+    if thread:
+        thread.last_task_id = task.id
     await db.commit()
     await db.refresh(task)
     if agent.status == "running":

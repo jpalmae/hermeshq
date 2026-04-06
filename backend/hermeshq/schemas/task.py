@@ -11,6 +11,7 @@ class TaskCreate(BaseModel):
     prompt: str
     system_override: str | None = None
     priority: int = 5
+    metadata: dict = Field(default_factory=dict)
 
 
 class TaskRead(ORMModel):

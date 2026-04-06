@@ -137,3 +137,23 @@ def _run_schema_updates(sync_connection) -> None:
         sync_connection.execute(text("CREATE INDEX ix_messaging_channels_agent_id ON messaging_channels(agent_id)"))
         sync_connection.execute(text("CREATE INDEX ix_messaging_channels_platform ON messaging_channels(platform)"))
         sync_connection.execute(text("CREATE INDEX ix_messaging_channels_status ON messaging_channels(status)"))
+    if not inspector.has_table("conversation_threads"):
+        sync_connection.execute(
+            text(
+                """
+                CREATE TABLE conversation_threads (
+                    id VARCHAR(36) PRIMARY KEY,
+                    agent_id VARCHAR(36) NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    title VARCHAR(255) NULL,
+                    last_task_id VARCHAR(36) NULL REFERENCES tasks(id) ON DELETE SET NULL,
+                    notes TEXT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uq_conversation_threads_agent_user UNIQUE (agent_id, user_id)
+                )
+                """
+            )
+        )
+        sync_connection.execute(text("CREATE INDEX ix_conversation_threads_agent_id ON conversation_threads(agent_id)"))
+        sync_connection.execute(text("CREATE INDEX ix_conversation_threads_user_id ON conversation_threads(user_id)"))

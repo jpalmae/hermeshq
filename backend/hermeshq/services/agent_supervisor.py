@@ -35,6 +35,52 @@ class AgentSupervisor:
         self.active_tasks: dict[str, asyncio.Task] = {}
         self._pending_callbacks: list = []
 
+    def _build_conversation_assistant_content(self, task: Task) -> str:
+        if task.response and task.response.strip():
+            return task.response.strip()
+        streamed = "".join(
+            str(message.get("content") or "")
+            for message in (task.messages_json or [])
+            if message.get("role") == "assistant"
+        ).strip()
+        if streamed:
+            return streamed
+        if task.status == "failed" and task.error_message:
+            return task.error_message.strip()
+        return ""
+
+    async def _build_conversation_history(self, session: AsyncSession, task: Task) -> list[dict]:
+        metadata = task.metadata_json or {}
+        if not metadata.get("conversation"):
+            return []
+        thread_id = str(metadata.get("thread_id") or "").strip()
+
+        result = await session.execute(
+            select(Task)
+            .where(Task.agent_id == task.agent_id)
+            .order_by(desc(Task.queued_at))
+            .limit(24)
+        )
+        candidates = list(result.scalars().all())
+        prior_turns = [
+            item
+            for item in reversed(candidates)
+            if item.id != task.id
+            and (item.metadata_json or {}).get("conversation")
+            and (
+                not thread_id
+                or str((item.metadata_json or {}).get("thread_id") or "").strip() == thread_id
+            )
+        ]
+        history: list[dict] = []
+        for prior in prior_turns[-6:]:
+            if prior.prompt.strip():
+                history.append({"role": "user", "content": prior.prompt.strip()})
+            assistant_content = self._build_conversation_assistant_content(prior)
+            if assistant_content:
+                history.append({"role": "assistant", "content": assistant_content})
+        return history
+
     async def bootstrap_runtime(self) -> None:
         async with self.session_factory() as session:
             result = await session.execute(select(Agent).where(Agent.status == "running"))
@@ -110,6 +156,8 @@ class AgentSupervisor:
 
     async def _run_task(self, task_id: str) -> None:
         try:
+            conversation_history: list[dict] = []
+            session_id: str | None = None
             async with self.session_factory() as session:
                 task = await session.get(Task, task_id)
                 if not task:
@@ -119,6 +167,12 @@ class AgentSupervisor:
                     return
                 if agent.status != "running":
                     return
+                conversation_history = await self._build_conversation_history(session, task)
+                metadata = task.metadata_json or {}
+                if metadata.get("conversation"):
+                    candidate_session_id = str(metadata.get("thread_id") or "").strip()
+                    if candidate_session_id:
+                        session_id = candidate_session_id
                 task.status = "running"
                 task.started_at = utcnow()
                 task.messages_json = []
@@ -174,7 +228,13 @@ class AgentSupervisor:
                     }
                 )
 
-            execution = await self.runtime.execute(agent, task, stream_callback)
+            execution = await self.runtime.execute(
+                agent,
+                task,
+                stream_callback,
+                conversation_history=conversation_history,
+                session_id=session_id,
+            )
             async with self.session_factory() as session:
                 task = await session.get(Task, task_id)
                 agent = await session.get(Agent, task.agent_id) if task else None

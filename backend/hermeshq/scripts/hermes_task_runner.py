@@ -51,6 +51,7 @@ def main() -> int:
             provider=payload.get("provider"),
             base_url=payload.get("base_url"),
             api_key=payload.get("api_key"),
+            session_id=payload.get("session_id"),
             quiet_mode=True,
             enabled_toolsets=payload.get("enabled_toolsets") or None,
             disabled_toolsets=payload.get("disabled_toolsets") or None,
@@ -66,6 +67,7 @@ def main() -> int:
             user_message=payload["prompt"],
             task_id=payload["task_id"],
             system_message=payload.get("system_override"),
+            conversation_history=payload.get("conversation_history") or None,
         )
 
         messages = result.get("messages", [])
