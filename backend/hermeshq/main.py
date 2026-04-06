@@ -1,6 +1,7 @@
 import base64
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -85,6 +86,10 @@ async def bootstrap_defaults() -> None:
                 name=agent.name,
                 slug=agent.slug,
             )
+            if agent.workspace_path:
+                workspace_path = Path(agent.workspace_path)
+                if not workspace_path.is_absolute():
+                    agent.workspace_path = str((settings.workspaces_root.parent / workspace_path).resolve())
             candidate_slug = resolved_slug
             suffix = 2
             while candidate_slug in seen_slugs:
@@ -198,8 +203,8 @@ async def pty_stream(websocket: WebSocket, agent_id: str) -> None:
         if mode == "headless":
             await websocket.close(code=4400, reason="Agent is headless")
             return
-        cwd = agent.workspace_path
         await app.state.installation_manager.sync_agent_installation(agent)
+        cwd = str(app.state.installation_manager.resolve_workspace_path(agent.workspace_path))
         env = await app.state.installation_manager.build_process_env(agent)
         command = ["hermes"]
     session = await app.state.pty_manager.create_session(agent_id, mode, cwd, command=command, env=env)

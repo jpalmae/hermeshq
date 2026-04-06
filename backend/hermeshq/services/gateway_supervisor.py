@@ -96,12 +96,13 @@ class GatewaySupervisor:
                 raise ValueError(channel.last_error)
             await self.installation_manager.sync_agent_installation(agent_row)
             env = await self.installation_manager.build_gateway_env(agent_row, platform)
+            workspace_path = self.installation_manager.resolve_workspace_path(agent_row.workspace_path)
             log_path = self._log_path(agent_row.workspace_path, platform)
             log_path.parent.mkdir(parents=True, exist_ok=True)
             log_handle = log_path.open("a", encoding="utf-8")
             process = subprocess.Popen(
                 ["hermes", "gateway", "run"],
-                cwd=agent_row.workspace_path,
+                cwd=str(workspace_path),
                 env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=log_handle,
@@ -129,7 +130,7 @@ class GatewaySupervisor:
             self._activity_sync_loop(
                 agent_row.id,
                 agent_row.node_id,
-                agent_row.workspace_path,
+                str(workspace_path),
                 platform,
                 known_activity_keys,
                 session_file_state,

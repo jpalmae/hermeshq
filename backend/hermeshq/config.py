@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     )
 
     def model_post_init(self, __context) -> None:
+        self.workspaces_root = self.workspaces_root.resolve()
         if self.branding_root is None:
             self.branding_root = self.workspaces_root / "_branding"
         if self.hermes_skins_root is None:
@@ -47,6 +48,10 @@ class Settings(BaseSettings):
             self.agent_assets_root = self.workspaces_root / "_agent_assets"
         if self.user_assets_root is None:
             self.user_assets_root = self.workspaces_root / "_user_assets"
+        self.branding_root = self.branding_root.resolve()
+        self.hermes_skins_root = self.hermes_skins_root.resolve()
+        self.agent_assets_root = self.agent_assets_root.resolve()
+        self.user_assets_root = self.user_assets_root.resolve()
 
 
 @lru_cache

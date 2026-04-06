@@ -3,7 +3,7 @@ from pathlib import Path
 
 class WorkspaceManager:
     def __init__(self, root: Path) -> None:
-        self.root = root
+        self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
 
     def build_workspace_path(self, agent_id: str) -> Path:
@@ -25,7 +25,7 @@ class WorkspaceManager:
             encoding="utf-8",
         )
         (workspace / "SOUL.md").write_text(soul_md or "# Soul\n\nOperational.", encoding="utf-8")
-        return str(workspace)
+        return str(workspace.resolve())
 
     def delete_workspace(self, agent_id: str) -> None:
         workspace = self.build_workspace_path(agent_id)

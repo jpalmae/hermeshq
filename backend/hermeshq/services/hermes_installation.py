@@ -33,8 +33,15 @@ class HermesInstallationManager:
         self.session_factory = session_factory
         self.secret_vault = secret_vault
 
+    def resolve_workspace_path(self, workspace_path: str) -> Path:
+        path = Path(workspace_path)
+        if path.is_absolute():
+            return path
+        project_root = Path(__file__).resolve().parents[2]
+        return (project_root / path).resolve()
+
     def build_hermes_home(self, workspace_path: str) -> Path:
-        return Path(workspace_path) / ".hermes"
+        return self.resolve_workspace_path(workspace_path) / ".hermes"
 
     async def sync_agent_installation(self, agent: Agent) -> list[dict]:
         hermes_home = self.build_hermes_home(agent.workspace_path)

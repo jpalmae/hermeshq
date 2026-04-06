@@ -81,6 +81,7 @@ class HermesRuntime:
         api_key: str | None,
         runtime_system_prompt: str,
     ) -> RuntimeExecutionResult:
+        workspace_path = self.installation_manager.resolve_workspace_path(agent.workspace_path)
         hermes_home = self.installation_manager.build_hermes_home(agent.workspace_path)
         process_env = await self.installation_manager.build_process_env(agent)
         payload = {
@@ -95,7 +96,7 @@ class HermesRuntime:
             "disabled_toolsets": agent.disabled_toolsets or None,
             "max_iterations": agent.max_iterations,
             "system_prompt": runtime_system_prompt,
-            "cwd": agent.workspace_path,
+            "cwd": str(workspace_path),
             "hermes_home": str(hermes_home),
         }
 
