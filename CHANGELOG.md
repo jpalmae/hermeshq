@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- added real deletion for installed agent skills from the Hermes skill registry; managed skills are also removed from the agent assignment list on delete
+- increased the Hermes runtime subprocess output limit to reduce false `failed` tasks caused by oversized final result lines
 - added a first-run `install.sh` so HermesHQ can be installed with a single `curl | bash` command from GitHub
 - parameterized the Docker stack through `.env` for ports, bootstrap admin credentials, PostgreSQL credentials, CORS origins and frontend API base URL
 - updated the frontend API/WebSocket base resolution so remote installs no longer depend on `localhost`

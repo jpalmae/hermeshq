@@ -119,6 +119,7 @@ class HermesRuntime:
             str(Path(__file__).resolve().parents[1] / "scripts" / "hermes_task_runner.py"),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            limit=1024 * 1024,
             cwd=str(Path(__file__).resolve().parents[2]),
             env={**process_env, "HERMESHQ_TASK_PAYLOAD": json.dumps(payload)},
         )

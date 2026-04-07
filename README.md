@@ -25,6 +25,7 @@ Initial end-to-end implementation for a multi-agent operations panel based on th
   - scheduled tasks
   - workspace explorer APIs
   - local PTY websocket
+  - installed skill deletion per agent
 - React/Vite frontend with:
   - Nothing-inspired dark mode foundation
   - English/Spanish UI localization
@@ -168,6 +169,7 @@ URLs:
 - Admins can upload a single Hermes skin YAML in `Settings`. HermesHQ distributes it to every agent installation under `.hermes/skins/`, writes `display.skin` into each agent `config.yaml`, and new TUI sessions pick up that shared look automatically.
 - Telegram bindings are now managed per agent. HermesHQ writes the agent's `.hermes/config.yaml` and `.hermes/.env`, then supervises `hermes gateway run` for that agent. Configure a bot token as a secret and reference it from the agent detail page.
 - Telegram conversations now leave a visible audit trail in the agent `Activity stream`. New inbound and outbound chat messages are persisted as `channel.telegram.inbound` and `channel.telegram.outbound` events.
+- The Hermes skill registry now supports real deletion of installed skills. Managed skills are removed from both the agent assignment list and the agent `HERMES_HOME`; local skills can also be deleted directly from the installed registry panel.
 - A Telegram bot token should be attached to only one active HermesHQ instance at a time. Running the same bot in two environments causes Telegram polling conflicts and breaks both delivery and traceability.
 - Admins now manage a provider registry in `Settings`. Presets exist for Kimi Coding, Z.AI Coding Plan, OpenRouter API, OpenAI API, Gemini API and Anthropic API. Their base URLs and default models remain editable so the catalog can adapt if a provider changes its endpoint conventions.
 - The bundled `Kimi Coding` preset now targets `https://api.kimi.com/coding/v1`.
@@ -176,6 +178,7 @@ URLs:
 - The `Comms` screen reflects those rules before sending by disabling invalid targets and visualizing upward, downward and blocked routes for the selected source agent.
 - Delegations now create a real callback path to the delegating agent when the child task finishes. HermesHQ persists a `delegate_result` message in `Comms`, creates a follow-up task for the parent agent, and surfaces the result in the delegator runtime ledger.
 - If a delegation originates from Telegram, HermesHQ now preserves the source chat context and can auto-reply into that same Telegram conversation once the delegated child task completes.
+- The Hermes runtime subprocess reader now uses a larger output limit, which reduces false `failed` statuses when a task produces a very large final payload line.
 - Agent avatars are stored per agent under the persistent workspaces volume and are rendered across the agent detail page, dashboard and dependency canvas.
 - User avatars are stored separately from branding and can be managed from the `Users` page. The active operator avatar is reflected in the shell and dashboard.
 - Instance theme is still controlled by admins in `Settings`, but each user can now override the theme from the left shell without needing admin access.

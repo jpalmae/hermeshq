@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { useUpdateAgent } from "../api/agents";
-import { useAgentSkills, useSkillCatalog } from "../api/skills";
+import { useAgentSkills, useDeleteInstalledSkill, useSkillCatalog } from "../api/skills";
 import { useI18n } from "../lib/i18n";
 import type { Agent } from "../types/api";
 
@@ -13,6 +13,7 @@ export function AgentSkillsPanel({ agent, embedded = false }: { agent: Agent; em
   const { t } = useI18n();
   const [query, setQuery] = useState("");
   const updateAgent = useUpdateAgent();
+  const deleteInstalledSkill = useDeleteInstalledSkill();
   const { data: agentSkills, isLoading: isSkillsLoading } = useAgentSkills(agent.id);
   const { data: catalog, isFetching: isSearching } = useSkillCatalog(query, 10);
 
@@ -35,6 +36,10 @@ export function AgentSkillsPanel({ agent, embedded = false }: { agent: Agent; em
 
   async function removeSkill(identifier: string) {
     await saveSkills(assigned.filter((skill) => skill !== identifier));
+  }
+
+  async function deleteSkill(path: string) {
+    await deleteInstalledSkill.mutateAsync({ agentId: agent.id, path });
   }
 
   return (
@@ -60,7 +65,7 @@ export function AgentSkillsPanel({ agent, embedded = false }: { agent: Agent; em
                   type="button"
                   className="rounded-full border border-[var(--border-visible)] px-3 py-2 font-mono text-xs uppercase tracking-[0.08em] text-[var(--text-primary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
                   onClick={() => removeSkill(identifier)}
-                  disabled={updateAgent.isPending}
+                  disabled={updateAgent.isPending || deleteInstalledSkill.isPending}
                   title={t("agent.removeSkillTitle")}
                 >
                   {identifier}
@@ -103,7 +108,7 @@ export function AgentSkillsPanel({ agent, embedded = false }: { agent: Agent; em
                         type="button"
                         className="panel-button-secondary !min-h-0 !px-4 !py-2"
                         onClick={() => addSkill(skill.identifier)}
-                        disabled={updateAgent.isPending || assigned.includes(skill.identifier)}
+                        disabled={updateAgent.isPending || deleteInstalledSkill.isPending || assigned.includes(skill.identifier)}
                       >
                         {assigned.includes(skill.identifier) ? t("agent.assigned") : t("agent.add")}
                       </button>
@@ -134,7 +139,20 @@ export function AgentSkillsPanel({ agent, embedded = false }: { agent: Agent; em
                           {skill.path ?? t("agent.installed")}
                         </p>
                       </div>
-                      <p className="panel-label">{skill.managed ? t("agent.managed") : t("agent.local")}</p>
+                      <div className="flex items-center gap-3">
+                        <p className="panel-label">{skill.managed ? t("agent.managed") : t("agent.local")}</p>
+                        {skill.path ? (
+                          <button
+                            type="button"
+                            className="panel-button-secondary !min-h-0 !px-4 !py-2"
+                            onClick={() => deleteSkill(skill.path!)}
+                            disabled={deleteInstalledSkill.isPending || updateAgent.isPending}
+                            title={t("agent.deleteInstalledSkillTitle")}
+                          >
+                            {t("agent.deleteInstalledSkill")}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                     <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
                       {skill.description || t("agent.noInstalledDescription")}

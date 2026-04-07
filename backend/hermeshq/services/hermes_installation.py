@@ -89,6 +89,45 @@ class HermesInstallationManager:
         hermes_home = self.build_hermes_home(agent.workspace_path)
         return self._scan_installed_skills(hermes_home)
 
+    async def delete_installed_skill(self, agent: Agent, installed_path: str) -> list[dict]:
+        hermes_home = self.build_hermes_home(agent.workspace_path)
+        skills_root = (hermes_home / "skills").resolve()
+        target_dir = (skills_root / installed_path).resolve()
+
+        try:
+            target_dir.relative_to(skills_root)
+        except ValueError as exc:
+            raise HermesInstallationError("Invalid skill path") from exc
+
+        if not target_dir.exists() or not target_dir.is_dir() or not (target_dir / "SKILL.md").exists():
+            raise HermesInstallationError("Installed skill not found")
+
+        metadata_path = target_dir / ".hermeshq-skill.json"
+        metadata: dict | None = None
+        if metadata_path.exists():
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            except Exception:
+                metadata = None
+
+        managed_identifier = metadata.get("identifier") if isinstance(metadata, dict) else None
+        is_managed = "hermeshq-managed" in target_dir.parts
+
+        if is_managed:
+            current_skills = [skill for skill in agent.skills if isinstance(skill, str) and skill.strip()]
+            if managed_identifier:
+                agent.skills = [skill for skill in current_skills if skill != managed_identifier]
+            else:
+                expected_name = target_dir.name
+                agent.skills = [
+                    skill
+                    for skill in current_skills
+                    if skill.strip().split("/")[-1] != expected_name
+                ]
+
+        shutil.rmtree(target_dir)
+        return await self.sync_agent_installation(agent)
+
     async def search_catalog(self, query: str, limit: int = 20) -> list[dict]:
         from tools.skills_hub import GitHubAuth, OptionalSkillSource, SkillsShSource
 

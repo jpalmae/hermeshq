@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient } from "./client";
 import type { AgentSkillState, SkillCatalogResponse } from "../types/api";
@@ -25,5 +25,22 @@ export function useAgentSkills(agentId: string | undefined) {
       return data;
     },
     enabled: Boolean(agentId),
+  });
+}
+
+export function useDeleteInstalledSkill() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ agentId, path }: { agentId: string; path: string }) => {
+      const { data } = await apiClient.delete<AgentSkillState>(`/skills/agents/${agentId}/installed`, {
+        params: { path },
+      });
+      return data;
+    },
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ["skills", "agent", variables.agentId] });
+      await queryClient.invalidateQueries({ queryKey: ["agents"] });
+      await queryClient.invalidateQueries({ queryKey: ["agents", variables.agentId] });
+    },
   });
 }
