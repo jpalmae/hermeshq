@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAgent, useAgentAction, useDeleteAgent, useDeleteAgentAvatar, useTestAgentIntegration, useUpdateAgent, useUploadAgentAvatar } from "../api/agents";
 import { useLogs } from "../api/logs";
 import { useManagedIntegrations } from "../api/managedIntegrations";
-import { useRuntimeProfiles } from "../api/runtimeProfiles";
+import { useRuntimeCapabilityOverview, useRuntimeProfiles } from "../api/runtimeProfiles";
 import { useSecrets } from "../api/secrets";
 import { useCreateTask, useTasks } from "../api/tasks";
 import { AgentAvatar } from "../components/AgentAvatar";
@@ -102,6 +102,7 @@ export function AgentDetailPage() {
   const { data: tasks } = useTasks();
   const { data: logs } = useLogs(agentId);
   const { data: runtimeProfiles } = useRuntimeProfiles(Boolean(currentUser));
+  const { data: runtimeCapabilityOverview } = useRuntimeCapabilityOverview(Boolean(currentUser));
   const { data: managedIntegrations } = useManagedIntegrations(Boolean(currentUser));
   const { data: secrets } = useSecrets(isAdmin);
   const startAgent = useAgentAction("start");
@@ -180,6 +181,14 @@ export function AgentDetailPage() {
   const selectedRuntimeProfile = useMemo(
     () => (runtimeProfiles ?? []).find((profile) => profile.slug === runtimeProfileDraft) ?? null,
     [runtimeProfileDraft, runtimeProfiles],
+  );
+  const currentRuntimeCapabilityProfile = useMemo(
+    () => (runtimeCapabilityOverview?.profiles ?? []).find((profile) => profile.slug === (agent?.runtime_profile || "standard")) ?? null,
+    [agent?.runtime_profile, runtimeCapabilityOverview],
+  );
+  const enabledManagedIntegrations = useMemo(
+    () => (managedIntegrations ?? []).filter((integration) => Boolean(agent?.integration_configs?.[integration.slug])),
+    [agent?.integration_configs, managedIntegrations],
   );
   const secretsByProvider = useMemo(() => {
     const map = new Map<string, typeof secrets>();
@@ -749,6 +758,85 @@ export function AgentDetailPage() {
         t("agent.integrationRegistry"),
         t("agent.availableCount", { count: managedIntegrations?.length ?? 0 }),
         <div className="space-y-5">
+          <article className="border border-[var(--border)] bg-[var(--surface-raised)] p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="panel-label">{t("agent.effectiveCapabilities")}</p>
+                <h4 className="mt-2 text-xl text-[var(--text-display)]">
+                  {currentRuntimeCapabilityProfile?.name ?? agent.runtime_profile}
+                </h4>
+              </div>
+              <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--text-secondary)]">
+                {currentRuntimeCapabilityProfile?.terminal_allowed ? t("agent.terminalEnabled") : t("agent.terminalDisabled")}
+              </span>
+            </div>
+            {currentRuntimeCapabilityProfile ? (
+              <div className="mt-4 grid gap-6 lg:grid-cols-3">
+                <div>
+                  <p className="panel-label">{t("agent.profileBuiltins")}</p>
+                  <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                    {currentRuntimeCapabilityProfile.tooling_summary}
+                  </p>
+                  {currentRuntimeCapabilityProfile.phase1_full_access ? (
+                    <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                      {t("agent.phase1FullAccess")}
+                    </p>
+                  ) : (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {currentRuntimeCapabilityProfile.builtin_toolsets.map((toolset) => (
+                        <span
+                          key={toolset.slug}
+                          title={toolset.description}
+                          className="rounded-full border border-[var(--border)] px-3 py-1 font-mono text-xs text-[var(--text-secondary)]"
+                        >
+                          {toolset.slug}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p className="panel-label">{t("agent.platformBuiltins")}</p>
+                  <div className="mt-3 space-y-3 text-sm text-[var(--text-secondary)]">
+                    {(runtimeCapabilityOverview?.platform_plugins ?? []).map((plugin) => (
+                      <div key={plugin.slug} className="border-b border-[var(--border)] pb-3 last:border-b-0 last:pb-0">
+                        <p className="text-[var(--text-primary)]">{plugin.name}</p>
+                        <p className="mt-1 font-mono text-xs">{plugin.toolset}</p>
+                        <p className="mt-2 leading-6">{plugin.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="panel-label">{t("agent.enabledIntegrationPackages")}</p>
+                  {enabledManagedIntegrations.length ? (
+                    <div className="mt-3 space-y-3 text-sm text-[var(--text-secondary)]">
+                      {enabledManagedIntegrations.map((integration) => (
+                        <div key={integration.slug} className="border-b border-[var(--border)] pb-3 last:border-b-0 last:pb-0">
+                          <p className="text-[var(--text-primary)]">{integration.name}</p>
+                          <p className="mt-1 font-mono text-xs">{integration.plugin_slug ?? integration.slug}</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {integration.tools.map((tool) => (
+                              <span
+                                key={tool}
+                                className="rounded-full border border-[var(--border)] px-3 py-1 font-mono text-xs text-[var(--text-secondary)]"
+                              >
+                                {tool}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                      {t("agent.noEnabledIntegrationPackages")}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </article>
           {(managedIntegrations ?? []).length ? (
             (managedIntegrations ?? []).map((integration) => {
               const enabled = Boolean(currentAgent.integration_configs?.[integration.slug]);

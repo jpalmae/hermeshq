@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAgents } from "../api/agents";
 import { useInstallIntegrationPackage, useIntegrationPackages, useUninstallIntegrationPackage, useUploadIntegrationPackage } from "../api/integrationPackages";
 import { useProviders, useUpdateProvider } from "../api/providers";
+import { useRuntimeCapabilityOverview } from "../api/runtimeProfiles";
 import { useCreateSecret, useSecrets } from "../api/secrets";
 import {
   resolveAssetUrl,
@@ -25,6 +26,7 @@ export function SettingsPage() {
   const { data: agents } = useAgents();
   const { data: secrets } = useSecrets(isAdmin);
   const { data: providers } = useProviders(Boolean(currentUser));
+  const { data: runtimeCapabilityOverview } = useRuntimeCapabilityOverview(Boolean(currentUser));
   const { data: integrationPackages } = useIntegrationPackages(isAdmin);
   const { data: templates } = useTemplates(isAdmin);
   const { data: settings } = useSettings(isAdmin);
@@ -534,6 +536,71 @@ export function SettingsPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-3">
+        <div className="panel-frame p-6 xl:col-span-3">
+          <p className="panel-label">{t("settings.runtimeBuiltins")}</p>
+          <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("settings.runtimeBuiltinsTitle")}</h2>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+            {t("settings.runtimeBuiltinsCopy")}
+          </p>
+          <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+            <div className="grid gap-4 lg:grid-cols-3">
+              {(runtimeCapabilityOverview?.profiles ?? []).map((profile) => (
+                <article key={profile.slug} className="border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="panel-label">{profile.slug}</p>
+                      <h3 className="mt-2 text-lg text-[var(--text-display)]">{profile.name}</h3>
+                    </div>
+                    <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--text-secondary)]">
+                      {profile.terminal_allowed ? t("settings.terminalEnabled") : t("settings.terminalDisabled")}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                    {profile.tooling_summary}
+                  </p>
+                  {profile.phase1_full_access ? (
+                    <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                      {t("settings.phase1FullAccess")}
+                    </p>
+                  ) : (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {profile.builtin_toolsets.map((toolset) => (
+                        <span
+                          key={toolset.slug}
+                          title={toolset.description}
+                          className="rounded-full border border-[var(--border)] px-3 py-1 font-mono text-xs text-[var(--text-secondary)]"
+                        >
+                          {toolset.slug}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+            <div className="border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+              <p className="panel-label">{t("settings.platformPlugins")}</p>
+              <div className="mt-4 space-y-4">
+                {(runtimeCapabilityOverview?.platform_plugins ?? []).map((plugin) => (
+                  <article key={plugin.slug} className="border-b border-[var(--border)] pb-4 last:border-b-0 last:pb-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="panel-label">{plugin.toolset}</p>
+                        <h3 className="mt-2 text-base text-[var(--text-display)]">{plugin.name}</h3>
+                      </div>
+                      <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--text-secondary)]">
+                        {plugin.standard_compatible ? t("settings.standardCompatible") : t("settings.technicalOnly")}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                      {plugin.description}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
         <div className="panel-frame p-6">
           <p className="panel-label">Instance defaults</p>
           <div className="mt-4 space-y-3">

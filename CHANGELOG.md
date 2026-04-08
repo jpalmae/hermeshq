@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- added visible runtime capability maps in the UI: `Settings` now shows built-in runtime toolsets and HermesHQ platform plugins, while each agent `Integrations` panel shows the effective built-ins, platform plugins, and enabled integration packages for that specific agent
 - added runtime profiles (`standard`, `technical`, `security`) so an agent can carry a declared execution policy across Talk to agent, TUI, schedules, Telegram, and delegated work
 - restricted `standard` agents so they lose direct terminal/process execution in the shared backend runtime and no longer expose the Hermes TUI
 - added a managed integration package system with upload, install, uninstall, catalog metadata, and per-agent enable/disable flows

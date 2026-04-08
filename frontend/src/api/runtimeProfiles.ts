@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "./client";
-import type { RuntimeProfileDefinition } from "../types/api";
+import type { RuntimeCapabilityOverview, RuntimeProfileDefinition } from "../types/api";
 
 export function useRuntimeProfiles(enabled = true) {
   return useQuery({
@@ -14,3 +14,13 @@ export function useRuntimeProfiles(enabled = true) {
   });
 }
 
+export function useRuntimeCapabilityOverview(enabled = true) {
+  return useQuery({
+    queryKey: ["runtime-capability-overview"],
+    queryFn: async () => {
+      const { data } = await apiClient.get<RuntimeCapabilityOverview>("/runtime-profiles/overview");
+      return data;
+    },
+    enabled,
+  });
+}

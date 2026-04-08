@@ -129,6 +129,36 @@ export interface RuntimeProfileDefinition {
   };
 }
 
+export interface RuntimeToolsetDefinition {
+  slug: string;
+  name: string;
+  description: string;
+}
+
+export interface RuntimePlatformPluginDefinition {
+  slug: string;
+  name: string;
+  toolset: string;
+  description: string;
+  standard_compatible: boolean;
+}
+
+export interface RuntimeProfileCapabilityDefinition {
+  slug: string;
+  name: string;
+  description: string;
+  tooling_summary: string;
+  container_intent: string;
+  terminal_allowed: boolean;
+  phase1_full_access: boolean;
+  builtin_toolsets: RuntimeToolsetDefinition[];
+}
+
+export interface RuntimeCapabilityOverview {
+  profiles: RuntimeProfileCapabilityDefinition[];
+  platform_plugins: RuntimePlatformPluginDefinition[];
+}
+
 export interface ManagedIntegrationDefinition {
   slug: string;
   name: string;
