@@ -2,6 +2,32 @@
 
 Initial end-to-end implementation for a multi-agent operations panel based on the specification in [HermesHQ_AGENTS.md](./HermesHQ_AGENTS.md).
 
+## Hermes Agent vs HermesHQ
+
+HermesHQ does not replace `hermes-agent`; it orchestrates it.
+
+If you install and run `hermes-agent` directly on your machine, you get the Hermes runtime by itself:
+
+- local CLI/TUI usage
+- one local `HERMES_HOME`
+- direct prompt, tool, and plugin handling
+- local sessions and config managed by the operator
+
+HermesHQ uses that same Hermes runtime underneath, but wraps it in a control plane:
+
+- managed agents with separate workspaces and `HERMES_HOME`
+- web UI, RBAC, users, and assigned-agent scope
+- task dispatch, schedules, and runtime ledger
+- inter-agent comms and hierarchy-aware delegation
+- per-agent Telegram channels
+- provider presets, secrets vault, and managed integrations
+- runtime profiles and capability visibility
+
+In short:
+
+- `hermes-agent` alone = execution engine used directly
+- HermesHQ = control plane plus managed multi-agent runtime built on top of Hermes
+
 ## Included in this cut
 
 - FastAPI backend with:
@@ -115,32 +141,6 @@ Restore an instance from a bundle:
 ```
 
 The restore script also restarts `cloudflared` if `.cloudflared.env` is present and contains a `TUNNEL_TOKEN`.
-
-## Hermes Agent vs HermesHQ
-
-HermesHQ does not replace `hermes-agent`; it orchestrates it.
-
-If you install and run `hermes-agent` directly on your machine, you get the Hermes runtime by itself:
-
-- local CLI/TUI usage
-- one local `HERMES_HOME`
-- direct prompt, tool, and plugin handling
-- local sessions and config managed by the operator
-
-HermesHQ uses that same Hermes runtime underneath, but wraps it in a control plane:
-
-- managed agents with separate workspaces and `HERMES_HOME`
-- web UI, RBAC, users, and assigned-agent scope
-- task dispatch, schedules, and runtime ledger
-- inter-agent comms and hierarchy-aware delegation
-- per-agent Telegram channels
-- provider presets, secrets vault, and managed integrations
-- runtime profiles and capability visibility
-
-In short:
-
-- `hermes-agent` alone = execution engine used directly
-- HermesHQ = control plane plus managed multi-agent runtime built on top of Hermes
 
 ## Run backend
 
