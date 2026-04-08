@@ -51,6 +51,7 @@ export interface Agent {
   description: string | null;
   status: AgentStatus;
   run_mode: string;
+  runtime_profile: string;
   model: string;
   provider: string;
   api_key_ref: string | null;
@@ -60,6 +61,7 @@ export interface Agent {
   enabled_toolsets: string[];
   disabled_toolsets: string[];
   skills: string[];
+  integration_configs: Record<string, Record<string, unknown>>;
   team_tags: string[];
   can_receive_tasks: boolean;
   can_send_tasks: boolean;
@@ -109,6 +111,50 @@ export interface ProviderDefinition {
   sort_order: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface RuntimeProfileDefinition {
+  slug: string;
+  name: string;
+  description: string;
+  typical_roles: string[];
+  tooling_summary: string;
+  container_intent: string;
+  defaults: {
+    enabled_toolsets: string[];
+    disabled_toolsets: string[];
+    max_iterations: number;
+    auto_approve_cmds: boolean;
+    command_allowlist: string[];
+  };
+}
+
+export interface ManagedIntegrationDefinition {
+  slug: string;
+  name: string;
+  description: string;
+  version: string;
+  source_type: string;
+  installed: boolean;
+  standard_compatible: boolean;
+  supported_profiles: string[];
+  required_fields: string[];
+  fields: Array<{
+    name: string;
+    label: string;
+    kind: string;
+    placeholder: string | null;
+    secret_provider: string | null;
+  }>;
+  defaults: Record<string, string>;
+  secret_provider: string | null;
+  plugin_slug: string | null;
+  plugin_name: string | null;
+  plugin_description: string | null;
+  skill_identifier: string | null;
+  test_action: string | null;
+  env_map: Record<string, string>;
+  tools: string[];
 }
 
 export interface Task {

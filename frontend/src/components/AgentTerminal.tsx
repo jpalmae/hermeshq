@@ -26,7 +26,15 @@ function resolvePtyUrl(agentId: string, token: string) {
   return `${resolveWsRoot()}/ws/pty/${agentId}?token=${encodeURIComponent(token)}`;
 }
 
-export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string }) {
+export function AgentTerminal({
+  agentId,
+  mode,
+  runtimeProfile,
+}: {
+  agentId: string;
+  mode: string;
+  runtimeProfile?: string;
+}) {
   const { t } = useI18n();
   const token = useSessionStore((state) => state.token);
   const [connected, setConnected] = useState(false);
@@ -41,6 +49,7 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
   const reconnectTimerRef = useRef<number | null>(null);
   const shouldReconnectRef = useRef(true);
   const shouldAutoScrollRef = useRef(true);
+  const terminalDisabledByProfile = runtimeProfile === "standard";
   const readOnly = useMemo(() => mode === "hybrid" || mode === "interactive", [mode]);
 
   const isTerminalNearBottom = () => {
@@ -61,7 +70,7 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
   };
 
   useEffect(() => {
-    if (mode === "headless") {
+    if (mode === "headless" || terminalDisabledByProfile) {
       return;
     }
     if (!containerRef.current) {
@@ -206,7 +215,7 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [agentId, mode, token, reconnectNonce]);
+  }, [agentId, mode, token, reconnectNonce, terminalDisabledByProfile]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -246,19 +255,27 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
         <div>
           <p className="panel-label">{t("agent.terminal")}</p>
           <p className="mt-2 text-lg text-[var(--text-display)]">
-            {connected ? t("agent.tuiAttached") : t("agent.tuiOffline")}
+            {terminalDisabledByProfile
+              ? t("agent.tuiDisabledByProfile")
+              : connected
+                ? t("agent.tuiAttached")
+                : t("agent.tuiOffline")}
           </p>
           <p className="mt-2 max-w-[44rem] text-sm leading-6 text-[var(--text-secondary)]">
-            {t("agent.terminalCopy")}
+            {terminalDisabledByProfile ? t("agent.terminalProfileCopy") : t("agent.terminalCopy")}
           </p>
         </div>
         <p className={`panel-label ${connected ? "text-[var(--success)]" : "text-[var(--warning)]"}`}>
-          {connected ? t("agent.live") : t("agent.idle")}
+          {terminalDisabledByProfile ? t("agent.disabled") : connected ? t("agent.live") : t("agent.idle")}
         </p>
       </div>
 
       <div className={terminalBodyClassName}>
-        {readOnly ? (
+        {terminalDisabledByProfile ? (
+          <div className="border border-[var(--border)] bg-[var(--surface-raised)] p-4 font-mono text-sm text-[var(--text-secondary)]">
+            {t("agent.terminalDisabledByProfile")}
+          </div>
+        ) : readOnly ? (
           <div ref={containerRef} className={terminalViewportClassName} />
         ) : (
           <div className="border border-[var(--border)] bg-[var(--surface-raised)] p-4 font-mono text-sm text-[var(--text-secondary)]">
@@ -272,7 +289,7 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
           className="panel-button-secondary"
           type="button"
           onClick={() => terminalRef.current?.clear()}
-          disabled={!readOnly}
+          disabled={!readOnly || terminalDisabledByProfile}
         >
           {t("agent.clear")}
         </button>
@@ -283,7 +300,7 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
             setConnectionMessage(t("agent.reattaching"));
             setReconnectNonce((value) => value + 1);
           }}
-          disabled={!readOnly}
+          disabled={!readOnly || terminalDisabledByProfile}
         >
           {t("agent.reconnect")}
         </button>
@@ -296,7 +313,7 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
             }
             setIsFloating((value) => !value);
           }}
-          disabled={!readOnly}
+          disabled={!readOnly || terminalDisabledByProfile}
         >
           {isFloating ? t("agent.dock") : t("agent.float")}
         </button>
@@ -311,12 +328,14 @@ export function AgentTerminal({ agentId, mode }: { agentId: string; mode: string
             }
             setIsFullscreen((value) => !value);
           }}
-          disabled={!readOnly}
+          disabled={!readOnly || terminalDisabledByProfile}
         >
           {isFullscreen ? t("agent.windowed") : t("agent.fullscreen")}
         </button>
         <p className="panel-inline-status">
-          {connected
+          {terminalDisabledByProfile
+            ? t("agent.terminalDisabledByProfile")
+            : connected
             ? t("agent.liveHermes")
             : connectionMessage || t("agent.bootTerminal")}
         </p>

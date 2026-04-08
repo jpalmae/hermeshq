@@ -5,6 +5,7 @@ import { useAgentAction, useAgents, useCreateAgent, useDeleteAgent } from "../ap
 import { AgentAvatar } from "../components/AgentAvatar";
 import { useNodes } from "../api/nodes";
 import { useProviders } from "../api/providers";
+import { useRuntimeProfiles } from "../api/runtimeProfiles";
 import { useSecrets } from "../api/secrets";
 import { useSettings } from "../api/settings";
 import { useI18n } from "../lib/i18n";
@@ -18,6 +19,7 @@ const emptyForm = {
   slug: "",
   description: "",
   run_mode: "hybrid",
+  runtime_profile: "standard",
   model: "",
   provider: "",
   api_key_ref: "",
@@ -49,6 +51,7 @@ export function AgentsPage() {
   const { data: agents } = useAgents();
   const { data: settings } = useSettings(isAdmin);
   const { data: providers } = useProviders(Boolean(currentUser));
+  const { data: runtimeProfiles } = useRuntimeProfiles(Boolean(currentUser));
   const { data: secrets } = useSecrets(isAdmin);
   const createAgent = useCreateAgent();
   const deleteAgent = useDeleteAgent();
@@ -70,6 +73,10 @@ export function AgentsPage() {
     () => enabledProviders.find((provider) => provider.slug === selectedProviderSlug) ?? null,
     [enabledProviders, selectedProviderSlug],
   );
+  const selectedRuntimeProfile = useMemo(
+    () => (runtimeProfiles ?? []).find((profile) => profile.slug === form.runtime_profile) ?? null,
+    [form.runtime_profile, runtimeProfiles],
+  );
 
   useEffect(() => {
     setForm((current) => {
@@ -79,6 +86,7 @@ export function AgentsPage() {
       return {
         ...current,
         node_id: current.node_id || activeNodeId,
+        runtime_profile: current.runtime_profile || "standard",
         model: current.model || settings?.default_model || "",
         provider: current.provider || settings?.default_provider || "",
         api_key_ref: current.api_key_ref || settings?.default_api_key_ref || "",
@@ -106,6 +114,7 @@ export function AgentsPage() {
     setForm({
       ...emptyForm,
       node_id: activeNodeId,
+      runtime_profile: "standard",
       model: settings?.default_model ?? "",
       provider: settings?.default_provider ?? "",
       api_key_ref: settings?.default_api_key_ref ?? "",
@@ -207,6 +216,37 @@ export function AgentsPage() {
               }}
             />
           </label>
+
+          <label className="panel-field">
+            <span className="panel-label">{t("agents.runtimeProfile")}</span>
+            <select
+              value={form.runtime_profile}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, runtime_profile: event.target.value }))
+              }
+            >
+              {(runtimeProfiles ?? []).map((profile) => (
+                <option key={profile.slug} value={profile.slug}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {selectedRuntimeProfile ? (
+            <div className="border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+              <p className="panel-label">{t("agents.profileIntent")}</p>
+              <p className="mt-2 text-sm leading-6 text-[var(--text-primary)]">
+                {selectedRuntimeProfile.description}
+              </p>
+              <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                {selectedRuntimeProfile.tooling_summary}
+              </p>
+              <p className="mt-3 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
+                {t("agents.profileFutureImage", { value: selectedRuntimeProfile.container_intent })}
+              </p>
+            </div>
+          ) : null}
 
           <label className="panel-field">
             <span className="panel-label">Provider preset</span>
@@ -332,7 +372,7 @@ export function AgentsPage() {
                   <p className="panel-label">Runtime</p>
                   <p className="mt-2 text-sm text-[var(--text-primary)]">{agent.model}</p>
                   <p className="mt-1 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
-                    {agent.provider}
+                    {agent.provider} / {agent.runtime_profile}
                   </p>
                 </div>
                 <div>

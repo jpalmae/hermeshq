@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- added runtime profiles (`standard`, `technical`, `security`) so an agent can carry a declared execution policy across Talk to agent, TUI, schedules, Telegram, and delegated work
+- restricted `standard` agents so they lose direct terminal/process execution in the shared backend runtime and no longer expose the Hermes TUI
+- added a managed integration package system with upload, install, uninstall, catalog metadata, and per-agent enable/disable flows
+- added per-agent integration configuration and connection testing from the dedicated `Integrations` section in the agent detail page
 - added real deletion for installed agent skills from the Hermes skill registry; managed skills are also removed from the agent assignment list on delete
 - increased the Hermes runtime subprocess output limit to reduce false `failed` tasks caused by oversized final result lines
 - added a first-run `install.sh` so HermesHQ can be installed with a single `curl | bash` command from GitHub

@@ -21,6 +21,8 @@ Initial end-to-end implementation for a multi-agent operations panel based on th
   - inter-agent comms with hierarchy-aware delegation rules
   - secrets vault
   - provider registry with editable presets
+  - runtime profiles for standard, technical, and security agents
+  - managed integration package catalog with install/uninstall and per-agent tests
   - templates
   - scheduled tasks
   - workspace explorer APIs
@@ -41,6 +43,7 @@ Initial end-to-end implementation for a multi-agent operations panel based on th
   - users and assignments
   - workspace editor
   - PTY terminal pane
+  - per-agent integrations section with declarative config forms
   - per-agent Telegram channel management
   - Telegram message traceability in agent activity logs
   - per-user operator avatar
@@ -174,6 +177,9 @@ URLs:
 - Admins now manage a provider registry in `Settings`. Presets exist for Kimi Coding, Z.AI Coding Plan, OpenRouter API, OpenAI API, Gemini API and Anthropic API. Their base URLs and default models remain editable so the catalog can adapt if a provider changes its endpoint conventions.
 - The bundled `Kimi Coding` preset now targets `https://api.kimi.com/coding/v1`.
 - New agents no longer depend only on free-text provider fields. The create flow can start from a provider preset, auto-filling runtime provider, model, base URL and secret selection while still allowing manual overrides when needed.
+- Agents now declare a `runtime profile` (`standard`, `technical`, `security`). The profile applies to the whole agent runtime, not just one channel. In the current phase it already gates capabilities such as TUI access for `standard` agents and restricts terminal/process usage in task execution.
+- HermesHQ now has a managed integration package system. Admins can upload `.tar.gz` packages from `Settings`, install or uninstall them globally, and then enable/configure them per agent from the dedicated `Integrations` section.
+- Managed integrations are intentionally separate from skills: skills describe behavior, while integration packages install real plugins/tools, declare required fields and supported runtime profiles, and can expose per-agent connection tests.
 - `Comms` now enforces real hierarchy rules for `Delegate`: independent agents can delegate freely, subordinate agents can escalate upward or delegate downward inside their own branch, and cross-branch lateral delegation is blocked.
 - The `Comms` screen reflects those rules before sending by disabling invalid targets and visualizing upward, downward and blocked routes for the selected source agent.
 - Delegations now create a real callback path to the delegating agent when the child task finishes. HermesHQ persists a `delegate_result` message in `Comms`, creates a follow-up task for the parent agent, and surfaces the result in the delegator runtime ledger.

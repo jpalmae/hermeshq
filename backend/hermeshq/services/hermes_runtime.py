@@ -13,6 +13,7 @@ from hermeshq.models.agent import Agent
 from hermeshq.models.secret import Secret
 from hermeshq.models.task import Task
 from hermeshq.services.hermes_installation import HermesInstallationManager
+from hermeshq.services.runtime_profiles import resolve_effective_toolsets
 from hermeshq.services.secret_vault import SecretVault
 
 
@@ -96,6 +97,11 @@ class HermesRuntime:
         workspace_path = self.installation_manager.resolve_workspace_path(agent.workspace_path)
         hermes_home = self.installation_manager.build_hermes_home(agent.workspace_path)
         process_env = await self.installation_manager.build_process_env(agent)
+        enabled_toolsets, disabled_toolsets = resolve_effective_toolsets(
+            agent.runtime_profile,
+            agent.enabled_toolsets,
+            agent.disabled_toolsets,
+        )
         payload = {
             "task_id": str(task.id),
             "prompt": task.prompt,
@@ -104,8 +110,8 @@ class HermesRuntime:
             "provider": agent.provider,
             "base_url": agent.base_url,
             "api_key": api_key,
-            "enabled_toolsets": agent.enabled_toolsets or None,
-            "disabled_toolsets": agent.disabled_toolsets or None,
+            "enabled_toolsets": enabled_toolsets or None,
+            "disabled_toolsets": disabled_toolsets or None,
             "max_iterations": agent.max_iterations,
             "system_prompt": runtime_system_prompt,
             "cwd": str(workspace_path),

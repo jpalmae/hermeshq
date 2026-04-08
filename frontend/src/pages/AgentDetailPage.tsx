@@ -1,8 +1,11 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { useAgent, useAgentAction, useDeleteAgent, useDeleteAgentAvatar, useUpdateAgent, useUploadAgentAvatar } from "../api/agents";
+import { useAgent, useAgentAction, useDeleteAgent, useDeleteAgentAvatar, useTestAgentIntegration, useUpdateAgent, useUploadAgentAvatar } from "../api/agents";
 import { useLogs } from "../api/logs";
+import { useManagedIntegrations } from "../api/managedIntegrations";
+import { useRuntimeProfiles } from "../api/runtimeProfiles";
+import { useSecrets } from "../api/secrets";
 import { useCreateTask, useTasks } from "../api/tasks";
 import { AgentAvatar } from "../components/AgentAvatar";
 import { AgentConversationPanel } from "../components/AgentConversationPanel";
@@ -16,6 +19,7 @@ import { useSessionStore } from "../stores/sessionStore";
 const DEFAULT_SECTION_STATE = {
   configuration: false,
   conversation: true,
+  integrations: false,
   skills: false,
   ledger: false,
   logs: false,
@@ -97,11 +101,15 @@ export function AgentDetailPage() {
   const { data: agent, isLoading } = useAgent(agentId);
   const { data: tasks } = useTasks();
   const { data: logs } = useLogs(agentId);
+  const { data: runtimeProfiles } = useRuntimeProfiles(Boolean(currentUser));
+  const { data: managedIntegrations } = useManagedIntegrations(Boolean(currentUser));
+  const { data: secrets } = useSecrets(isAdmin);
   const startAgent = useAgentAction("start");
   const stopAgent = useAgentAction("stop");
   const deleteAgent = useDeleteAgent();
   const uploadAgentAvatar = useUploadAgentAvatar();
   const deleteAgentAvatar = useDeleteAgentAvatar();
+  const testAgentIntegration = useTestAgentIntegration();
   const updateAgent = useUpdateAgent();
   const createTask = useCreateTask();
   const [identityForm, setIdentityForm] = useState({
@@ -110,6 +118,11 @@ export function AgentDetailPage() {
     slug: "",
   });
   const [systemPromptDraft, setSystemPromptDraft] = useState("");
+  const [runtimeProfileDraft, setRuntimeProfileDraft] = useState("standard");
+  const [integrationDrafts, setIntegrationDrafts] = useState<Record<string, Record<string, string>>>({});
+  const [integrationTestResults, setIntegrationTestResults] = useState<
+    Record<string, { success: boolean; message: string; details?: Record<string, unknown> | null }>
+  >({});
   const [sectionState, setSectionState] = useState(DEFAULT_SECTION_STATE);
   const [nameTouched, setNameTouched] = useState(false);
   const [slugTouched, setSlugTouched] = useState(false);
@@ -164,6 +177,20 @@ export function AgentDetailPage() {
         .some((value) => String(value).toLowerCase().includes(query)),
     );
   }, [activityQuery, groupedActivityLogs]);
+  const selectedRuntimeProfile = useMemo(
+    () => (runtimeProfiles ?? []).find((profile) => profile.slug === runtimeProfileDraft) ?? null,
+    [runtimeProfileDraft, runtimeProfiles],
+  );
+  const secretsByProvider = useMemo(() => {
+    const map = new Map<string, typeof secrets>();
+    for (const secret of secrets ?? []) {
+      const providerKey = secret.provider || "__generic__";
+      const bucket = map.get(providerKey) ?? [];
+      bucket.push(secret);
+      map.set(providerKey, bucket);
+    }
+    return map;
+  }, [secrets]);
 
   useEffect(() => {
     if (!isLoading && agent === null) {
@@ -181,9 +208,23 @@ export function AgentDetailPage() {
       slug: agent.slug,
     });
     setSystemPromptDraft(agent.system_prompt ?? "");
+    setRuntimeProfileDraft(agent.runtime_profile || "standard");
+    const nextIntegrationDrafts: Record<string, Record<string, string>> = {};
+    for (const integration of managedIntegrations ?? []) {
+      const currentConfig = (agent.integration_configs?.[integration.slug] as Record<string, unknown> | undefined) ?? {};
+      nextIntegrationDrafts[integration.slug] = Object.fromEntries(
+        integration.required_fields.map((field) => {
+          const defaultValue = integration.defaults?.[field] ?? "";
+          const currentValue = currentConfig[field];
+          return [field, typeof currentValue === "string" ? currentValue : defaultValue];
+        }),
+      );
+    }
+    setIntegrationDrafts(nextIntegrationDrafts);
+    setIntegrationTestResults({});
     setNameTouched(false);
     setSlugTouched(false);
-  }, [agent]);
+  }, [agent, managedIntegrations]);
 
   useEffect(() => {
     if (!agentId) {
@@ -298,6 +339,69 @@ export function AgentDetailPage() {
         system_prompt: systemPromptDraft.trim() || null,
       },
     });
+  }
+
+  async function onSaveRuntimeProfile() {
+    await updateAgent.mutateAsync({
+      agentId: currentAgent.id,
+      payload: {
+        runtime_profile: runtimeProfileDraft,
+      },
+    });
+  }
+
+  async function onSaveIntegration(integrationSlug: string) {
+    const integration = (managedIntegrations ?? []).find((item) => item.slug === integrationSlug);
+    if (!integration) {
+      return;
+    }
+    const currentDraft = integrationDrafts[integrationSlug] ?? {};
+    const normalizedConfig = Object.fromEntries(
+      integration.required_fields.map((field) => [field, (currentDraft[field] ?? "").trim()]),
+    );
+    await updateAgent.mutateAsync({
+      agentId: currentAgent.id,
+      payload: {
+        skills: integration.skill_identifier
+          ? Array.from(new Set([...(currentAgent.skills ?? []), integration.skill_identifier]))
+          : currentAgent.skills,
+        integration_configs: {
+          ...(currentAgent.integration_configs ?? {}),
+          [integrationSlug]: normalizedConfig,
+        },
+      },
+    });
+  }
+
+  async function onDisableIntegration(integrationSlug: string) {
+    const integration = (managedIntegrations ?? []).find((item) => item.slug === integrationSlug);
+    if (!integration) {
+      return;
+    }
+    const nextConfigs = { ...(currentAgent.integration_configs ?? {}) };
+    delete nextConfigs[integrationSlug];
+    await updateAgent.mutateAsync({
+      agentId: currentAgent.id,
+      payload: {
+        skills: integration.skill_identifier
+          ? (currentAgent.skills ?? []).filter((skill) => skill !== integration.skill_identifier)
+          : currentAgent.skills,
+        integration_configs: nextConfigs,
+      },
+    });
+  }
+
+  async function onTestIntegration(integrationSlug: string) {
+    const currentDraft = integrationDrafts[integrationSlug] ?? {};
+    const result = await testAgentIntegration.mutateAsync({
+      agentId: currentAgent.id,
+      integrationSlug,
+      config: currentDraft,
+    });
+    setIntegrationTestResults((current) => ({
+      ...current,
+      [integrationSlug]: result,
+    }));
   }
 
   async function onAvatarSelected(file: File | null) {
@@ -515,6 +619,47 @@ export function AgentDetailPage() {
                   <span>{t("agents.provider")}</span>
                   <strong>{agent.provider}</strong>
                 </div>
+                <div className="border-b border-[var(--border)] pb-5">
+                  <label className="panel-field">
+                    <span className="panel-label">{t("agents.runtimeProfile")}</span>
+                    {isAdmin ? (
+                      <select
+                        value={runtimeProfileDraft}
+                        onChange={(event) => setRuntimeProfileDraft(event.target.value)}
+                      >
+                        {(runtimeProfiles ?? []).map((profile) => (
+                          <option key={profile.slug} value={profile.slug}>
+                            {profile.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input value={selectedRuntimeProfile?.name ?? agent.runtime_profile} readOnly />
+                    )}
+                  </label>
+                  {selectedRuntimeProfile ? (
+                    <div className="mt-4 space-y-2 text-sm leading-6 text-[var(--text-secondary)]">
+                      <p>{selectedRuntimeProfile.description}</p>
+                      <p>{selectedRuntimeProfile.tooling_summary}</p>
+                      <p className="text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
+                        {t("agents.profileFutureImage", { value: selectedRuntimeProfile.container_intent })}
+                      </p>
+                    </div>
+                  ) : null}
+                  {isAdmin ? (
+                    <div className="mt-4 flex items-center gap-3">
+                      <button
+                        type="button"
+                        className="panel-button-secondary"
+                        disabled={updateAgent.isPending}
+                        onClick={onSaveRuntimeProfile}
+                      >
+                        {updateAgent.isPending ? t("common.loading") : t("agent.saveRuntimeProfile")}
+                      </button>
+                      <p className="panel-inline-status">{t("agent.runtimeProfileHint")}</p>
+                    </div>
+                  ) : null}
+                </div>
                 <div className="panel-stat-row">
                   <span>{t("agents.secretRef")}</span>
                   <strong>{agent.api_key_ref ?? t("agent.none")}</strong>
@@ -535,7 +680,7 @@ export function AgentDetailPage() {
         </section>
       </section>
 
-      <AgentTerminal agentId={agent.id} mode={agent.run_mode} />
+      <AgentTerminal agentId={agent.id} mode={agent.run_mode} runtimeProfile={agent.runtime_profile} />
 
       {renderSectionShell(
         "conversation",
@@ -594,6 +739,175 @@ export function AgentDetailPage() {
             ))
           ) : (
             <p className="panel-inline-status pt-5">{t("agent.noRuntimeLedgerMatches")}</p>
+          )}
+        </div>,
+      )}
+
+      {renderSectionShell(
+        "integrations",
+        t("agent.integrations"),
+        t("agent.integrationRegistry"),
+        t("agent.availableCount", { count: managedIntegrations?.length ?? 0 }),
+        <div className="space-y-5">
+          {(managedIntegrations ?? []).length ? (
+            (managedIntegrations ?? []).map((integration) => {
+              const enabled = Boolean(currentAgent.integration_configs?.[integration.slug]);
+              const draft = integrationDrafts[integration.slug] ?? {};
+              const testResult = integrationTestResults[integration.slug];
+              return (
+                <article key={integration.slug} className="border border-[var(--border)] bg-[var(--surface-raised)] p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="panel-label">{integration.slug}</p>
+                      <h4 className="mt-2 text-xl text-[var(--text-display)]">{integration.name}</h4>
+                      <p className="mt-2 max-w-[48rem] text-sm leading-6 text-[var(--text-secondary)]">
+                        {integration.description}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="panel-label">{enabled ? t("agent.enabled") : t("agent.disabled")}</p>
+                      <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
+                        {integration.plugin_name ?? integration.plugin_slug ?? t("agent.none")}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-6 md:grid-cols-2">
+                    <div>
+                      <p className="panel-label">{t("agent.integrationTools")}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {integration.tools.map((tool) => (
+                          <span
+                            key={tool}
+                            className="rounded-full border border-[var(--border)] px-3 py-1 font-mono text-xs text-[var(--text-secondary)]"
+                          >
+                            {tool}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="panel-label">{t("agent.integrationRequirements")}</p>
+                      <div className="mt-3 space-y-2 text-sm text-[var(--text-secondary)]">
+                        <p>{t("agent.integrationSkill", { value: integration.skill_identifier ?? t("agent.none") })}</p>
+                        <p>{t("agent.integrationSecretProvider", { value: integration.secret_provider ?? t("agent.none") })}</p>
+                        <p>{t("agent.integrationProfiles", { value: integration.supported_profiles.join(", ") })}</p>
+                        <p>{t("agent.integrationFields", { value: integration.required_fields.join(", ") })}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-4 md:grid-cols-2">
+                    {integration.fields.map((field) => {
+                      const eligibleSecrets = [
+                        ...(secretsByProvider.get(field.secret_provider || integration.secret_provider || "__generic__") ?? []),
+                        ...(((field.secret_provider || integration.secret_provider) ? secretsByProvider.get("__generic__") : []) ?? []),
+                      ];
+                      return (
+                        <label key={field.name} className="panel-field">
+                          <span className="panel-label">
+                            {field.kind === "secret_ref"
+                              ? t("agent.integrationSecretRef")
+                              : field.kind === "url"
+                                ? t("agent.integrationBaseUrl")
+                                : field.label}
+                          </span>
+                          {field.kind === "secret_ref" ? (
+                            isAdmin ? (
+                              <select
+                                value={draft[field.name] ?? ""}
+                                onChange={(event) =>
+                                  setIntegrationDrafts((current) => ({
+                                    ...current,
+                                    [integration.slug]: {
+                                      ...(current[integration.slug] ?? {}),
+                                      [field.name]: event.target.value,
+                                    },
+                                  }))
+                                }
+                              >
+                                <option value="">{t("agent.none")}</option>
+                                {eligibleSecrets.map((secret) => (
+                                  <option key={secret.id} value={secret.name}>
+                                    {secret.name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input value={draft[field.name] || t("agent.none")} readOnly />
+                            )
+                          ) : (
+                            <input
+                              value={draft[field.name] ?? ""}
+                              onChange={(event) =>
+                                setIntegrationDrafts((current) => ({
+                                  ...current,
+                                  [integration.slug]: {
+                                    ...(current[integration.slug] ?? {}),
+                                    [field.name]: event.target.value,
+                                  },
+                                }))
+                              }
+                              readOnly={!isAdmin}
+                              placeholder={field.placeholder ?? integration.defaults[field.name] ?? ""}
+                            />
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  <p className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">
+                    {t("agent.integrationSaveHint")}
+                  </p>
+
+                  {isAdmin ? (
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        className="panel-button-secondary"
+                        disabled={updateAgent.isPending}
+                        onClick={() => void onSaveIntegration(integration.slug)}
+                      >
+                        {enabled ? t("agent.saveIntegration") : t("agent.enableIntegration")}
+                      </button>
+                      <button
+                        type="button"
+                        className="panel-button-secondary"
+                        disabled={testAgentIntegration.isPending}
+                        onClick={() => void onTestIntegration(integration.slug)}
+                      >
+                        {testAgentIntegration.isPending ? t("common.loading") : t("agent.testIntegration")}
+                      </button>
+                      {enabled ? (
+                        <button
+                          type="button"
+                          className="panel-button-secondary"
+                          disabled={updateAgent.isPending}
+                          onClick={() => void onDisableIntegration(integration.slug)}
+                        >
+                          {t("agent.disableIntegration")}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {testResult ? (
+                    <div className="mt-4 border-t border-[var(--border)] pt-4 text-sm">
+                      <p className={testResult.success ? "text-[var(--success)]" : "text-[var(--danger)]"}>
+                        {testResult.success ? t("agent.integrationTestPassed") : t("agent.integrationTestFailed")} {testResult.message}
+                      </p>
+                      {testResult.details ? (
+                        <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-xs leading-6 text-[var(--text-secondary)]">
+                          {JSON.stringify(testResult.details, null, 2)}
+                        </pre>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })
+          ) : (
+            <p className="panel-inline-status">{t("agent.emptyIntegrations")}</p>
           )}
         </div>,
       )}

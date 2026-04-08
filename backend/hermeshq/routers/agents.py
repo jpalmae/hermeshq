@@ -16,11 +16,16 @@ from hermeshq.models.message import AgentMessage
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.node import Node
 from hermeshq.models.scheduled_task import ScheduledTask
+from hermeshq.models.secret import Secret
 from hermeshq.models.task import Task
 from hermeshq.models.template import AgentTemplate
 from hermeshq.models.user import User
 from hermeshq.schemas.agent import AgentCreate, AgentRead, AgentUpdate
+from hermeshq.schemas.managed_integration import ManagedIntegrationTestRequest, ManagedIntegrationTestResult
 from hermeshq.services.agent_identity import derive_agent_identity, ensure_unique_agent_slug, slugify_agent_value
+from hermeshq.services.managed_capabilities import get_managed_integration, list_available_integration_packages
+from hermeshq.services.managed_integration_health import ManagedIntegrationTestError, test_managed_integration
+from hermeshq.services.runtime_profiles import get_runtime_profile, normalize_runtime_profile_slug
 from hermeshq.services.workspace_manager import WorkspaceManager
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -41,6 +46,17 @@ ALLOWED_AVATAR_TYPES = {
     "image/webp": ".webp",
 }
 MAX_AVATAR_BYTES = 2 * 1024 * 1024
+
+
+def _normalize_integration_configs(value: dict | None) -> dict[str, dict]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, dict] = {}
+    for slug, config in value.items():
+        if not isinstance(slug, str):
+            continue
+        normalized[slug] = config if isinstance(config, dict) else {}
+    return normalized
 
 
 def _get_workspace_manager(request: Request) -> WorkspaceManager:
@@ -118,6 +134,45 @@ async def _resolve_runtime_defaults(db: AsyncSession, payload: AgentCreate) -> d
     }
 
 
+def _apply_runtime_profile_defaults(
+    agent: Agent,
+    profile_slug: str | None,
+    *,
+    overwrite_toolsets: bool,
+) -> None:
+    profile = get_runtime_profile(profile_slug)
+    defaults = profile["defaults"]
+    agent.runtime_profile = profile["slug"]
+    agent.max_iterations = int(defaults["max_iterations"])
+    agent.auto_approve_cmds = bool(defaults["auto_approve_cmds"])
+    agent.command_allowlist = list(defaults["command_allowlist"])
+    if overwrite_toolsets:
+        agent.enabled_toolsets = list(defaults["enabled_toolsets"])
+        agent.disabled_toolsets = list(defaults["disabled_toolsets"])
+
+
+async def _load_enabled_integration_slugs(db: AsyncSession) -> list[str]:
+    app_settings = await db.get(AppSettings, "default")
+    enabled = getattr(app_settings, "enabled_integration_packages", []) if app_settings else []
+    return [slug for slug in enabled if isinstance(slug, str) and slug.strip()]
+
+
+def _sync_agent_integration_toolsets(agent: Agent, enabled_integration_slugs: list[str]) -> None:
+    known_toolsets = {
+        package["plugin_slug"]
+        for package in list_available_integration_packages(enabled_integration_slugs)
+        if package.get("plugin_slug")
+    }
+    retained_enabled = [toolset for toolset in (agent.enabled_toolsets or []) if toolset not in known_toolsets]
+    retained_disabled = [toolset for toolset in (agent.disabled_toolsets or []) if toolset not in known_toolsets]
+    for slug in (agent.integration_configs or {}):
+        integration = get_managed_integration(str(slug), enabled_integration_slugs)
+        if integration and integration.get("plugin_slug"):
+            retained_enabled.append(str(integration["plugin_slug"]))
+    agent.enabled_toolsets = list(dict.fromkeys(retained_enabled))
+    agent.disabled_toolsets = list(dict.fromkeys(retained_disabled))
+
+
 @router.get("", response_model=list[AgentRead])
 async def list_agents(
     request: Request,
@@ -157,19 +212,33 @@ async def create_agent(
         slug=unique_slug,
         description=payload.description,
         run_mode=payload.run_mode,
+        runtime_profile=normalize_runtime_profile_slug(payload.runtime_profile),
         model=runtime_defaults["model"],
         provider=runtime_defaults["provider"],
         api_key_ref=runtime_defaults["api_key_ref"],
         base_url=runtime_defaults["base_url"],
         system_prompt=payload.system_prompt,
         soul_md=payload.soul_md,
-        enabled_toolsets=payload.enabled_toolsets,
-        disabled_toolsets=payload.disabled_toolsets,
+        enabled_toolsets=list(payload.enabled_toolsets or []),
+        disabled_toolsets=list(payload.disabled_toolsets or []),
         skills=payload.skills,
+        integration_configs=_normalize_integration_configs(payload.integration_configs),
         team_tags=payload.team_tags,
         supervisor_agent_id=payload.supervisor_agent_id,
         workspace_path="pending",
     )
+    _apply_runtime_profile_defaults(
+        agent,
+        payload.runtime_profile,
+        overwrite_toolsets=not payload.enabled_toolsets and not payload.disabled_toolsets,
+    )
+    if payload.enabled_toolsets is not None:
+        agent.enabled_toolsets = list(payload.enabled_toolsets)
+    if payload.disabled_toolsets is not None:
+        agent.disabled_toolsets = list(payload.disabled_toolsets)
+    if payload.integration_configs is not None:
+        agent.integration_configs = _normalize_integration_configs(payload.integration_configs)
+    _sync_agent_integration_toolsets(agent, await _load_enabled_integration_slugs(db))
     db.add(agent)
     await db.flush()
     workspace_manager = _get_workspace_manager(request)
@@ -219,6 +288,7 @@ async def update_agent(
             )
     if "supervisor_agent_id" in update_data:
         await _validate_supervisor(db, agent_id, update_data.get("supervisor_agent_id"))
+    runtime_profile_changed = "runtime_profile" in update_data
     current_friendly = (agent.friendly_name or "").strip()
     current_name = (agent.name or "").strip()
     current_slug = (agent.slug or "").strip()
@@ -243,7 +313,18 @@ async def update_agent(
     unique_slug = await ensure_unique_agent_slug(db, resolved_slug, exclude_agent_id=agent_id)
 
     for field, value in update_data.items():
+        if field == "integration_configs":
+            continue
         setattr(agent, field, value)
+    if "integration_configs" in update_data:
+        agent.integration_configs = _normalize_integration_configs(update_data.get("integration_configs"))
+    if runtime_profile_changed:
+        _apply_runtime_profile_defaults(
+            agent,
+            update_data.get("runtime_profile"),
+            overwrite_toolsets="enabled_toolsets" not in update_data and "disabled_toolsets" not in update_data,
+        )
+    _sync_agent_integration_toolsets(agent, await _load_enabled_integration_slugs(db))
     agent.friendly_name = resolved_friendly
     agent.name = resolved_name
     agent.slug = unique_slug
@@ -259,6 +340,8 @@ async def update_agent(
         "supervisor_agent_id",
         "can_send_tasks",
         "can_receive_tasks",
+        "runtime_profile",
+        "integration_configs",
     }
     should_restart_gateways = bool(set(update_data).intersection(restart_gateway_fields))
     if any(
@@ -273,6 +356,8 @@ async def update_agent(
         )
     await db.commit()
     await request.app.state.installation_manager.sync_agent_installation(agent)
+    if runtime_profile_changed:
+        await request.app.state.pty_manager.destroy_session(agent_id)
     if should_restart_gateways:
         channel_result = await db.execute(
             select(MessagingChannel.platform, MessagingChannel.enabled).where(MessagingChannel.agent_id == agent_id)
@@ -284,6 +369,40 @@ async def update_agent(
         select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id)
     )
     return _serialize_agent(request, result.scalar_one())
+
+
+@router.post("/{agent_id}/integrations/{integration_slug}/test", response_model=ManagedIntegrationTestResult)
+async def test_agent_integration(
+    agent_id: str,
+    integration_slug: str,
+    payload: ManagedIntegrationTestRequest,
+    request: Request,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db_session),
+) -> ManagedIntegrationTestResult:
+    agent = await db.get(Agent, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    async def _resolve_secret(secret_ref: str) -> str | None:
+        result = await db.execute(select(Secret).where(Secret.name == secret_ref))
+        secret = result.scalar_one_or_none()
+        if not secret:
+            return None
+        return request.app.state.secret_vault.decrypt(secret.value_enc)
+
+    try:
+        enabled_integration_slugs = await _load_enabled_integration_slugs(db)
+        success, message, details = await test_managed_integration(
+            agent,
+            integration_slug,
+            payload.config or {},
+            enabled_integration_slugs,
+            _resolve_secret,
+        )
+        return ManagedIntegrationTestResult(success=success, message=message, details=details)
+    except ManagedIntegrationTestError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -388,19 +507,33 @@ async def create_agent_from_template(
         slug=unique_slug,
         description=agent_payload.description,
         run_mode=agent_payload.run_mode,
+        runtime_profile=normalize_runtime_profile_slug(agent_payload.runtime_profile),
         model=runtime_defaults["model"],
         provider=runtime_defaults["provider"],
         api_key_ref=runtime_defaults["api_key_ref"],
         base_url=runtime_defaults["base_url"],
         system_prompt=agent_payload.system_prompt,
         soul_md=agent_payload.soul_md,
-        enabled_toolsets=agent_payload.enabled_toolsets,
-        disabled_toolsets=agent_payload.disabled_toolsets,
+        enabled_toolsets=list(agent_payload.enabled_toolsets or []),
+        disabled_toolsets=list(agent_payload.disabled_toolsets or []),
         skills=agent_payload.skills,
+        integration_configs=_normalize_integration_configs(agent_payload.integration_configs),
         team_tags=agent_payload.team_tags,
         supervisor_agent_id=agent_payload.supervisor_agent_id,
         workspace_path="pending",
     )
+    _apply_runtime_profile_defaults(
+        agent,
+        agent_payload.runtime_profile,
+        overwrite_toolsets=not agent_payload.enabled_toolsets and not agent_payload.disabled_toolsets,
+    )
+    if agent_payload.enabled_toolsets is not None:
+        agent.enabled_toolsets = list(agent_payload.enabled_toolsets)
+    if agent_payload.disabled_toolsets is not None:
+        agent.disabled_toolsets = list(agent_payload.disabled_toolsets)
+    if agent_payload.integration_configs is not None:
+        agent.integration_configs = _normalize_integration_configs(agent_payload.integration_configs)
+    _sync_agent_integration_toolsets(agent, await _load_enabled_integration_slugs(db))
     db.add(agent)
     await db.flush()
     agent.workspace_path = request.app.state.workspace_manager.create_workspace(

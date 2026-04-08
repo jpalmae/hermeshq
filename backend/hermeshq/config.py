@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     hermes_skins_root: Path | None = None
     agent_assets_root: Path | None = None
     user_assets_root: Path | None = None
+    integration_packages_root: Path | None = None
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3420"]
     pty_shell: str = "/bin/sh"
     internal_api_base_url: str = "http://127.0.0.1:8000/api/internal"
@@ -48,10 +49,13 @@ class Settings(BaseSettings):
             self.agent_assets_root = self.workspaces_root / "_agent_assets"
         if self.user_assets_root is None:
             self.user_assets_root = self.workspaces_root / "_user_assets"
+        if self.integration_packages_root is None:
+            self.integration_packages_root = self.workspaces_root / "_integration_packages"
         self.branding_root = self.branding_root.resolve()
         self.hermes_skins_root = self.hermes_skins_root.resolve()
         self.agent_assets_root = self.agent_assets_root.resolve()
         self.user_assets_root = self.user_assets_root.resolve()
+        self.integration_packages_root = self.integration_packages_root.resolve()
 
 
 @lru_cache

@@ -15,6 +15,16 @@ from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.secret import Secret
 from hermeshq.services.agent_hierarchy import delegate_route, route_label
+from hermeshq.services.managed_capabilities import (
+    fetch_local_skill_bundle,
+    get_managed_integration,
+    list_available_integration_packages,
+    list_local_skill_templates,
+    list_managed_integrations,
+    list_managed_plugins,
+    plugin_templates_root,
+)
+from hermeshq.services.runtime_profiles import get_runtime_profile
 from hermeshq.services.secret_vault import SecretVault
 
 
@@ -46,10 +56,11 @@ class HermesInstallationManager:
     async def sync_agent_installation(self, agent: Agent) -> list[dict]:
         hermes_home = self.build_hermes_home(agent.workspace_path)
         self._ensure_home_dirs(hermes_home)
-        self._sync_managed_plugins(hermes_home)
+        enabled_integrations = await self._load_enabled_integration_slugs()
+        self._sync_managed_plugins(hermes_home, enabled_integrations)
         active_skin = await self._sync_global_skin(hermes_home)
         app_name = await self._get_instance_app_name()
-        installed_skills = await self._sync_managed_skills(agent, hermes_home)
+        installed_skills = await self._sync_managed_skills(agent, hermes_home, enabled_integrations)
         system_prompt = await self._build_system_prompt(agent, installed_skills, app_name)
         messaging_channels = await self._load_messaging_channels(agent.id)
         self._write_config(agent, hermes_home, system_prompt, messaging_channels, active_skin)
@@ -60,10 +71,13 @@ class HermesInstallationManager:
 
     async def build_process_env(self, agent: Agent) -> dict[str, str]:
         hermes_home = self.build_hermes_home(agent.workspace_path)
+        profile = get_runtime_profile(agent.runtime_profile)
         env = {**os.environ, "HERMES_HOME": str(hermes_home), "TERM": "xterm-256color"}
         env["HERMESHQ_AGENT_ID"] = agent.id
         env["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id)
         env["HERMESHQ_INTERNAL_API_URL"] = get_settings().internal_api_base_url.rstrip("/")
+        env["HERMESHQ_RUNTIME_PROFILE"] = profile["slug"]
+        env["HERMESHQ_RUNTIME_PROFILE_NAME"] = profile["name"]
         api_key = await self._resolve_api_key(agent.api_key_ref)
         if api_key:
             for env_name in self._provider_env_names(agent.provider):
@@ -73,6 +87,8 @@ class HermesInstallationManager:
             if provider_base_url_env:
                 env[provider_base_url_env] = agent.base_url
             env["OPENAI_BASE_URL"] = agent.base_url
+        for key, value in (await self._build_managed_env_map(agent)).items():
+            env[key] = value
         return env
 
     async def build_gateway_env(self, agent: Agent, platform: str) -> dict[str, str]:
@@ -133,6 +149,14 @@ class HermesInstallationManager:
 
         results: list[dict] = []
         seen: set[str] = set()
+        enabled_integrations = await self._load_enabled_integration_slugs()
+        for meta in list_local_skill_templates(query, limit=limit, enabled_integration_slugs=enabled_integrations):
+            if meta["identifier"] in seen:
+                continue
+            seen.add(meta["identifier"])
+            results.append(meta)
+            if len(results) >= limit:
+                return results
         sources = [OptionalSkillSource(), SkillsShSource(GitHubAuth())]
 
         for source in sources:
@@ -166,12 +190,27 @@ class HermesInstallationManager:
         for subdir in ("cron", "sessions", "logs", "memories", "skills", "plugins"):
             (hermes_home / subdir).mkdir(parents=True, exist_ok=True)
 
-    def _sync_managed_plugins(self, hermes_home: Path) -> None:
-        source_root = Path(__file__).resolve().parents[1] / "plugin_templates" / "hermeshq_comms"
-        target_root = hermes_home / "plugins" / "hermeshq_comms"
-        if target_root.exists():
-            shutil.rmtree(target_root)
-        shutil.copytree(source_root, target_root)
+    def _sync_managed_plugins(self, hermes_home: Path, enabled_integration_slugs: list[str]) -> None:
+        plugins_root = hermes_home / "plugins"
+        plugins_root.mkdir(parents=True, exist_ok=True)
+        desired_plugins = list_managed_plugins(enabled_integration_slugs)
+        desired_names = {plugin["template_dir"] for plugin in desired_plugins}
+        known_names = {plugin["template_dir"] for plugin in list_managed_plugins([])}
+        known_names.update(
+            package["plugin_slug"]
+            for package in list_available_integration_packages([])
+            if package.get("plugin_slug")
+        )
+        for existing in plugins_root.iterdir():
+            if existing.is_dir() and existing.name in known_names and existing.name not in desired_names:
+                shutil.rmtree(existing)
+        templates_root = plugin_templates_root()
+        for plugin in desired_plugins:
+            source_root = Path(plugin["source_root"]) if plugin.get("source_root") else templates_root / plugin["template_dir"]
+            target_root = plugins_root / plugin["template_dir"]
+            if target_root.exists():
+                shutil.rmtree(target_root)
+            shutil.copytree(source_root, target_root)
 
     async def _sync_global_skin(self, hermes_home: Path) -> str | None:
         skins_root = hermes_home / "skins"
@@ -198,6 +237,7 @@ class HermesInstallationManager:
         messaging_channels: list[MessagingChannel],
         active_skin: str | None,
     ) -> None:
+        profile = get_runtime_profile(agent.runtime_profile)
         telegram_channel = next((item for item in messaging_channels if item.platform == "telegram"), None)
         config = {
             "model": {
@@ -208,6 +248,11 @@ class HermesInstallationManager:
             "agent": {
                 "max_turns": agent.max_iterations,
                 "system_prompt": system_prompt,
+            },
+            "runtime_profile": {
+                "slug": profile["slug"],
+                "name": profile["name"],
+                "tooling_summary": profile["tooling_summary"],
             },
             "skills": {
                 "external_dirs": [],
@@ -241,7 +286,7 @@ class HermesInstallationManager:
             encoding="utf-8",
         )
 
-    async def _sync_managed_skills(self, agent: Agent, hermes_home: Path) -> list[dict]:
+    async def _sync_managed_skills(self, agent: Agent, hermes_home: Path, enabled_integration_slugs: list[str]) -> list[dict]:
         managed_root = hermes_home / "skills" / "hermeshq-managed"
         managed_root.mkdir(parents=True, exist_ok=True)
 
@@ -256,7 +301,7 @@ class HermesInstallationManager:
                 installed.append(cached)
                 continue
 
-            bundle = await self._fetch_skill_bundle(identifier)
+            bundle = await self._fetch_skill_bundle(identifier, enabled_integration_slugs)
             desired_names.add(bundle["name"])
             target_dir = managed_root / bundle["name"]
             if target_dir.exists():
@@ -288,10 +333,15 @@ class HermesInstallationManager:
 
         return installed
 
-    async def _fetch_skill_bundle(self, identifier: str) -> dict:
+    async def _fetch_skill_bundle(self, identifier: str, enabled_integration_slugs: list[str]) -> dict:
         from tools.skills_hub import GitHubAuth, OptionalSkillSource, SkillsShSource, WellKnownSkillSource
 
         identifier = identifier.strip()
+        if identifier.startswith("local/"):
+            bundle = fetch_local_skill_bundle(identifier, enabled_integration_slugs=enabled_integration_slugs)
+            if not bundle:
+                raise HermesInstallationError(f"Local skill '{identifier}' was not found")
+            return bundle
         source = None
         if identifier.startswith("skills-sh/"):
             source = SkillsShSource(GitHubAuth())
@@ -415,6 +465,21 @@ class HermesInstallationManager:
 
     def _compose_system_prompt(self, agent: Agent, installed_skills: list[dict], roster: list[dict], app_name: str) -> str:
         parts = [agent.system_prompt.strip()] if agent.system_prompt and agent.system_prompt.strip() else []
+        profile = get_runtime_profile(agent.runtime_profile)
+        parts.append(
+            "\n".join(
+                [
+                    f"Your current HermesHQ runtime profile is {profile['name']} ({profile['slug']}).",
+                    profile["description"],
+                    f"Profile intent: {profile['container_intent']}",
+                    f"Runtime note: {profile['tooling_summary']}",
+                    (
+                        "Stage 1 note: profiles still run inside the shared HermesHQ backend image. "
+                        "Treat this profile as the intended operating environment and runtime policy."
+                    ),
+                ]
+            )
+        )
         if installed_skills:
             lines = [
                 f"{app_name} assigned skills are installed in your Hermes home.",
@@ -487,6 +552,12 @@ class HermesInstallationManager:
             )
             return list(result.scalars().all())
 
+    async def _load_enabled_integration_slugs(self) -> list[str]:
+        async with self.session_factory() as session:
+            app_settings = await session.get(AppSettings, "default")
+            enabled = getattr(app_settings, "enabled_integration_packages", []) if app_settings else []
+        return [slug for slug in enabled if isinstance(slug, str) and slug.strip()]
+
     async def _sync_dotenv(
         self,
         agent: Agent,
@@ -532,6 +603,24 @@ class HermesInstallationManager:
                     managed["TELEGRAM_FREE_RESPONSE_CHATS"] = ",".join(channel.free_response_chat_ids)
                 managed["TELEGRAM_REQUIRE_MENTION"] = "true" if channel.require_mention else "false"
                 managed["WHATSAPP_ENABLED"] = "false"
+
+        for slug, config in (agent.integration_configs or {}).items():
+            enabled_integrations = await self._load_enabled_integration_slugs()
+            integration = get_managed_integration(str(slug), enabled_integrations)
+            if not integration:
+                continue
+            config_dict = config if isinstance(config, dict) else {}
+            env_map = integration.get("env_map") or {}
+
+            base_url = str(config_dict.get("base_url") or "").strip()
+            if base_url and env_map.get("base_url"):
+                managed[env_map["base_url"]] = base_url
+
+            secret_ref = str(config_dict.get("api_key_ref") or "").strip()
+            if secret_ref and env_map.get("api_key_ref"):
+                secret_value = await self._resolve_api_key(secret_ref)
+                if secret_value:
+                    managed[env_map["api_key_ref"]] = secret_value
         return managed
 
     def _merge_env_file(self, env_path: Path, managed_env: dict[str, str]) -> None:
@@ -559,6 +648,9 @@ class HermesInstallationManager:
             if key
         }
         managed_keys.update(provider_base_envs)
+        for integration in list_managed_integrations():
+            env_map = integration.get("env_map") or {}
+            managed_keys.update(value for value in env_map.values() if value)
 
         preserved_lines: list[str] = []
         if env_path.exists():

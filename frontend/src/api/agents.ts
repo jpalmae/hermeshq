@@ -158,3 +158,23 @@ export function useDeleteAgentAvatar() {
     },
   });
 }
+
+export function useTestAgentIntegration() {
+  return useMutation({
+    mutationFn: async ({
+      agentId,
+      integrationSlug,
+      config,
+    }: {
+      agentId: string;
+      integrationSlug: string;
+      config: Record<string, string>;
+    }) => {
+      const { data } = await apiClient.post<{ success: boolean; message: string; details: Record<string, unknown> | null }>(
+        `/agents/${agentId}/integrations/${integrationSlug}/test`,
+        { config },
+      );
+      return data;
+    },
+  });
+}

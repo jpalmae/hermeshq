@@ -65,6 +65,12 @@ def _run_schema_updates(sync_connection) -> None:
         sync_connection.execute(text("UPDATE agents SET friendly_name = name WHERE friendly_name IS NULL"))
     if "avatar_filename" not in agent_columns:
         sync_connection.execute(text("ALTER TABLE agents ADD COLUMN avatar_filename VARCHAR(255)"))
+    if "runtime_profile" not in agent_columns:
+        sync_connection.execute(text("ALTER TABLE agents ADD COLUMN runtime_profile VARCHAR(32)"))
+        sync_connection.execute(text("UPDATE agents SET runtime_profile = 'standard' WHERE runtime_profile IS NULL"))
+    if "integration_configs" not in agent_columns:
+        sync_connection.execute(text("ALTER TABLE agents ADD COLUMN integration_configs JSON"))
+        sync_connection.execute(text("UPDATE agents SET integration_configs = '{}' WHERE integration_configs IS NULL"))
     settings_columns = {column["name"] for column in inspector.get_columns("app_settings")}
     if "app_name" not in settings_columns:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN app_name VARCHAR(128)"))
@@ -76,6 +82,17 @@ def _run_schema_updates(sync_connection) -> None:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN default_locale VARCHAR(8)"))
     if "default_tui_skin" not in settings_columns:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN default_tui_skin VARCHAR(128)"))
+    if "enabled_integration_packages" not in settings_columns:
+        sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN enabled_integration_packages JSON"))
+        sync_connection.execute(
+            text(
+                """
+                UPDATE app_settings
+                SET enabled_integration_packages = '[]'
+                WHERE enabled_integration_packages IS NULL
+                """
+            )
+        )
     if "tui_skin_filename" not in settings_columns:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN tui_skin_filename VARCHAR(255)"))
     if "logo_filename" not in settings_columns:
