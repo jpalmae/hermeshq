@@ -63,6 +63,8 @@ export function AgentDetailPage() {
   const [sectionState, setSectionState] = useState(DEFAULT_SECTION_STATE);
   const [nameTouched, setNameTouched] = useState(false);
   const [slugTouched, setSlugTouched] = useState(false);
+  const [ledgerQuery, setLedgerQuery] = useState("");
+  const [activityQuery, setActivityQuery] = useState("");
   const agentTasks = useMemo(
     () => (tasks ?? []).filter((task) => task.agent_id === agentId),
     [tasks, agentId],
@@ -74,6 +76,40 @@ export function AgentDetailPage() {
       ),
     [agentTasks],
   );
+  const filteredLedgerTasks = useMemo(() => {
+    const query = ledgerQuery.trim().toLowerCase();
+    if (!query) {
+      return ledgerTasks;
+    }
+    return ledgerTasks.filter((task) =>
+      [
+        task.title,
+        task.prompt,
+        task.response,
+        task.error_message,
+        task.status,
+        task.metadata ? JSON.stringify(task.metadata) : "",
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query)),
+    );
+  }, [ledgerQuery, ledgerTasks]);
+  const filteredActivityLogs = useMemo(() => {
+    const query = activityQuery.trim().toLowerCase();
+    if (!query) {
+      return logs ?? [];
+    }
+    return (logs ?? []).filter((entry) =>
+      [
+        entry.event_type,
+        entry.message,
+        entry.created_at,
+        JSON.stringify(entry),
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query)),
+    );
+  }, [activityQuery, logs]);
 
   useEffect(() => {
     if (!isLoading && agent === null) {
@@ -467,27 +503,44 @@ export function AgentDetailPage() {
         t("agent.runtimeLedger"),
         t("agent.records", { count: agentTasks.length }),
         <div className="mt-0">
-          {ledgerTasks.map((task) => (
-            <article key={task.id} className="grid gap-4 border-b border-[var(--border)] py-5 md:grid-cols-[0.7fr_1.3fr]">
-              <div>
-                <p className="panel-label">{task.status}</p>
-                <p className="mt-2 text-sm text-[var(--text-primary)]">
-                  {task.title ?? t("tasks.operatorTask")}
-                </p>
-                <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
-                  {formatDateTime(task.queued_at)}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm leading-6 text-[var(--text-secondary)]">{task.prompt}</p>
-                {task.response ? (
-                  <pre className="mt-3 overflow-x-auto whitespace-pre-wrap border-t border-[var(--border)] pt-3 text-sm leading-6 text-[var(--text-primary)]">
-                    {task.response}
-                  </pre>
-                ) : null}
-              </div>
-            </article>
-          ))}
+          <label className="panel-field border-b border-[var(--border)] pb-4">
+            <span className="panel-label">{t("agent.searchRuntimeLedger")}</span>
+            <input
+              value={ledgerQuery}
+              onChange={(event) => setLedgerQuery(event.target.value)}
+              placeholder={t("agent.searchRuntimeLedgerPlaceholder")}
+            />
+          </label>
+          {filteredLedgerTasks.length ? (
+            filteredLedgerTasks.map((task) => (
+              <article key={task.id} className="grid gap-4 border-b border-[var(--border)] py-5 md:grid-cols-[0.7fr_1.3fr]">
+                <div>
+                  <p className="panel-label">{task.status}</p>
+                  <p className="mt-2 text-sm text-[var(--text-primary)]">
+                    {task.title ?? t("tasks.operatorTask")}
+                  </p>
+                  <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
+                    {formatDateTime(task.queued_at)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm leading-6 text-[var(--text-secondary)]">{task.prompt}</p>
+                  {task.response ? (
+                    <pre className="mt-3 overflow-x-auto whitespace-pre-wrap border-t border-[var(--border)] pt-3 text-sm leading-6 text-[var(--text-primary)]">
+                      {task.response}
+                    </pre>
+                  ) : null}
+                  {task.error_message ? (
+                    <p className="mt-3 border-t border-[var(--border)] pt-3 text-sm leading-6 text-[var(--danger)]">
+                      {task.error_message}
+                    </p>
+                  ) : null}
+                </div>
+              </article>
+            ))
+          ) : (
+            <p className="panel-inline-status pt-5">{t("agent.noRuntimeLedgerMatches")}</p>
+          )}
         </div>,
       )}
 
@@ -505,19 +558,31 @@ export function AgentDetailPage() {
         t("agent.activityStream"),
         t("agent.events", { count: logs?.length ?? 0 }),
         <div className="mt-0">
-          {(logs ?? []).map((entry) => (
-            <article key={String(entry.id)} className="grid gap-3 border-b border-[var(--border)] py-4 md:grid-cols-[0.45fr_1.55fr]">
-              <div>
-                <p className="panel-label">{String(entry.event_type)}</p>
-                <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
-                  {formatDateTime(String(entry.created_at))}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-[var(--text-primary)]">{String(entry.message ?? "")}</p>
-              </div>
-            </article>
-          ))}
+          <label className="panel-field border-b border-[var(--border)] pb-4">
+            <span className="panel-label">{t("agent.searchActivityStream")}</span>
+            <input
+              value={activityQuery}
+              onChange={(event) => setActivityQuery(event.target.value)}
+              placeholder={t("agent.searchActivityStreamPlaceholder")}
+            />
+          </label>
+          {filteredActivityLogs.length ? (
+            filteredActivityLogs.map((entry) => (
+              <article key={String(entry.id)} className="grid gap-3 border-b border-[var(--border)] py-4 md:grid-cols-[0.45fr_1.55fr]">
+                <div>
+                  <p className="panel-label">{String(entry.event_type)}</p>
+                  <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
+                    {formatDateTime(String(entry.created_at))}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-[var(--text-primary)]">{String(entry.message ?? "")}</p>
+                </div>
+              </article>
+            ))
+          ) : (
+            <p className="panel-inline-status pt-5">{t("agent.noActivityStreamMatches")}</p>
+          )}
         </div>,
       )}
 
