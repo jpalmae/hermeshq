@@ -55,6 +55,7 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "HermesHQ es un panel operativo para crear, supervisar y conversar con agentes Hermes desde una sola interfaz. La app separa tareas globales de instancia y tareas específicas de cada agente.",
         bullets: [
           "El menú izquierdo es la navegación principal. Desde ahí accedes a Dashboard, Agents, Tasks, Schedules y Comms; si eres admin también verás Users, Nodes y Settings.",
+          "HermesHQ no reemplaza a Hermes Agent: lo usa como motor real de ejecución. La diferencia es que aquí cada agente vive además dentro de una capa de control con identidad, workspace propio, canales, trazabilidad y gobierno multiusuario.",
           "El tema visual se resuelve con dos niveles: tema por defecto de la instancia y preferencia personal del usuario.",
           "El idioma sigue la misma lógica: la instancia define un idioma por defecto y cada usuario puede sobrescribirlo entre inglés y español desde My Account o desde la sección Operator del sidebar.",
           "Las secciones visibles dependen de tu rol. Un usuario normal solo ve lo que le fue asignado por un administrador.",
@@ -307,6 +308,7 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "HermesHQ is an operations panel for creating, supervising, and talking to Hermes agents from a single interface. The app separates instance-wide work from agent-specific work.",
         bullets: [
           "The left sidebar is the main navigation. From there you access Dashboard, Agents, Tasks, Schedules, and Comms; admins also see Users, Nodes, and Settings.",
+          "HermesHQ does not replace Hermes Agent: it uses it as the real execution engine. The difference is that here each agent also lives inside a control layer with identity, its own workspace, channels, traceability, and multi-user governance.",
           "The visual theme is resolved in two layers: instance default theme and personal user preference.",
           "Language follows the same rule: the instance defines a default language and each user can override it between English and Spanish from My Account or the Operator section in the sidebar.",
           "Visible sections depend on your role. A standard user only sees what an administrator assigned.",
