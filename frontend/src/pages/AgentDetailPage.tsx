@@ -22,6 +22,56 @@ const DEFAULT_SECTION_STATE = {
   workspace: false,
 };
 
+type ActivityEntry = Record<string, unknown>;
+
+function asText(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function groupActivityEntries(entries: ActivityEntry[]) {
+  const grouped: Array<ActivityEntry & { grouped_count?: number }> = [];
+  let index = 0;
+
+  while (index < entries.length) {
+    const current = entries[index];
+    const eventType = asText(current.event_type);
+    const taskId = asText(current.task_id);
+    if (eventType !== "agent.output" || !taskId) {
+      grouped.push(current);
+      index += 1;
+      continue;
+    }
+
+    const run: ActivityEntry[] = [current];
+    let nextIndex = index + 1;
+    while (nextIndex < entries.length) {
+      const candidate = entries[nextIndex];
+      if (
+        asText(candidate.event_type) === "agent.output"
+        && asText(candidate.task_id) === taskId
+      ) {
+        run.push(candidate);
+        nextIndex += 1;
+        continue;
+      }
+      break;
+    }
+
+    if (run.length === 1) {
+      grouped.push(current);
+    } else {
+      grouped.push({
+        ...current,
+        message: [...run].reverse().map((entry) => asText(entry.message)).join(""),
+        grouped_count: run.length,
+      });
+    }
+    index = nextIndex;
+  }
+
+  return grouped;
+}
+
 function statusTone(status: string) {
   if (status === "running") return "text-[var(--success)]";
   if (status === "stopped") return "text-[var(--text-secondary)]";
@@ -94,12 +144,16 @@ export function AgentDetailPage() {
         .some((value) => String(value).toLowerCase().includes(query)),
     );
   }, [ledgerQuery, ledgerTasks]);
+  const groupedActivityLogs = useMemo(
+    () => groupActivityEntries((logs ?? []) as ActivityEntry[]),
+    [logs],
+  );
   const filteredActivityLogs = useMemo(() => {
     const query = activityQuery.trim().toLowerCase();
     if (!query) {
-      return logs ?? [];
+      return groupedActivityLogs;
     }
-    return (logs ?? []).filter((entry) =>
+    return groupedActivityLogs.filter((entry) =>
       [
         entry.event_type,
         entry.message,
@@ -109,7 +163,7 @@ export function AgentDetailPage() {
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query)),
     );
-  }, [activityQuery, logs]);
+  }, [activityQuery, groupedActivityLogs]);
 
   useEffect(() => {
     if (!isLoading && agent === null) {
@@ -574,6 +628,11 @@ export function AgentDetailPage() {
                   <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
                     {formatDateTime(String(entry.created_at))}
                   </p>
+                  {typeof entry.grouped_count === "number" && entry.grouped_count > 1 ? (
+                    <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
+                      {t("agent.groupedFragments", { count: entry.grouped_count })}
+                    </p>
+                  ) : null}
                 </div>
                 <div>
                   <p className="text-sm text-[var(--text-primary)]">{String(entry.message ?? "")}</p>
