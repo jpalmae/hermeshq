@@ -15,10 +15,17 @@ POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3420}"
 SKIP_START="${SKIP_START:-0}"
+TMP_DIR=""
 
 fail() {
   printf 'Error: %s\n' "$1" >&2
   exit 1
+}
+
+cleanup_tmp_dir() {
+  if [ -n "${TMP_DIR:-}" ] && [ -d "${TMP_DIR:-}" ]; then
+    rm -rf "$TMP_DIR"
+  fi
 }
 
 need_cmd() {
@@ -133,24 +140,24 @@ main() {
   docker info >/dev/null 2>&1 || fail "Docker daemon is not reachable"
   compose version >/dev/null 2>&1 || true
 
-  local install_host archive_url tmp_dir src_root src_dir existing_env
+  local install_host archive_url src_root src_dir existing_env
   install_host="$(detect_host)"
   archive_url="$(archive_url_from_repo)"
-  tmp_dir="$(mktemp -d)"
+  TMP_DIR="$(mktemp -d)"
   existing_env=""
 
-  trap 'rm -rf "$tmp_dir"' EXIT
+  trap cleanup_tmp_dir EXIT
 
   if [ -f "$INSTALL_DIR/.env" ]; then
-    existing_env="$tmp_dir/existing.env"
+    existing_env="$TMP_DIR/existing.env"
     cp "$INSTALL_DIR/.env" "$existing_env"
   fi
 
   printf 'Downloading HermesHQ from %s\n' "$archive_url"
-  curl -fsSL "$archive_url" -o "$tmp_dir/hermeshq.tar.gz"
-  mkdir -p "$tmp_dir/src"
-  tar -xzf "$tmp_dir/hermeshq.tar.gz" -C "$tmp_dir/src"
-  src_root="$(find "$tmp_dir/src" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+  curl -fsSL "$archive_url" -o "$TMP_DIR/hermeshq.tar.gz"
+  mkdir -p "$TMP_DIR/src"
+  tar -xzf "$TMP_DIR/hermeshq.tar.gz" -C "$TMP_DIR/src"
+  src_root="$(find "$TMP_DIR/src" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
   [ -n "$src_root" ] || fail "Failed to extract repository archive"
 
   rm -rf "$INSTALL_DIR"
@@ -180,4 +187,3 @@ main() {
 }
 
 main "$@"
-
