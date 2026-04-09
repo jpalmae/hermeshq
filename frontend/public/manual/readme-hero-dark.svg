@@ -1,0 +1,18 @@
+<svg width="1600" height="560" viewBox="0 0 1600 560" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="560" fill="#0C0C0D"/>
+  <rect x="64" y="70" width="1472" height="420" rx="24" fill="#121214" stroke="#222228"/>
+  <line x1="96" y1="111.5" x2="616" y2="111.5" stroke="#2F2F36"/>
+  <line x1="96.5" y1="111" x2="96.5" y2="391" stroke="#2F2F36"/>
+  <text x="96" y="182" fill="white" font-family="Menlo, Monaco, 'Courier New', monospace" font-size="76" font-weight="700">HERMESHQ</text>
+  <text x="100" y="250" fill="#D8D8DD" font-family="Menlo, Monaco, 'Courier New', monospace" font-size="27">Docker-first control plane for managed Hermes runtimes</text>
+  <text x="100" y="314" fill="#8FD3FF" font-family="Menlo, Monaco, 'Courier New', monospace" font-size="24">Tasks  |  Comms  |  Telegram  |  Runtime profiles  |  Integrations</text>
+  <text x="100" y="364" fill="#A2A5AE" font-family="Menlo, Monaco, 'Courier New', monospace" font-size="24">Operate multiple agents from one dark, observable surface.</text>
+
+  <rect x="1080" y="132" width="360" height="260" rx="18" fill="#151519" stroke="#26262D"/>
+  <line x1="1112" y1="164.5" x2="1408" y2="164.5" stroke="#3A3A42"/>
+  <text x="1112" y="192" fill="#A6A9B2" font-family="Menlo, Monaco, 'Courier New', monospace" font-size="20">LIVE SURFACES</text>
+  <text x="1112" y="238" fill="white" font-family="Menlo, Monaco, 'Courier New', monospace" font-size="29">Dashboard</text>
+  <text x="1112" y="280" fill="white" font-family="Menlo, Monaco, 'Courier New', monospace" font-size="29">Agent Detail</text>
+  <text x="1112" y="322" fill="white" font-family="Menlo, Monaco, 'Courier New', monospace" font-size="29">Comms</text>
+  <text x="1112" y="364" fill="white" font-family="Menlo, Monaco, 'Courier New', monospace" font-size="29">Integrations</text>
+</svg>

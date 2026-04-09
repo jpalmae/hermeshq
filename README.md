@@ -1,3 +1,5 @@
+![HermesHQ dark hero](./frontend/public/manual/readme-hero-dark.svg)
+
 # HermesHQ
 
 HermesHQ is a Docker-first control plane for running and operating multiple [Hermes Agent](https://github.com/NousResearch/hermes-agent) instances from one web application.
@@ -10,6 +12,10 @@ It keeps Hermes as the real execution engine, then adds the operational layer ar
 - hierarchy-aware inter-agent delegation
 - per-agent Telegram channels
 - provider presets, secrets vault, runtime profiles, and managed integrations
+
+<video src="./frontend/public/manual/hermeshq-demo.mp4" controls muted playsinline preload="metadata" poster="./frontend/public/manual/dashboard.png" width="100%"></video>
+
+If your GitHub client does not render the embedded player, open the demo directly: [HermesHQ demo video](./frontend/public/manual/hermeshq-demo.mp4)
 
 ## Hermes Agent vs HermesHQ
 
