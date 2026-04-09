@@ -17,6 +17,9 @@
   --radius-lg: 20px;
   --radius-md: 16px;
   --page-width: min(1240px, calc(100vw - 2rem));
+  --font-display: "Doto", "Space Mono", monospace;
+  --font-sans: "Space Grotesk", "DM Sans", system-ui, sans-serif;
+  --font-mono: "Space Mono", "JetBrains Mono", monospace;
 }
 
 * {
@@ -29,7 +32,7 @@ html {
 
 body {
   margin: 0;
-  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-family: var(--font-sans);
   background:
     radial-gradient(circle at top left, rgba(143, 211, 255, 0.11), transparent 24rem),
     radial-gradient(circle at top right, rgba(255, 255, 255, 0.04), transparent 20rem),
@@ -76,7 +79,7 @@ video {
   background: linear-gradient(180deg, #18181c 0%, #0e0e11 100%);
   display: grid;
   place-items: center;
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   color: var(--accent);
 }
@@ -92,7 +95,9 @@ video {
 .brand-copy strong {
   display: block;
   margin-top: 0.15rem;
-  font-size: 1.05rem;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  letter-spacing: 0.04em;
 }
 
 .nav {
@@ -169,6 +174,7 @@ video {
 .eyebrow {
   margin: 0;
   color: var(--text-muted);
+  font-family: var(--font-mono);
   font-size: 0.76rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -176,6 +182,7 @@ video {
 
 .hero h1 {
   margin: 1rem 0 0;
+  font-family: var(--font-display);
   font-size: clamp(3rem, 7vw, 5.9rem);
   line-height: 0.92;
   letter-spacing: -0.05em;
@@ -201,7 +208,7 @@ video {
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.03);
   color: var(--accent);
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   padding: 0.55rem 0.8rem;
 }
@@ -256,7 +263,7 @@ video {
 .stat strong {
   display: block;
   margin-top: 0.5rem;
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 1.1rem;
 }
 
@@ -274,8 +281,9 @@ video {
 
 .section-head h2 {
   margin: 0.5rem 0 0;
+  font-family: var(--font-display);
   font-size: clamp(2rem, 4vw, 3.2rem);
-  letter-spacing: -0.04em;
+  letter-spacing: 0.02em;
 }
 
 .section-head p {
@@ -308,7 +316,9 @@ video {
 
 .card h3 {
   margin: 0.85rem 0 0;
+  font-family: var(--font-display);
   font-size: 1.25rem;
+  letter-spacing: 0.02em;
 }
 
 .card p {
@@ -319,7 +329,7 @@ video {
 
 .card .kicker,
 .mono {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 .kicker {
@@ -375,7 +385,7 @@ video {
   place-items: center;
   border-radius: 50%;
   border: 1px solid var(--border);
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   color: var(--accent);
 }
 
