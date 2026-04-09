@@ -13,9 +13,11 @@ It keeps Hermes as the real execution engine, then adds the operational layer ar
 - per-agent Telegram channels
 - provider presets, secrets vault, runtime profiles, and managed integrations
 
-<video src="./frontend/public/manual/hermeshq-demo.mp4" controls muted playsinline preload="metadata" poster="./frontend/public/manual/dashboard.png" width="100%"></video>
+<a href="./frontend/public/manual/hermeshq-demo.mp4">
+  <img src="./frontend/public/manual/hermeshq-demo-preview.gif" alt="HermesHQ demo preview" width="100%" />
+</a>
 
-If your GitHub client does not render the embedded player, open the demo directly: [HermesHQ demo video](./frontend/public/manual/hermeshq-demo.mp4)
+Click the preview above to open the full demo video: [HermesHQ demo video](./frontend/public/manual/hermeshq-demo.mp4)
 
 ## Hermes Agent vs HermesHQ
 
