@@ -1,6 +1,15 @@
 # HermesHQ
 
-Initial end-to-end implementation for a multi-agent operations panel based on the specification in [HermesHQ_AGENTS.md](./HermesHQ_AGENTS.md).
+HermesHQ is a Docker-first control plane for running and operating multiple [Hermes Agent](https://github.com/NousResearch/hermes-agent) instances from one web application.
+
+It keeps Hermes as the real execution engine, then adds the operational layer around it:
+
+- managed agents with separate workspaces and `HERMES_HOME`
+- web UI, RBAC, users, and assigned-agent scope
+- task dispatch, schedules, runtime ledger, and activity stream
+- hierarchy-aware inter-agent delegation
+- per-agent Telegram channels
+- provider presets, secrets vault, runtime profiles, and managed integrations
 
 ## Hermes Agent vs HermesHQ
 
@@ -28,84 +37,112 @@ In short:
 - `hermes-agent` alone = execution engine used directly
 - HermesHQ = control plane plus managed multi-agent runtime built on top of Hermes
 
-## Included in this cut
+## What It Looks Like
 
-- FastAPI backend with:
-  - JWT auth
-  - per-user theme preference override
-  - per-user language preference override
-  - instance-wide default language
-  - self-service profile and password change for the current user
-  - admin/user RBAC with assigned-agent scope
-  - local node bootstrap
-  - agent CRUD
-  - per-agent avatar upload
-  - task submission/cancellation
-  - strict local agent runtime via `hermes-agent`
-  - activity feed
-  - websocket event stream
-  - inter-agent comms with hierarchy-aware delegation rules
-  - secrets vault
-  - provider registry with editable presets
-  - runtime profiles for standard, technical, and security agents
-  - managed integration package catalog with install/uninstall and per-agent tests
-  - templates
-  - scheduled tasks
-  - workspace explorer APIs
-  - local PTY websocket
-  - installed skill deletion per agent
-- React/Vite frontend with:
-  - Nothing-inspired dark mode foundation
-  - English/Spanish UI localization
-  - login screen
-  - dashboard overview
-  - agents list/detail
-  - tasks board
-  - nodes
-  - comms
-  - settings
-  - in-app user manual with screenshots
-  - self-service `My Account`
-  - users and assignments
-  - workspace editor
-  - PTY terminal pane
-  - per-agent integrations section with declarative config forms
-  - per-agent Telegram channel management
-  - Telegram message traceability in agent activity logs
-  - per-user operator avatar
-  - instance-wide Hermes TUI skin upload for admins
+Default UI, without customer-specific branding:
 
-## Frontend fonts
+### Dashboard
 
-The UI loads these Google Fonts globally:
+![HermesHQ dashboard](frontend/public/manual/dashboard.png)
 
-- `Doto`
-- `Space Grotesk`
-- `Space Mono`
+### Agent Detail
 
-## One-line install
+![HermesHQ agent detail](frontend/public/manual/agent-detail.png)
 
-For a clean server install with Docker already available:
+### Comms
+
+![HermesHQ comms](frontend/public/manual/comms.png)
+
+### Integrations
+
+![HermesHQ integrations](frontend/public/manual/integrations.png)
+
+### Settings
+
+![HermesHQ settings](frontend/public/manual/settings.png)
+
+## Why HermesHQ
+
+Hermes works well as a local runtime. HermesHQ adds the things teams usually need once they move from one agent to an actual operational setup:
+
+- multiple agents with separate identity, prompts, skills, integrations, and channels
+- central task dispatch and scheduled execution
+- runtime traceability through ledger and activity events
+- hierarchy-aware delegation and callbacks
+- per-user access scope and admin controls
+- Docker-based deployment, backup, and restore
+
+## Core Capabilities
+
+### Runtime and Operations
+
+- strict local agent runtime via `hermes-agent`
+- runtime profiles for `standard`, `technical`, and `security`
+- task submission, cancellation, and scheduled runs
+- TUI/PTY support for allowed profiles
+- runtime ledger and activity stream
+- real WebSocket event stream
+
+### Multi-Agent Control Plane
+
+- agent CRUD and local node bootstrap
+- inter-agent comms with hierarchy-aware delegation rules
+- delegate result callbacks back to the parent agent
+- per-agent Telegram channels with activity traceability
+- assigned-agent scope for non-admin users
+
+### Configuration and Governance
+
+- JWT auth
+- admin/user RBAC
+- self-service profile and password changes
+- per-user theme override
+- per-user language override with instance default
+- secrets vault
+- editable provider registry and presets
+- managed integration package catalog with install/uninstall and per-agent tests
+
+### UX
+
+- dashboard, agents, tasks, comms, users, settings, schedules
+- English and Spanish UI
+- in-app manual
+- runtime capability visibility in `Settings` and per-agent `Integrations`
+- global Hermes TUI skin upload for admins
+
+## One-Line Install
+
+HermesHQ installs and runs with Docker by default.
+
+The installer:
+
+- downloads the current `main` branch tarball
+- installs into `~/hermeshq`
+- preserves an existing `.env` if present
+- generates a new `.env` with bootstrap credentials on first install
+- runs `docker compose up --build -d`
+
+### Prerequisites
+
+- Docker Engine
+- Docker Compose plugin or `docker-compose`
+- `curl`
+- `tar`
+- `python3`
+
+### Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jpalmae/hermeshq/main/install.sh | bash
 ```
 
-Recommended when the server has multiple interfaces:
+If the server has multiple interfaces, pass the public host or DNS name explicitly:
 
 ```bash
-HERMESHQ_HOST=XXX.XXX.XXX.XXX curl -fsSL https://raw.githubusercontent.com/jpalmae/hermeshq/main/install.sh | bash
+HERMESHQ_HOST=your-server-ip-or-dns curl -fsSL https://raw.githubusercontent.com/jpalmae/hermeshq/main/install.sh | bash
 ```
 
-What the installer does:
-
-- downloads the current `main` branch tarball
-- installs it into `~/hermeshq`
-- preserves an existing `.env` if present
-- generates a new `.env` with bootstrap credentials if this is the first install
-- builds and starts the Docker stack
-
-Useful overrides:
+### Useful Installer Overrides
 
 - `INSTALL_DIR=/srv/hermeshq`
 - `BRANCH=main`
@@ -114,48 +151,36 @@ Useful overrides:
 - `ADMIN_PASSWORD=YourPassword123!`
 - `FRONTEND_PORT=3420`
 - `BACKEND_PORT=8000`
+- `SKIP_START=1`
 
-## Backup and restore
+### What You Get
 
-HermesHQ now includes instance-level backup and restore scripts in [`scripts/backup-instance.sh`](/Users/jpalmae/dev/hermeshq/scripts/backup-instance.sh) and [`scripts/restore-instance.sh`](/Users/jpalmae/dev/hermeshq/scripts/restore-instance.sh).
+- frontend: `http://<host>:3420`
+- backend: `http://<host>:8000`
+- Docker-managed PostgreSQL and persistent workspaces
+- generated bootstrap admin credentials if you did not provide them
 
-What the backup captures:
-
-- PostgreSQL as a custom-format dump
-- the persistent Docker volume mounted at `/app/workspaces`
-- `.env` if present
-- `.cloudflared.env` if present
-
-Create a backup bundle:
+## Run With Docker Manually
 
 ```bash
-./scripts/backup-instance.sh
+docker compose up --build -d
 ```
 
-This writes a timestamped archive under `./backups/`.
+Default URLs:
 
-Restore an instance from a bundle:
+- frontend: `http://localhost:3420`
+- backend: `http://localhost:8000`
 
-```bash
-./scripts/restore-instance.sh ./backups/hermeshq-backup-YYYYMMDDTHHMMSSZ.tar.gz
-```
+## Local Development
 
-The restore script also restarts `cloudflared` if `.cloudflared.env` is present and contains a `TUNNEL_TOKEN`.
-
-## Run backend
+### Backend
 
 ```bash
 cd backend
-.venv/bin/python -m uvicorn hermeshq.main:app --reload
-```
-
-Recommended backend setup with `uv`:
-
-```bash
 uv venv .venv
 uv pip install --python .venv/bin/python -r requirements.txt
 uv pip install --python .venv/bin/python git+https://github.com/NousResearch/hermes-agent.git
-uvicorn hermeshq.main:app --reload
+.venv/bin/python -m uvicorn hermeshq.main:app --reload
 ```
 
 API default URL: `http://localhost:8000`
@@ -165,7 +190,7 @@ Default login:
 - username: `admin`
 - password: `admin123`
 
-## Run frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -173,51 +198,132 @@ npm install
 npm run dev
 ```
 
-Frontend default URL: `http://localhost:5173`
+Frontend dev URL: `http://localhost:5173`
 
-## Run with Docker
+## Managed Integrations
+
+HermesHQ supports managed integration packages that are separate from the core runtime.
+
+Admins can:
+
+- upload `.tar.gz` integration packages from `Settings -> Integrations`
+- install or uninstall them globally
+- enable and configure them per agent
+- run per-agent connection tests
+
+This separation is intentional:
+
+- skills describe behavior
+- integration packages install real plugins/tools
+- runtime profiles decide which capabilities are allowed
+
+## Runtime Profiles
+
+Agents now declare a `runtime profile`:
+
+- `standard`
+- `technical`
+- `security`
+
+In the current phase:
+
+- `standard` blocks TUI access
+- `standard` blocks terminal/process usage in task execution
+- built-in capabilities are visible in `Settings -> Runtime built-ins`
+- each agent shows effective capabilities in `Agent -> Integrations`
+
+This is already real enforcement for `standard` versus technical/security agents, even though the deeper execution-plane split is still a later phase.
+
+## Backup and Restore
+
+HermesHQ includes instance-level backup and restore scripts:
+
+- [`scripts/backup-instance.sh`](scripts/backup-instance.sh)
+- [`scripts/restore-instance.sh`](scripts/restore-instance.sh)
+
+The backup captures:
+
+- PostgreSQL as a custom-format dump
+- the persistent Docker volume mounted at `/app/workspaces`
+- `.env` if present
+- `.cloudflared.env` if present
+
+Create a backup:
 
 ```bash
-docker compose up --build -d
+./scripts/backup-instance.sh
 ```
 
-URLs:
+Restore from a bundle:
 
-- frontend: `http://localhost:3420`
-- backend: `http://localhost:8000`
+```bash
+./scripts/restore-instance.sh ./backups/hermeshq-backup-YYYYMMDDTHHMMSSZ.tar.gz
+```
 
-## Notes
+If `.cloudflared.env` is present and contains `TUNNEL_TOKEN`, the restore script also restarts `cloudflared`.
+
+## Operational Notes
 
 - The Docker stack uses PostgreSQL 16 and the backend connects through `asyncpg`.
-- `docker-compose.yml` now reads its runtime ports, admin bootstrap credentials, PostgreSQL credentials, CORS origins and frontend API base from `.env`, so local installs and remote server installs can share the same stack definition.
-- The bundled `install.sh` supports `curl | bash` deployment from GitHub and generates a first-run `.env` when needed.
-- The codebase now bundles first-party backup and restore scripts for PostgreSQL, workspaces, `.env` and `cloudflared` token state.
-- The frontend now falls back to the current browser hostname for API and WebSocket calls if `VITE_API_BASE_URL` is not explicitly set, which makes remote deployments behave correctly without being pinned to `localhost`.
+- `docker-compose.yml` reads ports, admin bootstrap credentials, PostgreSQL credentials, CORS origins, and frontend API base from `.env`.
+- The frontend falls back to the current browser hostname for API and WebSocket calls if `VITE_API_BASE_URL` is not explicitly set.
 - Task execution is strict: if `hermes-agent` is missing, the agent has no valid credentials, or the provider rejects the request, the task is marked `failed`.
-- The bundled Docker runtime uses `/bin/sh` for PTY sessions so the embedded terminal works reliably inside the container image.
-- Admins can upload a single Hermes skin YAML in `Settings`. HermesHQ distributes it to every agent installation under `.hermes/skins/`, writes `display.skin` into each agent `config.yaml`, and new TUI sessions pick up that shared look automatically.
-- Telegram bindings are now managed per agent. HermesHQ writes the agent's `.hermes/config.yaml` and `.hermes/.env`, then supervises `hermes gateway run` for that agent. Configure a bot token as a secret and reference it from the agent detail page.
-- Telegram conversations now leave a visible audit trail in the agent `Activity stream`. New inbound and outbound chat messages are persisted as `channel.telegram.inbound` and `channel.telegram.outbound` events.
-- The Hermes skill registry now supports real deletion of installed skills. Managed skills are removed from both the agent assignment list and the agent `HERMES_HOME`; local skills can also be deleted directly from the installed registry panel.
-- A Telegram bot token should be attached to only one active HermesHQ instance at a time. Running the same bot in two environments causes Telegram polling conflicts and breaks both delivery and traceability.
-- Admins now manage a provider registry in `Settings`. Presets exist for Kimi Coding, Z.AI Coding Plan, OpenRouter API, OpenAI API, Gemini API and Anthropic API. Their base URLs and default models remain editable so the catalog can adapt if a provider changes its endpoint conventions.
-- The bundled `Kimi Coding` preset now targets `https://api.kimi.com/coding/v1`.
-- New agents no longer depend only on free-text provider fields. The create flow can start from a provider preset, auto-filling runtime provider, model, base URL and secret selection while still allowing manual overrides when needed.
-- Agents now declare a `runtime profile` (`standard`, `technical`, `security`). The profile applies to the whole agent runtime, not just one channel. In the current phase it already gates capabilities such as TUI access for `standard` agents and restricts terminal/process usage in task execution.
-- HermesHQ now has a managed integration package system. Admins can upload `.tar.gz` packages from `Settings`, install or uninstall them globally, and then enable/configure them per agent from the dedicated `Integrations` section.
-- Managed integrations are intentionally separate from skills: skills describe behavior, while integration packages install real plugins/tools, declare required fields and supported runtime profiles, and can expose per-agent connection tests.
-- The UI now makes runtime capabilities explicit. `Settings` shows built-in runtime toolsets plus HermesHQ platform plugins, and each agent `Integrations` section shows the effective capabilities for that agent: profile built-ins, platform plugins, and enabled integration packages.
-- `Comms` now enforces real hierarchy rules for `Delegate`: independent agents can delegate freely, subordinate agents can escalate upward or delegate downward inside their own branch, and cross-branch lateral delegation is blocked.
-- The `Comms` screen reflects those rules before sending by disabling invalid targets and visualizing upward, downward and blocked routes for the selected source agent.
-- Delegations now create a real callback path to the delegating agent when the child task finishes. HermesHQ persists a `delegate_result` message in `Comms`, creates a follow-up task for the parent agent, and surfaces the result in the delegator runtime ledger.
-- If a delegation originates from Telegram, HermesHQ now preserves the source chat context and can auto-reply into that same Telegram conversation once the delegated child task completes.
-- The Hermes runtime subprocess reader now uses a larger output limit, which reduces false `failed` statuses when a task produces a very large final payload line.
-- Agent avatars are stored per agent under the persistent workspaces volume and are rendered across the agent detail page, dashboard and dependency canvas.
-- User avatars are stored separately from branding and can be managed from the `Users` page. The active operator avatar is reflected in the shell and dashboard.
-- Instance theme is still controlled by admins in `Settings`, but each user can now override the theme from the left shell without needing admin access.
-- Instance language is controlled by admins in `Settings`, but each user can now override the UI language between English and Spanish from the left shell or `My Account`.
-- The left shell exposes `My Account` for any user, including profile edits, avatar management and password changes without admin intervention.
-- UI localization intentionally affects the application chrome only. It does not rewrite backend error payloads, Hermes TUI output or model-generated content already stored in tasks/logs.
-- The in-app `Manual` is available from the operator section in the sidebar and includes annotated screenshots of the main operational surfaces.
-- Local node metrics are real. Remote node provisioning and remote node metrics are still not implemented and return `501`.
-- Redis-backed pub/sub, remote node daemon/provisioning and xterm.js-grade PTY rendering are still incomplete versus the full spec.
+- Telegram bot tokens should be attached to only one active HermesHQ instance at a time. Running the same bot in two environments causes Telegram polling conflicts.
+- UI localization affects the application chrome only. It does not rewrite backend error payloads, Hermes TUI output, or model-generated content already stored in tasks/logs.
+
+## Included In This Cut
+
+### Backend
+
+- JWT auth
+- per-user theme preference override
+- per-user language preference override
+- instance-wide default language
+- self-service profile and password change for the current user
+- admin/user RBAC with assigned-agent scope
+- local node bootstrap
+- agent CRUD
+- per-agent avatar upload
+- task submission/cancellation
+- strict local agent runtime via `hermes-agent`
+- activity feed
+- WebSocket event stream
+- inter-agent comms with hierarchy-aware delegation rules
+- secrets vault
+- provider registry with editable presets
+- runtime profiles for standard, technical, and security agents
+- managed integration package catalog with install/uninstall and per-agent tests
+- templates
+- scheduled tasks
+- workspace explorer APIs
+- local PTY WebSocket
+- installed skill deletion per agent
+
+### Frontend
+
+- English/Spanish UI localization
+- login screen
+- dashboard overview
+- agents list/detail
+- tasks board
+- nodes
+- comms
+- settings
+- in-app user manual with screenshots
+- self-service `My Account`
+- users and assignments
+- workspace editor
+- PTY terminal pane
+- per-agent integrations section with declarative config forms
+- per-agent Telegram channel management
+- Telegram message traceability in agent activity logs
+- per-user operator avatar
+- instance-wide Hermes TUI skin upload for admins
+
+## UI Fonts
+
+The UI loads these Google Fonts globally:
+
+- `Doto`
+- `Space Grotesk`
+- `Space Mono`
