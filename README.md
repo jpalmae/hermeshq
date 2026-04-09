@@ -1,4 +1,4 @@
-![HermesHQ dark hero](./frontend/public/manual/readme-hero-dark.svg)
+![HermesHQ dark hero](./frontend/public/manual/readme-hero-dark.png)
 
 # HermesHQ
 

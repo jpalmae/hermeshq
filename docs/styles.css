@@ -20,6 +20,7 @@
   --font-display: "Doto", "Space Mono", monospace;
   --font-sans: "Space Grotesk", "DM Sans", system-ui, sans-serif;
   --font-mono: "Space Mono", "JetBrains Mono", monospace;
+  --font-display-weight: 560;
 }
 
 * {
@@ -79,8 +80,10 @@ video {
   background: linear-gradient(180deg, #18181c 0%, #0e0e11 100%);
   display: grid;
   place-items: center;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: var(--font-display-weight);
+  letter-spacing: 0.08em;
   color: var(--accent);
 }
 
@@ -97,7 +100,8 @@ video {
   margin-top: 0.15rem;
   font-family: var(--font-display);
   font-size: 1.3rem;
-  letter-spacing: 0.04em;
+  font-weight: var(--font-display-weight);
+  letter-spacing: 0.08em;
 }
 
 .nav {
@@ -184,8 +188,10 @@ video {
   margin: 1rem 0 0;
   font-family: var(--font-display);
   font-size: clamp(3rem, 7vw, 5.9rem);
-  line-height: 0.92;
-  letter-spacing: -0.05em;
+  font-weight: var(--font-display-weight);
+  line-height: 0.9;
+  letter-spacing: 0.02em;
+  text-wrap: balance;
 }
 
 .lede {
@@ -283,7 +289,8 @@ video {
   margin: 0.5rem 0 0;
   font-family: var(--font-display);
   font-size: clamp(2rem, 4vw, 3.2rem);
-  letter-spacing: 0.02em;
+  font-weight: var(--font-display-weight);
+  letter-spacing: 0.06em;
 }
 
 .section-head p {
@@ -318,7 +325,8 @@ video {
   margin: 0.85rem 0 0;
   font-family: var(--font-display);
   font-size: 1.25rem;
-  letter-spacing: 0.02em;
+  font-weight: var(--font-display-weight);
+  letter-spacing: 0.06em;
 }
 
 .card p {
