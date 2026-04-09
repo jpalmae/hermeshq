@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HermesHQ Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="topbar">
+        <a class="brand" href="./">
+          <span class="brand-mark">HQ</span>
+          <span class="brand-copy">
+            <span>Hermes / Control Plane</span>
+            <strong>HermesHQ Demo</strong>
+          </span>
+        </a>
+        <nav class="nav">
+          <a href="./">Landing</a>
+          <a href="https://github.com/jpalmae/hermeshq">GitHub</a>
+          <a href="./media/hermeshq-demo.mp4">Download MP4</a>
+        </nav>
+      </header>
+
+      <section class="hero">
+        <div class="section-head" style="margin-bottom: 1.5rem;">
+          <div>
+            <p class="eyebrow">Interactive demo</p>
+            <h2 style="margin-top: 0.5rem;">A smoother walkthrough with real player controls.</h2>
+          </div>
+          <p>
+            This clip shows agent creation, opening the real Hermes TUI on a technical profile,
+            checking managed integrations on a standard agent, and finishing on hierarchy-aware comms.
+          </p>
+        </div>
+
+        <div class="hero-video">
+          <video controls preload="metadata" poster="./media/dashboard.png">
+            <source src="./media/hermeshq-demo.mp4" type="video/mp4" />
+          </video>
+        </div>
+
+        <div class="hero-stats" style="margin-top: 1.2rem;">
+          <div class="stat">
+            <span>Duration</span>
+            <strong>32s</strong>
+          </div>
+          <div class="stat">
+            <span>Includes</span>
+            <strong>TUI entry</strong>
+          </div>
+          <div class="stat">
+            <span>Flow</span>
+            <strong>Create → TUI → Integrations → Comms</strong>
+          </div>
+        </div>
+
+        <div class="flow" style="margin-top: 1.5rem;">
+          <div class="flow-step">
+            <strong>1</strong>
+            <p>Create a technical-profile agent from the `Agents` page.</p>
+          </div>
+          <div class="flow-step">
+            <strong>2</strong>
+            <p>Enter the agent detail view and open the real Hermes TUI using <span class="mono">Float</span> and <span class="mono">Fullscreen</span>.</p>
+          </div>
+          <div class="flow-step">
+            <strong>3</strong>
+            <p>Switch to a standard-profile agent to show managed integrations and effective capabilities.</p>
+          </div>
+          <div class="flow-step">
+            <strong>4</strong>
+            <p>Move into Comms and show delegate routing before dispatch.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -13,7 +13,10 @@ It keeps Hermes as the real execution engine, then adds the operational layer ar
 - per-agent Telegram channels
 - provider presets, secrets vault, runtime profiles, and managed integrations
 
-<a href="https://cdn.jsdelivr.net/gh/jpalmae/hermeshq@main/frontend/public/manual/demo.html">
+Project landing page: [jpalmae.github.io/hermeshq](https://jpalmae.github.io/hermeshq/)  
+Controlled demo page: [jpalmae.github.io/hermeshq/demo.html](https://jpalmae.github.io/hermeshq/demo.html)
+
+<a href="https://jpalmae.github.io/hermeshq/demo.html">
   <img src="./frontend/public/manual/hermeshq-demo-preview.gif" alt="HermesHQ demo preview" width="100%" />
 </a>
 

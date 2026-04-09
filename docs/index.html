@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HermesHQ</title>
+    <meta
+      name="description"
+      content="HermesHQ is a Docker-first control plane for managed Hermes Agent runtimes with tasks, comms, Telegram, runtime profiles, and managed integrations."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="topbar">
+        <a class="brand" href="./">
+          <span class="brand-mark">HQ</span>
+          <span class="brand-copy">
+            <span>Hermes / Control Plane</span>
+            <strong>HermesHQ</strong>
+          </span>
+        </a>
+        <nav class="nav">
+          <a href="#screens">Screens</a>
+          <a href="#runtime">Runtime</a>
+          <a href="#install">Install</a>
+          <a href="./demo.html">Demo</a>
+          <a href="https://github.com/jpalmae/hermeshq">GitHub</a>
+        </nav>
+      </header>
+
+      <section class="hero">
+        <div class="hero-grid">
+          <div>
+            <p class="eyebrow">Docker-first / Managed Hermes runtimes</p>
+            <h1>Operate multiple Hermes agents from one dark control surface.</h1>
+            <p class="lede">
+              HermesHQ keeps Hermes as the real execution engine, then adds the layer teams
+              actually need in production: managed agents, tasks, schedules, Telegram, hierarchy-aware
+              delegation, runtime profiles, and managed integrations.
+            </p>
+            <div class="chips">
+              <span class="chip">Tasks</span>
+              <span class="chip">Runtime ledger</span>
+              <span class="chip">Comms</span>
+              <span class="chip">Telegram</span>
+              <span class="chip">Integrations</span>
+            </div>
+            <div class="actions">
+              <a class="button primary" href="./demo.html">Watch controlled demo</a>
+              <a class="button" href="#install">One-line install</a>
+              <a class="button" href="https://github.com/jpalmae/hermeshq">Open repository</a>
+            </div>
+          </div>
+
+          <div class="hero-media">
+            <a class="hero-video" href="./demo.html">
+              <img src="./media/hermeshq-demo-preview.gif" alt="HermesHQ demo preview" />
+            </a>
+            <div class="hero-stats">
+              <div class="stat">
+                <span>Control plane</span>
+                <strong>Web UI + API</strong>
+              </div>
+              <div class="stat">
+                <span>Runtime</span>
+                <strong>Real Hermes</strong>
+              </div>
+              <div class="stat">
+                <span>Install</span>
+                <strong>Docker-first</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Positioning</p>
+            <h2>Hermes Agent vs HermesHQ</h2>
+          </div>
+          <p>
+            HermesHQ does not replace <span class="mono">hermes-agent</span>. It orchestrates it.
+            Hermes alone is the execution engine; HermesHQ adds the multi-agent control plane around it.
+          </p>
+        </div>
+        <div class="grid-2">
+          <article class="card">
+            <p class="kicker">Hermes Agent alone</p>
+            <h3>Single runtime used directly</h3>
+            <p>
+              Local CLI/TUI usage, one local <span class="mono">HERMES_HOME</span>, direct prompt and plugin handling,
+              and operator-managed local sessions.
+            </p>
+          </article>
+          <article class="card">
+            <p class="kicker">HermesHQ</p>
+            <h3>Control plane over managed runtimes</h3>
+            <p>
+              Separate workspaces per agent, RBAC, tasks, schedules, runtime ledger, comms, Telegram,
+              runtime profiles, provider presets, secrets, and managed integrations.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="screens">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Operational surfaces</p>
+            <h2>Built for observation, dispatch, and follow-through.</h2>
+          </div>
+          <p>
+            The product surface is intentionally dark, information-dense, and operational. These are real screenshots from the running app.
+          </p>
+        </div>
+        <div class="grid-2">
+          <figure class="shot">
+            <img src="./media/dashboard.png" alt="HermesHQ dashboard" />
+            <figcaption>Dashboard and dependency canvas for agent fleet visibility.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="./media/agent-detail.png" alt="HermesHQ agent detail" />
+            <figcaption>Agent detail with runtime settings, embedded TUI, conversation, ledger, and integrations.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="./media/comms.png" alt="HermesHQ comms" />
+            <figcaption>Comms surface with hierarchy-aware delegate routing and topology summaries.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="./media/integrations.png" alt="HermesHQ integrations" />
+            <figcaption>Managed integrations with effective capabilities and per-agent configuration.</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section" id="runtime">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Runtime model</p>
+            <h2>Same Hermes engine, managed as a real fleet.</h2>
+          </div>
+          <p>
+            HermesHQ uses Hermes as the real runtime, then standardizes how agents are configured, run, supervised, and traced.
+          </p>
+        </div>
+        <div class="grid-3">
+          <article class="card">
+            <p class="kicker">Runtime profiles</p>
+            <h3>Standard, technical, security</h3>
+            <p>
+              Profiles define effective capabilities. In the current phase, <span class="mono">standard</span> already blocks TUI and terminal/process usage,
+              while technical and security profiles keep full operator workflows.
+            </p>
+          </article>
+          <article class="card">
+            <p class="kicker">Managed integrations</p>
+            <h3>Packages, not shell glue</h3>
+            <p>
+              Integrations are installed as packages, enabled per agent, and tested from the UI. This keeps API-based business integrations separate from core runtime concerns.
+            </p>
+          </article>
+          <article class="card">
+            <p class="kicker">Hierarchy-aware comms</p>
+            <h3>Delegate with real routing rules</h3>
+            <p>
+              Delegation is not cosmetic. Independent agents can delegate freely, escalation upward works, downward delegation within branch works, and cross-branch lateral delegation is blocked.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">What the demo shows</p>
+            <h2>One continuous workflow, not isolated screenshots.</h2>
+          </div>
+          <p>
+            The demo page uses a real player with controls and focuses on the surfaces that make HermesHQ feel like an operating console rather than a settings shell.
+          </p>
+        </div>
+        <div class="grid-2">
+          <article class="card">
+            <div class="flow">
+              <div class="flow-step">
+                <strong>1</strong>
+                <p>Create a new agent from the built-in runtime profile flow.</p>
+              </div>
+              <div class="flow-step">
+                <strong>2</strong>
+                <p>Open the agent detail surface and enter the real Hermes TUI.</p>
+              </div>
+              <div class="flow-step">
+                <strong>3</strong>
+                <p>Float and fullscreen the TUI to show the runtime as an operational surface, not just a text panel.</p>
+              </div>
+              <div class="flow-step">
+                <strong>4</strong>
+                <p>Review managed integrations and effective capabilities on a standard-profile agent.</p>
+              </div>
+              <div class="flow-step">
+                <strong>5</strong>
+                <p>End in Comms with hierarchy-aware delegate routing visible before dispatch.</p>
+              </div>
+            </div>
+          </article>
+          <article class="card">
+            <p class="kicker">Demo page</p>
+            <h3>Video controls, dark layout, real product narrative</h3>
+            <p>
+              GitHub README is fine for documentation, but not ideal as a product presentation layer.
+              This landing and the separate demo page carry the darker, more intentional HermesHQ feel.
+            </p>
+            <div class="actions">
+              <a class="button primary" href="./demo.html">Open demo page</a>
+              <a class="button" href="./media/hermeshq-demo.mp4">Download MP4</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="install">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Install</p>
+            <h2>Docker-first, one-line setup.</h2>
+          </div>
+          <p>
+            HermesHQ installs and runs with Docker by default. The installer downloads the current branch tarball, writes or reuses <span class="mono">.env</span>, and runs <span class="mono">docker compose up --build -d</span>.
+          </p>
+        </div>
+        <div class="grid-2">
+          <article class="card">
+            <p class="kicker">One-line install</p>
+            <h3>Fast path</h3>
+            <p class="mono">curl -fsSL https://raw.githubusercontent.com/jpalmae/hermeshq/main/install.sh | bash</p>
+            <p>
+              If the server has multiple interfaces, pass <span class="mono">HERMESHQ_HOST</span> explicitly with the public IP or DNS name.
+            </p>
+          </article>
+          <article class="card">
+            <p class="kicker">What you get</p>
+            <h3>Persistent stack</h3>
+            <p>
+              Docker-managed PostgreSQL, persistent workspaces, generated bootstrap credentials when needed, and a backend/frontend pair ready to expose through your preferred ingress.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span>HermesHQ / dark GitHub Pages landing</span>
+        <span>
+          <a href="https://github.com/jpalmae/hermeshq">Repository</a>
+          &nbsp;·&nbsp;
+          <a href="./demo.html">Demo</a>
+        </span>
+      </footer>
+    </main>
+  </body>
+</html>
