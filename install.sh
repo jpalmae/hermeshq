@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Install script revision: 2026-04-09
+
 REPO_URL="${REPO_URL:-https://github.com/jpalmae/hermeshq.git}"
 BRANCH="${BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/hermeshq}"
@@ -140,7 +142,7 @@ main() {
   docker info >/dev/null 2>&1 || fail "Docker daemon is not reachable"
   compose version >/dev/null 2>&1 || true
 
-  local install_host archive_url src_root src_dir existing_env
+  local install_host archive_url src_root existing_env
   install_host="$(detect_host)"
   archive_url="$(archive_url_from_repo)"
   TMP_DIR="$(mktemp -d)"
