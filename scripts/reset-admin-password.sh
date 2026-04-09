@@ -15,7 +15,7 @@ Defaults:
   --username      admin
   --display-name  Hermes Operator
 
-If --password is omitted, the script prompts securely inside the backend container.
+If --password is omitted, the script prompts securely on the host and then applies the change inside the backend container.
 This script expects the Docker Compose-based HermesHQ installation.
 EOF
 }
@@ -58,17 +58,75 @@ if ! docker compose ps backend >/dev/null 2>&1; then
   exit 1
 fi
 
-cmd=(
-  docker compose exec
-  backend
-  python
-  /app/hermeshq/scripts/reset_admin_password.py
-  --username "$USERNAME"
-  --display-name "$DISPLAY_NAME"
-)
-
-if [[ -n "$PASSWORD" ]]; then
-  cmd+=(--password "$PASSWORD")
+if [[ -z "$PASSWORD" ]]; then
+  read -r -s -p "New admin password: " PASSWORD
+  echo
+  read -r -s -p "Confirm password: " PASSWORD_CONFIRM
+  echo
+  if [[ "$PASSWORD" != "$PASSWORD_CONFIRM" ]]; then
+    echo "Error: passwords do not match." >&2
+    exit 1
+  fi
 fi
 
-"${cmd[@]}"
+HERMESHQ_RESET_USERNAME="$USERNAME" \
+HERMESHQ_RESET_PASSWORD="$PASSWORD" \
+HERMESHQ_RESET_DISPLAY_NAME="$DISPLAY_NAME" \
+docker compose exec -T \
+  -e HERMESHQ_RESET_USERNAME \
+  -e HERMESHQ_RESET_PASSWORD \
+  -e HERMESHQ_RESET_DISPLAY_NAME \
+  backend \
+  python - <<'PY'
+import asyncio
+import os
+import sys
+
+from sqlalchemy import select
+
+from hermeshq.core.security import hash_password
+from hermeshq.database import AsyncSessionLocal
+from hermeshq.models.user import User
+from hermeshq.schemas.user_management import _validate_password_strength
+
+
+async def main() -> int:
+    username = os.environ["HERMESHQ_RESET_USERNAME"]
+    password = os.environ["HERMESHQ_RESET_PASSWORD"]
+    display_name = os.environ.get("HERMESHQ_RESET_DISPLAY_NAME", "Hermes Operator")
+
+    _validate_password_strength(password)
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User).where(User.username == username))
+        user = result.scalar_one_or_none()
+        if user is None:
+            user = User(
+                username=username,
+                display_name=display_name,
+                password_hash=hash_password(password),
+                role="admin",
+                is_active=True,
+            )
+            session.add(user)
+            action = "created"
+        else:
+            user.password_hash = hash_password(password)
+            user.role = "admin"
+            user.is_active = True
+            if not user.display_name:
+                user.display_name = display_name
+            action = "updated"
+
+        await session.commit()
+        print(f"Admin password {action} successfully for '{username}'.")
+        return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(asyncio.run(main()))
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+PY
