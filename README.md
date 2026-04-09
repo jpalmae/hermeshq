@@ -94,7 +94,7 @@ curl -fsSL https://raw.githubusercontent.com/jpalmae/hermeshq/main/install.sh | 
 Recommended when the server has multiple interfaces:
 
 ```bash
-HERMESHQ_HOST=100.72.224.83 curl -fsSL https://raw.githubusercontent.com/jpalmae/hermeshq/main/install.sh | bash
+HERMESHQ_HOST=XXX.XXX.XXX.XXX curl -fsSL https://raw.githubusercontent.com/jpalmae/hermeshq/main/install.sh | bash
 ```
 
 What the installer does:
