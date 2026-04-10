@@ -127,19 +127,24 @@ HermesHQ installs and runs with Docker by default.
 
 The installer:
 
+- installs Docker automatically on supported Linux hosts if it is missing
+- enables the Docker service and adds the current user to the `docker` group
 - downloads the current `main` branch tarball
 - installs into `~/hermeshq`
 - preserves an existing `.env` if present
+- preserves `.cloudflared.env` if present
 - generates a new `.env` with bootstrap credentials on first install
+- prints the final admin credentials at the end of the run
+- rolls back a failed fresh install instead of leaving containers and images behind
 - runs `docker compose up --build -d`
 
 ### Prerequisites
 
-- Docker Engine
-- Docker Compose plugin or `docker-compose`
 - `curl`
 - `tar`
 - `python3`
+
+Docker is installed automatically on supported Linux hosts. On non-Linux systems, install Docker first.
 
 ### Install
 
@@ -169,7 +174,8 @@ HERMESHQ_HOST=your-server-ip-or-dns curl -fsSL https://raw.githubusercontent.com
 - frontend: `http://<host>:3420`
 - backend: `http://<host>:8000`
 - Docker-managed PostgreSQL and persistent workspaces
-- generated bootstrap admin credentials if you did not provide them
+- final admin credentials printed at the end of install
+- automatic rollback cleanup on failed first-time installs
 
 ## Run With Docker Manually
 
