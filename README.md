@@ -4,6 +4,9 @@
 
 HermesHQ is a Docker-first control plane for running and operating multiple [Hermes Agent](https://github.com/NousResearch/hermes-agent) instances from one web application.
 
+> [!WARNING]
+> HermesHQ is under active development. Expect ongoing changes, rough edges, and occasional bugs while the product continues to evolve.
+
 It keeps Hermes as the real execution engine, then adds the operational layer around it:
 
 - managed agents with separate workspaces and `HERMES_HOME`
@@ -47,6 +50,10 @@ In short:
 
 - `hermes-agent` alone = execution engine used directly
 - HermesHQ = control plane plus managed multi-agent runtime built on top of Hermes
+
+## License
+
+HermesHQ follows the same license as [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent): MIT.
 
 ## What It Looks Like
 
