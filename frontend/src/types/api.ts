@@ -113,6 +113,18 @@ export interface ProviderDefinition {
   updated_at: string;
 }
 
+export interface ProviderTestRequest {
+  secret_ref: string;
+}
+
+export interface ProviderTestResult {
+  success: boolean;
+  status_code: number | null;
+  error: string | null;
+  latency_ms: number;
+  models_detected: string[] | null;
+}
+
 export interface RuntimeProfileDefinition {
   slug: string;
   name: string;

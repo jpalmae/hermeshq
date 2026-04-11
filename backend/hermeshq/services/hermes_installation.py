@@ -623,6 +623,39 @@ class HermesInstallationManager:
                     managed[env_map["api_key_ref"]] = secret_value
         return managed
 
+
+    def _managed_provider_slugs(self) -> list[str]:
+        providers = {
+            "openai",
+            "openrouter",
+            "anthropic",
+            "openai-codex",
+            "qwen-oauth",
+            "nous",
+            "copilot",
+            "copilot-acp",
+            "gemini",
+            "zai",
+            "kimi-coding",
+            "minimax",
+            "minimax-cn",
+            "alibaba",
+            "deepseek",
+            "xai",
+            "ai-gateway",
+            "opencode-zen",
+            "opencode-go",
+            "kilocode",
+            "huggingface",
+        }
+        try:
+            from hermes_cli.auth import PROVIDER_REGISTRY
+
+            providers.update(str(name) for name in PROVIDER_REGISTRY.keys())
+        except Exception:
+            pass
+        return sorted(item for item in providers if item)
+
     def _merge_env_file(self, env_path: Path, managed_env: dict[str, str]) -> None:
         managed_keys = {
             "OPENAI_BASE_URL",
@@ -633,21 +666,18 @@ class HermesInstallationManager:
             "TELEGRAM_FREE_RESPONSE_CHATS",
             "TELEGRAM_REQUIRE_MENTION",
             "WHATSAPP_ENABLED",
-            *self._provider_env_names("zai"),
-            *self._provider_env_names("openrouter"),
-            *self._provider_env_names("anthropic"),
-            *self._provider_env_names("openai"),
         }
-        provider_base_envs = {
+        provider_slugs = self._managed_provider_slugs()
+        for provider_slug in provider_slugs:
+            managed_keys.update(self._provider_env_names(provider_slug))
+        managed_keys.update(
             key
             for key in (
-                self._provider_base_url_env_name("zai"),
-                self._provider_base_url_env_name("openrouter"),
-                self._provider_base_url_env_name("openai"),
+                self._provider_base_url_env_name(provider_slug)
+                for provider_slug in provider_slugs
             )
             if key
-        }
-        managed_keys.update(provider_base_envs)
+        )
         for integration in list_managed_integrations():
             env_map = integration.get("env_map") or {}
             managed_keys.update(value for value in env_map.values() if value)
@@ -720,6 +750,7 @@ class HermesInstallationManager:
     def _provider_env_names(self, provider: str | None) -> list[str]:
         if not provider:
             return []
+        provider = str(provider).strip().lower()
         try:
             from hermes_cli.auth import PROVIDER_REGISTRY
 
@@ -732,17 +763,32 @@ class HermesInstallationManager:
         fallback = {
             "zai": ["ZAI_API_KEY", "GLM_API_KEY", "Z_AI_API_KEY"],
             "openrouter": ["OPENROUTER_API_KEY"],
-            "anthropic": ["ANTHROPIC_API_KEY"],
+            "anthropic": ["ANTHROPIC_API_KEY", "ANTHROPIC_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"],
             "openai": ["OPENAI_API_KEY"],
             "openai-codex": ["OPENAI_API_KEY"],
             "kimi-coding": ["KIMI_API_KEY"],
             "gemini": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+            "minimax": ["MINIMAX_API_KEY"],
+            "minimax-cn": ["MINIMAX_CN_API_KEY"],
+            "alibaba": ["DASHSCOPE_API_KEY"],
+            "deepseek": ["DEEPSEEK_API_KEY"],
+            "xai": ["XAI_API_KEY"],
+            "ai-gateway": ["AI_GATEWAY_API_KEY"],
+            "opencode-zen": ["OPENCODE_ZEN_API_KEY"],
+            "opencode-go": ["OPENCODE_GO_API_KEY"],
+            "kilocode": ["KILOCODE_API_KEY"],
+            "huggingface": ["HF_TOKEN"],
+            "copilot": ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"],
+            "copilot-acp": [],
+            "nous": [],
+            "qwen-oauth": [],
         }
         return fallback.get(provider, [])
 
     def _provider_base_url_env_name(self, provider: str | None) -> str | None:
         if not provider:
             return None
+        provider = str(provider).strip().lower()
         try:
             from hermes_cli.auth import PROVIDER_REGISTRY
 
@@ -758,7 +804,21 @@ class HermesInstallationManager:
             "openai": "OPENAI_BASE_URL",
             "openai-codex": "OPENAI_BASE_URL",
             "kimi-coding": "KIMI_BASE_URL",
-            "gemini": "OPENAI_BASE_URL",
+            "gemini": "GEMINI_BASE_URL",
+            "minimax": "MINIMAX_BASE_URL",
+            "minimax-cn": "MINIMAX_CN_BASE_URL",
+            "alibaba": "DASHSCOPE_BASE_URL",
+            "deepseek": "DEEPSEEK_BASE_URL",
+            "xai": "XAI_BASE_URL",
+            "ai-gateway": "AI_GATEWAY_BASE_URL",
+            "opencode-zen": "OPENCODE_ZEN_BASE_URL",
+            "opencode-go": "OPENCODE_GO_BASE_URL",
+            "kilocode": "KILOCODE_BASE_URL",
+            "huggingface": "HF_BASE_URL",
+            "copilot-acp": "COPILOT_ACP_BASE_URL",
             "anthropic": None,
+            "copilot": None,
+            "nous": None,
+            "qwen-oauth": None,
         }
         return fallback.get(provider)
