@@ -190,22 +190,45 @@ class HermesRuntime:
     def _has_credentials(self, agent: Agent) -> bool:
         if agent.api_key_ref:
             return True
-        return any(
-            os.getenv(env_name)
-            for env_name in (
-                "OPENROUTER_API_KEY",
-                "OPENAI_API_KEY",
-                "ANTHROPIC_API_KEY",
-                "ANTHROPIC_TOKEN",
-                "CLAUDE_CODE_OAUTH_TOKEN",
-                "KIMI_API_KEY",
-                "GEMINI_API_KEY",
-                "GOOGLE_API_KEY",
-                "GLM_API_KEY",
-                "ZAI_API_KEY",
-                "Z_AI_API_KEY",
-            )
+
+        provider_name = (agent.provider or "").strip().lower()
+        provider_env_names: list[str] = []
+        if provider_name:
+            try:
+                provider_env_names = self.installation_manager._provider_env_names(provider_name)
+            except Exception:
+                provider_env_names = []
+
+        if provider_env_names:
+            return any(os.getenv(env_name) for env_name in provider_env_names)
+
+        fallback_env_names = (
+            "OPENROUTER_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_TOKEN",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "KIMI_API_KEY",
+            "GEMINI_API_KEY",
+            "GOOGLE_API_KEY",
+            "GLM_API_KEY",
+            "ZAI_API_KEY",
+            "Z_AI_API_KEY",
+            "MINIMAX_API_KEY",
+            "MINIMAX_CN_API_KEY",
+            "DASHSCOPE_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "XAI_API_KEY",
+            "AI_GATEWAY_API_KEY",
+            "OPENCODE_ZEN_API_KEY",
+            "OPENCODE_GO_API_KEY",
+            "KILOCODE_API_KEY",
+            "HF_TOKEN",
+            "COPILOT_GITHUB_TOKEN",
+            "GH_TOKEN",
+            "GITHUB_TOKEN",
         )
+        return any(os.getenv(env_name) for env_name in fallback_env_names)
 
     def _extract_tool_calls(self, messages: list[dict]) -> list[dict]:
         extracted: list[dict] = []
