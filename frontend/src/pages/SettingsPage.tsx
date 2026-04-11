@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useAgents } from "../api/agents";
 import { useInstallIntegrationPackage, useIntegrationPackages, useUninstallIntegrationPackage, useUploadIntegrationPackage } from "../api/integrationPackages";
-import { useProviders, useUpdateProvider } from "../api/providers";
+import { useProviders, useTestProviderCredential, useUpdateProvider } from "../api/providers";
 import { useRuntimeCapabilityOverview } from "../api/runtimeProfiles";
 import { useCreateSecret, useSecrets } from "../api/secrets";
 import {
@@ -18,6 +18,7 @@ import { useCreateTemplate, useTemplates } from "../api/templates";
 import { useI18n } from "../lib/i18n";
 import { applyProviderPreset, findMatchingProvider } from "../lib/providers";
 import { useSessionStore } from "../stores/sessionStore";
+import type { ProviderTestResult } from "../types/api";
 
 export function SettingsPage() {
   const currentUser = useSessionStore((state) => state.user);
@@ -31,6 +32,7 @@ export function SettingsPage() {
   const { data: templates } = useTemplates(isAdmin);
   const { data: settings } = useSettings(isAdmin);
   const updateProvider = useUpdateProvider();
+  const testProviderCredential = useTestProviderCredential();
   const createSecret = useCreateSecret();
   const createTemplate = useCreateTemplate();
   const updateSettings = useUpdateSettings();
@@ -63,6 +65,9 @@ export function SettingsPage() {
     default_model: string;
     enabled: boolean;
   }>>({});
+  const [providerSecretRefs, setProviderSecretRefs] = useState<Record<string, string>>({});
+  const [providerTestResults, setProviderTestResults] = useState<Record<string, ProviderTestResult | { success: false; error: string; status_code: null; latency_ms: number; models_detected: null }>>({});
+  const [providerTestsInFlight, setProviderTestsInFlight] = useState<Record<string, boolean>>({});
 
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
@@ -98,6 +103,19 @@ export function SettingsPage() {
       ),
     );
   }, [providers]);
+
+  useEffect(() => {
+    setProviderSecretRefs((current) => {
+      const next: Record<string, string> = {};
+      for (const provider of providers ?? []) {
+        const matchingSecret = (secrets ?? []).find(
+          (secret) => secret.provider === provider.slug || secret.provider === provider.runtime_provider,
+        );
+        next[provider.slug] = current[provider.slug] ?? matchingSecret?.name ?? "";
+      }
+      return next;
+    });
+  }, [providers, secrets]);
 
   const enabledProviders = useMemo(
     () => (providers ?? []).filter((provider) => provider.enabled),
@@ -179,6 +197,49 @@ export function SettingsPage() {
         enabled: draft.enabled,
       },
     });
+  }
+
+  async function runProviderTest(providerSlug: string) {
+    const secretRef = (providerSecretRefs[providerSlug] ?? "").trim();
+    if (!secretRef) {
+      setProviderTestResults((current) => ({
+        ...current,
+        [providerSlug]: {
+          success: false,
+          status_code: null,
+          error: "Select a secret before testing.",
+          latency_ms: 0,
+          models_detected: null,
+        },
+      }));
+      return;
+    }
+
+    setProviderTestsInFlight((current) => ({ ...current, [providerSlug]: true }));
+    try {
+      const result = await testProviderCredential.mutateAsync({
+        providerSlug,
+        payload: { secret_ref: secretRef },
+      });
+      setProviderTestResults((current) => ({ ...current, [providerSlug]: result }));
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Credential test failed";
+      setProviderTestResults((current) => ({
+        ...current,
+        [providerSlug]: {
+          success: false,
+          status_code: null,
+          error: message,
+          latency_ms: 0,
+          models_detected: null,
+        },
+      }));
+    } finally {
+      setProviderTestsInFlight((current) => ({ ...current, [providerSlug]: false }));
+    }
   }
 
   async function onLogoSelected(file: File | null) {
@@ -735,6 +796,9 @@ export function SettingsPage() {
         <div className="mt-6 grid gap-4 xl:grid-cols-2">
           {(providers ?? []).map((provider) => {
             const draft = providerDrafts[provider.slug];
+            const selectedSecretRef = providerSecretRefs[provider.slug] ?? "";
+            const testResult = providerTestResults[provider.slug];
+            const isTesting = providerTestsInFlight[provider.slug] ?? false;
             if (!draft) return null;
             return (
               <article key={provider.slug} className="border border-[var(--border)] bg-[var(--surface-raised)] p-5">
@@ -813,6 +877,45 @@ export function SettingsPage() {
                       </a>
                     ) : null}
                   </div>
+                  <label className="panel-field">
+                    <span className="panel-label">Credential secret</span>
+                    <select
+                      value={selectedSecretRef}
+                      onChange={(event) =>
+                        setProviderSecretRefs((current) => ({
+                          ...current,
+                          [provider.slug]: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Select a secret</option>
+                      {(secrets ?? []).map((secret) => (
+                        <option key={secret.id} value={secret.name}>
+                          {secret.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className="panel-button-secondary w-full"
+                    onClick={() => void runProviderTest(provider.slug)}
+                    disabled={isTesting}
+                  >
+                    {isTesting ? "Testing..." : "Test Connection"}
+                  </button>
+                  {testResult ? (
+                    <div className={`text-sm ${testResult.success ? "text-green-400" : "text-red-400"}`}>
+                      <p>
+                        {testResult.success
+                          ? `✓ Connected (${Math.round(testResult.latency_ms)}ms)`
+                          : `✕ ${testResult.error ?? "Connection failed"}`}
+                      </p>
+                      {testResult.success && testResult.models_detected ? (
+                        <p>{testResult.models_detected.length} models available</p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <button type="button" className="panel-button-primary w-full" onClick={() => void saveProvider(provider.slug)}>
                     {t("providers.saveProvider")}
                   </button>

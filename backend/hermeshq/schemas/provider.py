@@ -33,3 +33,15 @@ class ProviderRead(ORMModel):
     sort_order: int
     created_at: datetime
     updated_at: datetime
+
+
+class ProviderTestRequest(BaseModel):
+    secret_ref: str
+
+
+class ProviderTestResult(BaseModel):
+    success: bool
+    status_code: int | None
+    error: str | None
+    latency_ms: float
+    models_detected: list[str] | None
