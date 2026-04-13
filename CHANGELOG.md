@@ -2,18 +2,43 @@
 
 ## Unreleased
 
-- added visible runtime capability maps in the UI: `Settings` now shows built-in runtime toolsets and HermesHQ platform plugins, while each agent `Integrations` panel shows the effective built-ins, platform plugins, and enabled integration packages for that specific agent
-- added runtime profiles (`standard`, `technical`, `security`) so an agent can carry a declared execution policy across Talk to agent, TUI, schedules, Telegram, and delegated work
-- restricted `standard` agents so they lose direct terminal/process execution in the shared backend runtime and no longer expose the Hermes TUI
-- added a managed integration package system with upload, install, uninstall, catalog metadata, and per-agent enable/disable flows
-- added per-agent integration configuration and connection testing from the dedicated `Integrations` section in the agent detail page
-- added real deletion for installed agent skills from the Hermes skill registry; managed skills are also removed from the agent assignment list on delete
+### Added
+
+- runtime profiles (`standard`, `technical`, `security`) so an agent can carry a declared execution policy across Talk to agent, TUI, schedules, Telegram, and delegated work
+- visible runtime capability maps in the UI: `Settings` now shows built-in runtime toolsets and HermesHQ platform plugins, while each agent `Integrations` panel shows the effective built-ins, platform plugins, and enabled integration packages for that specific agent
+- a managed integration package system with upload, install, uninstall, catalog metadata, and per-agent enable/disable flows
+- bundled productivity integrations always visible in `Settings -> Integrations`: `ms365-mail`, `ms365-calendar`, `sharepoint`, `google-workspace-mail`, `google-calendar`, and `google-drive`
+- real integration health checks for Microsoft Graph and Google OAuth-backed managed integrations
+- a bundled `snyk-agent-scan` managed integration with health check and manual `scan_skills` action traced into agent activity
+- a task board / Kanban phase 1 with board columns, drag state persistence, manual board ownership, and a collapsible `Submit task` rail
+- agent archival instead of hard delete: archived agents keep `Activity stream`, `Runtime ledger`, and messages for audit, can be listed again with `Show archived`, and open in read-only operational mode
+- per-agent Hermes Agent version pinning plus instance default Hermes version selection
+- a persistent Hermes Agent version catalog in `Settings`, with catalog entry creation, metadata editing, install/uninstall, default selection, and per-agent override
+- version-specific Hermes runtime resolution for tasks, TUI, and gateways using isolated installs under `/app/workspaces/_hermes_versions/<version>`
+- real deletion for installed agent skills from the Hermes skill registry; managed skills are also removed from the agent assignment list on delete
+- built-in `scripts/backup-instance.sh` and `scripts/restore-instance.sh` to preserve and rehydrate PostgreSQL, workspaces, `.env` and `cloudflared` token state
+- `scripts/reset-admin-password.sh` for Docker-based instances, with a backend-safe inline reset path
+- a first-run `install.sh` so HermesHQ can be installed with a single `curl | bash` command from GitHub
+- GitHub Pages landing content, dark demo assets, refreshed screenshots, and README video/demo support for project presentation
+- Telegram chat traceability into agent `Activity stream` by persisting inbound and outbound gateway messages as `channel.telegram.*` events
+
+### Changed
+
+- `standard` agents now lose direct terminal/process execution in the shared backend runtime and no longer expose the Hermes TUI
+- `Settings -> Integrations` now separates built-in runtime capabilities, HermesHQ platform plugins, and installable integration packages more clearly
+- agent detail now has a dedicated `Integrations` section with effective capability summaries, managed integration metadata, actions, and connectivity testing
+- `Activity stream` now groups streamed `agent.output` fragments into readable consolidated blocks instead of showing token-like fragments line by line
+- `Runtime ledger` and `Activity stream` now include client-side search
+- the dependency canvas now varies agent identity shapes by runtime profile instead of rendering every agent the same way
+- the installer now auto-installs Docker on Linux hosts when missing, attempts Docker-without-root setup, preserves existing instance env files, shows admin credentials at the end, and performs rollback/cleanup on failed first installs
+- the frontend API/WebSocket base resolution no longer depends on `localhost` for remote installs
+- README, manual, and docs now explain Hermes Agent vs HermesHQ more explicitly and present the project as an actively developed system that may still contain rough edges
+
+### Fixed
+
 - increased the Hermes runtime subprocess output limit to reduce false `failed` tasks caused by oversized final result lines
-- added a first-run `install.sh` so HermesHQ can be installed with a single `curl | bash` command from GitHub
-- parameterized the Docker stack through `.env` for ports, bootstrap admin credentials, PostgreSQL credentials, CORS origins and frontend API base URL
-- updated the frontend API/WebSocket base resolution so remote installs no longer depend on `localhost`
-- added built-in `scripts/backup-instance.sh` and `scripts/restore-instance.sh` to preserve and rehydrate PostgreSQL, workspaces, `.env` and `cloudflared` token state
-- added Telegram chat traceability into agent `Activity stream` by persisting inbound and outbound gateway messages as `channel.telegram.*` events
+- fixed installer temp directory cleanup so the one-line install flow no longer ends with `tmp_dir: unbound variable`
+- fixed the admin password reset flow so it no longer depends on the backend image already containing a new helper file
 - documented that a Telegram bot token must be active in only one HermesHQ instance at a time to avoid polling conflicts
 
 ## 2026-04-03
