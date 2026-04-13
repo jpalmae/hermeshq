@@ -1,10 +1,14 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from hermeshq.models.base import Base, utcnow
+
+
+def default_board_order() -> int:
+    return int(datetime.now(timezone.utc).timestamp() * 1000)
 
 
 class Task(Base):
@@ -18,6 +22,9 @@ class Task(Base):
     prompt: Mapped[str] = mapped_column(Text)
     system_override: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
+    board_column: Mapped[str] = mapped_column(String(32), default="inbox", index=True)
+    board_order: Mapped[int] = mapped_column(BigInteger, default=default_board_order, index=True)
+    board_manual: Mapped[bool] = mapped_column(Boolean, default=False)
     priority: Mapped[int] = mapped_column(Integer, default=5)
     response: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -17,6 +17,7 @@ from hermeshq.models.task import Task
 from hermeshq.models.base import utcnow
 from hermeshq.services.hermes_runtime import HermesRuntime
 from hermeshq.services.secret_vault import SecretVault
+from hermeshq.services.task_board import sync_board_with_runtime
 
 
 class AgentSupervisor:
@@ -174,6 +175,7 @@ class AgentSupervisor:
                     if candidate_session_id:
                         session_id = candidate_session_id
                 task.status = "running"
+                await sync_board_with_runtime(session, task.id, task.status)
                 task.started_at = utcnow()
                 task.messages_json = []
                 task.tool_calls = []
@@ -241,6 +243,7 @@ class AgentSupervisor:
                 if not task or not agent:
                     return
                 task.status = "completed"
+                await sync_board_with_runtime(session, task.id, task.status)
                 task.completed_at = utcnow()
                 task.response = execution.final_response
                 task.tokens_used = execution.tokens_used
@@ -289,6 +292,7 @@ class AgentSupervisor:
                 agent = await session.get(Agent, task.agent_id) if task else None
                 if task:
                     task.status = "cancelled"
+                    await sync_board_with_runtime(session, task.id, task.status)
                     task.completed_at = utcnow()
                 if agent:
                     agent.last_activity = utcnow()
@@ -307,6 +311,7 @@ class AgentSupervisor:
                 agent = await session.get(Agent, task.agent_id) if task else None
                 if task:
                     task.status = "failed"
+                    await sync_board_with_runtime(session, task.id, task.status)
                     task.completed_at = utcnow()
                     task.error_message = str(exc)
                 if agent:

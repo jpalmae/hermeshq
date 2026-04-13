@@ -185,6 +185,11 @@ export interface ManagedIntegrationDefinition {
   test_action: string | null;
   env_map: Record<string, string>;
   tools: string[];
+  actions: Array<{
+    slug: string;
+    label: string;
+    description: string | null;
+  }>;
 }
 
 export interface Task {
@@ -193,6 +198,9 @@ export interface Task {
   title: string | null;
   prompt: string;
   status: TaskStatus;
+  board_column: string;
+  board_order: number;
+  board_manual: boolean;
   priority: number;
   response: string | null;
   error_message: string | null;
@@ -204,6 +212,11 @@ export interface Task {
   started_at: string | null;
   completed_at: string | null;
   metadata: Record<string, unknown>;
+}
+
+export interface TaskBoardUpdate {
+  board_column: string;
+  board_order?: number | null;
 }
 
 export interface ScheduledTask {

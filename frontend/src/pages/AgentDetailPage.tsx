@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { useAgent, useAgentAction, useDeleteAgent, useDeleteAgentAvatar, useTestAgentIntegration, useUpdateAgent, useUploadAgentAvatar } from "../api/agents";
+import { useAgent, useAgentAction, useDeleteAgent, useDeleteAgentAvatar, useRunAgentIntegrationAction, useTestAgentIntegration, useUpdateAgent, useUploadAgentAvatar } from "../api/agents";
 import { useLogs } from "../api/logs";
 import { useManagedIntegrations } from "../api/managedIntegrations";
 import { useRuntimeCapabilityOverview, useRuntimeProfiles } from "../api/runtimeProfiles";
@@ -111,6 +111,7 @@ export function AgentDetailPage() {
   const uploadAgentAvatar = useUploadAgentAvatar();
   const deleteAgentAvatar = useDeleteAgentAvatar();
   const testAgentIntegration = useTestAgentIntegration();
+  const runAgentIntegrationAction = useRunAgentIntegrationAction();
   const updateAgent = useUpdateAgent();
   const createTask = useCreateTask();
   const [identityForm, setIdentityForm] = useState({
@@ -123,6 +124,9 @@ export function AgentDetailPage() {
   const [integrationDrafts, setIntegrationDrafts] = useState<Record<string, Record<string, string>>>({});
   const [integrationTestResults, setIntegrationTestResults] = useState<
     Record<string, { success: boolean; message: string; details?: Record<string, unknown> | null }>
+  >({});
+  const [integrationActionResults, setIntegrationActionResults] = useState<
+    Record<string, Record<string, { success: boolean; message: string; details?: Record<string, unknown> | null }>>
   >({});
   const [sectionState, setSectionState] = useState(DEFAULT_SECTION_STATE);
   const [nameTouched, setNameTouched] = useState(false);
@@ -231,6 +235,7 @@ export function AgentDetailPage() {
     }
     setIntegrationDrafts(nextIntegrationDrafts);
     setIntegrationTestResults({});
+    setIntegrationActionResults({});
     setNameTouched(false);
     setSlugTouched(false);
   }, [agent, managedIntegrations]);
@@ -410,6 +415,23 @@ export function AgentDetailPage() {
     setIntegrationTestResults((current) => ({
       ...current,
       [integrationSlug]: result,
+    }));
+  }
+
+  async function onRunIntegrationAction(integrationSlug: string, actionSlug: string) {
+    const currentDraft = integrationDrafts[integrationSlug] ?? {};
+    const result = await runAgentIntegrationAction.mutateAsync({
+      agentId: currentAgent.id,
+      integrationSlug,
+      actionSlug,
+      config: currentDraft,
+    });
+    setIntegrationActionResults((current) => ({
+      ...current,
+      [integrationSlug]: {
+        ...(current[integrationSlug] ?? {}),
+        [actionSlug]: result,
+      },
     }));
   }
 
@@ -842,6 +864,7 @@ export function AgentDetailPage() {
               const enabled = Boolean(currentAgent.integration_configs?.[integration.slug]);
               const draft = integrationDrafts[integration.slug] ?? {};
               const testResult = integrationTestResults[integration.slug];
+              const actionResults = integrationActionResults[integration.slug] ?? {};
               return (
                 <article key={integration.slug} className="border border-[var(--border)] bg-[var(--surface-raised)] p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
@@ -979,6 +1002,25 @@ export function AgentDetailPage() {
                       ) : null}
                     </div>
                   ) : null}
+                  {enabled && integration.actions.length ? (
+                    <div className="mt-4 border-t border-[var(--border)] pt-4">
+                      <p className="panel-label">{t("agent.integrationActions")}</p>
+                      <div className="mt-3 flex flex-wrap gap-3">
+                        {integration.actions.map((action) => (
+                          <button
+                            key={action.slug}
+                            type="button"
+                            className="panel-button-secondary"
+                            disabled={runAgentIntegrationAction.isPending}
+                            onClick={() => void onRunIntegrationAction(integration.slug, action.slug)}
+                            title={action.description ?? undefined}
+                          >
+                            {runAgentIntegrationAction.isPending ? t("common.loading") : action.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   {testResult ? (
                     <div className="mt-4 border-t border-[var(--border)] pt-4 text-sm">
                       <p className={testResult.success ? "text-[var(--success)]" : "text-[var(--danger)]"}>
@@ -991,6 +1033,21 @@ export function AgentDetailPage() {
                       ) : null}
                     </div>
                   ) : null}
+                  {Object.entries(actionResults).map(([actionSlug, result]) => (
+                    <div key={actionSlug} className="mt-4 border-t border-[var(--border)] pt-4 text-sm">
+                      <p className="panel-label">
+                        {t("agent.integrationActionResult", { value: actionSlug })}
+                      </p>
+                      <p className={`mt-2 ${result.success ? "text-[var(--success)]" : "text-[var(--danger)]"}`}>
+                        {result.message}
+                      </p>
+                      {result.details ? (
+                        <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-xs leading-6 text-[var(--text-secondary)]">
+                          {JSON.stringify(result.details, null, 2)}
+                        </pre>
+                      ) : null}
+                    </div>
+                  ))}
                 </article>
               );
             })

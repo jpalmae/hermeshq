@@ -9,6 +9,12 @@ class ManagedIntegrationFieldRead(BaseModel):
     secret_provider: str | None = None
 
 
+class ManagedIntegrationActionRead(BaseModel):
+    slug: str
+    label: str
+    description: str | None = None
+
+
 class ManagedIntegrationRead(BaseModel):
     slug: str
     name: str
@@ -29,6 +35,7 @@ class ManagedIntegrationRead(BaseModel):
     test_action: str | None = None
     env_map: dict[str, str]
     tools: list[str]
+    actions: list[ManagedIntegrationActionRead] = []
 
 
 class ManagedIntegrationTestRequest(BaseModel):
@@ -36,6 +43,16 @@ class ManagedIntegrationTestRequest(BaseModel):
 
 
 class ManagedIntegrationTestResult(BaseModel):
+    success: bool
+    message: str
+    details: dict | None = None
+
+
+class ManagedIntegrationActionRequest(BaseModel):
+    config: dict[str, str] | None = None
+
+
+class ManagedIntegrationActionResult(BaseModel):
     success: bool
     message: str
     details: dict | None = None

@@ -14,12 +14,20 @@ class TaskCreate(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
+class TaskBoardUpdate(BaseModel):
+    board_column: str
+    board_order: int | None = None
+
+
 class TaskRead(ORMModel):
     id: str
     agent_id: str
     title: str | None
     prompt: str
     status: str
+    board_column: str
+    board_order: int
+    board_manual: bool
     priority: int
     response: str | None
     error_message: str | None

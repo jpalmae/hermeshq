@@ -104,7 +104,9 @@ def list_available_integration_packages(enabled_integration_slugs: list[str] | N
                     "skill_identifier": manifest.get("skill_identifier"),
                     "skill_source_root": _skill_source_root(package_root, manifest),
                     "test_action": manifest.get("test_action"),
+                    "actions": _normalize_actions(manifest.get("actions") or []),
                     "healthcheck_path": manifest.get("healthcheck_path") or "healthcheck.py",
+                    "actions_path": manifest.get("actions_path") or "actions.py",
                     "env_map": dict(manifest.get("env_map") or {}),
                     "tools": list(plugin_meta.get("provides_tools") or []),
                     "package_root": package_root,
@@ -272,7 +274,9 @@ def _public_package_record(item: dict) -> dict:
         "skill_identifier": item.get("skill_identifier"),
         "skill_source_root": item.get("skill_source_root"),
         "test_action": item.get("test_action"),
+        "actions": item.get("actions") or [],
         "healthcheck_path": item.get("healthcheck_path"),
+        "actions_path": item.get("actions_path"),
         "env_map": item["env_map"],
         "tools": item["tools"],
         "package_root": item.get("package_root"),
@@ -307,6 +311,24 @@ def _skill_source_root(package_root: Path, manifest: dict) -> Path | None:
         return None
     root = package_root / str(skill_dir)
     return root if root.exists() else None
+
+
+def _normalize_actions(value: list[dict] | list) -> list[dict]:
+    actions: list[dict] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        slug = str(item.get("slug") or "").strip()
+        if not slug:
+            continue
+        actions.append(
+            {
+                "slug": slug,
+                "label": str(item.get("label") or slug.replace("-", " ").replace("_", " ").title()),
+                "description": str(item.get("description") or "").strip() or None,
+            }
+        )
+    return actions
 
 
 def _skill_bundle_from_dir(skill_dir: Path, identifier: str) -> dict | None:

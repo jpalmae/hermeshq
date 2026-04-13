@@ -178,3 +178,25 @@ export function useTestAgentIntegration() {
     },
   });
 }
+
+export function useRunAgentIntegrationAction() {
+  return useMutation({
+    mutationFn: async ({
+      agentId,
+      integrationSlug,
+      actionSlug,
+      config,
+    }: {
+      agentId: string;
+      integrationSlug: string;
+      actionSlug: string;
+      config: Record<string, string>;
+    }) => {
+      const { data } = await apiClient.post<{ success: boolean; message: string; details: Record<string, unknown> | null }>(
+        `/agents/${agentId}/integrations/${integrationSlug}/actions/${actionSlug}`,
+        { config },
+      );
+      return data;
+    },
+  });
+}

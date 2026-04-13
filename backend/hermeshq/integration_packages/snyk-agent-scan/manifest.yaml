@@ -1,0 +1,21 @@
+slug: snyk-agent-scan
+name: Snyk Agent Scan
+description: Optional security scanning for installed agent skills using Snyk Agent Scan.
+version: "0.1.0"
+supported_profiles:
+  - technical
+  - security
+required_fields:
+  - api_key_ref
+fields:
+  - name: api_key_ref
+    label: Snyk token secret
+    kind: secret_ref
+    secret_provider: snyk
+secret_provider: snyk
+test_action: health
+actions:
+  - slug: scan_skills
+    label: Run skill scan
+    description: Scan installed skills for this agent using Snyk Agent Scan.
+env_map: {}

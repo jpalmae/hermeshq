@@ -174,3 +174,36 @@ def _run_schema_updates(sync_connection) -> None:
         )
         sync_connection.execute(text("CREATE INDEX ix_conversation_threads_agent_id ON conversation_threads(agent_id)"))
         sync_connection.execute(text("CREATE INDEX ix_conversation_threads_user_id ON conversation_threads(user_id)"))
+    task_columns = {column["name"] for column in inspector.get_columns("tasks")}
+    if "board_column" not in task_columns:
+        sync_connection.execute(text("ALTER TABLE tasks ADD COLUMN board_column VARCHAR(32)"))
+        sync_connection.execute(
+            text(
+                """
+                UPDATE tasks
+                SET board_column = CASE
+                    WHEN status = 'running' THEN 'running'
+                    WHEN status = 'completed' THEN 'done'
+                    WHEN status IN ('failed', 'cancelled') THEN 'failed'
+                    ELSE 'inbox'
+                END
+                WHERE board_column IS NULL
+                """
+            )
+        )
+    if "board_order" not in task_columns:
+        sync_connection.execute(text("ALTER TABLE tasks ADD COLUMN board_order BIGINT"))
+        sync_connection.execute(
+            text(
+                """
+                UPDATE tasks
+                SET board_order = FLOOR(
+                    EXTRACT(EPOCH FROM COALESCE(completed_at, started_at, queued_at, CURRENT_TIMESTAMP)) * 1000
+                )::BIGINT
+                WHERE board_order IS NULL
+                """
+            )
+        )
+    if "board_manual" not in task_columns:
+        sync_connection.execute(text("ALTER TABLE tasks ADD COLUMN board_manual BOOLEAN DEFAULT FALSE"))
+        sync_connection.execute(text("UPDATE tasks SET board_manual = FALSE WHERE board_manual IS NULL"))

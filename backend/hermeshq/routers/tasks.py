@@ -8,7 +8,8 @@ from hermeshq.models.agent import Agent
 from hermeshq.models.conversation_thread import ConversationThread
 from hermeshq.models.task import Task
 from hermeshq.models.user import User
-from hermeshq.schemas.task import TaskCreate, TaskRead
+from hermeshq.schemas.task import TaskBoardUpdate, TaskCreate, TaskRead
+from hermeshq.services.task_board import is_valid_board_column, next_board_order, runtime_status_to_board_column
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -60,6 +61,9 @@ async def create_task(
         metadata["thread_id"] = thread.id
         metadata["thread_user_id"] = current_user.id
     task = Task(**payload_data, metadata_json=metadata)
+    task.board_column = runtime_status_to_board_column(task.status)
+    task.board_order = next_board_order()
+    task.board_manual = False
     db.add(task)
     await db.flush()
     if thread:
@@ -96,6 +100,27 @@ async def cancel_task(
         raise HTTPException(status_code=404, detail="Task not found")
     await ensure_agent_access(db, current_user, task.agent_id)
     await request.app.state.supervisor.cancel_task(task_id)
+    await db.refresh(task)
+    return TaskRead.model_validate(task)
+
+
+@router.patch("/{task_id}/board", response_model=TaskRead)
+async def update_task_board(
+    task_id: str,
+    payload: TaskBoardUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> TaskRead:
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await ensure_agent_access(db, current_user, task.agent_id)
+    if not is_valid_board_column(payload.board_column):
+        raise HTTPException(status_code=400, detail="Invalid board column")
+    task.board_column = payload.board_column
+    task.board_order = payload.board_order or next_board_order()
+    task.board_manual = True
+    await db.commit()
     await db.refresh(task)
     return TaskRead.model_validate(task)
 

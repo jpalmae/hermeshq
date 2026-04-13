@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient } from "./client";
-import type { Task } from "../types/api";
+import type { Task, TaskBoardUpdate } from "../types/api";
 
 export function useTasks() {
   return useQuery({
@@ -43,3 +43,16 @@ export function useCancelTask() {
   });
 }
 
+export function useUpdateTaskBoard() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ taskId, payload }: { taskId: string; payload: TaskBoardUpdate }) => {
+      const { data } = await apiClient.patch<Task>(`/tasks/${taskId}/board`, payload);
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
