@@ -263,6 +263,24 @@ const manualContent: Record<"en" | "es", ManualContent> = {
         ],
       },
       {
+        id: "integration-setup",
+        eyebrow: "Integraciones",
+        title: "Cómo configurar integraciones gestionadas",
+        summary:
+          "Las integraciones gestionadas se instalan primero a nivel de instancia desde Settings y luego se habilitan por agente desde Agent Detail. El flujo actual ya cubre instalación, desinstalación, campos declarativos y prueba de conexión.",
+        bullets: [
+          "Flujo general: en `Settings -> Integrations` instala la integración; luego en `Agent -> Integrations` completa los campos, selecciona los secretos requeridos y usa `Test connection` antes de habilitarla para producción.",
+          "Las integraciones bundled quedan siempre visibles en Settings aunque estén desinstaladas. Desinstalar una integración la deshabilita para la instancia, pero no la borra del catálogo porque forma parte del código base.",
+          "Microsoft 365 Mail y Microsoft 365 Calendar usan Microsoft Graph con `client_credentials`. Debes crear una app registration en Entra ID, obtener `tenant_id` y `client_id`, crear un client secret, guardarlo en `Settings -> Secrets` y completar también el `mailbox` del buzón que quieres validar.",
+          "Para SharePoint se usa el mismo patrón de Microsoft Graph. Debes completar `tenant_id`, `client_id`, `client_secret_ref` y `site_url`. El `site_url` debe ser una URL real del sitio de SharePoint y el test valida acceso a ese sitio vía Graph.",
+          "Microsoft requiere permisos de aplicación y admin consent. Para mail normalmente necesitas `Mail.Read`; para calendar `Calendars.Read`; para SharePoint `Sites.Read.All` y, según el caso, `Files.Read.All`.",
+          "Google Workspace Mail, Google Calendar y Google Drive usan OAuth con refresh token. Debes completar `client_id`, guardar el client secret y el refresh token como secretos, y referenciarlos desde `client_secret_ref` y `refresh_token_ref`.",
+          "Google Calendar además acepta `calendar_id`; si no lo completas, el valor típico es `primary`. Google Drive acepta `drive_id` opcional para shared drives, pero el health check base funciona también sin ese campo.",
+          "Snyk Agent Scan requiere un secreto con `SNYK_TOKEN`. En esta fase se usa como integración de auditoría manual: `Test connection` prepara el scanner y la acción `Run skill scan` revisa las skills instaladas del agente dejando trazabilidad en `Activity stream`.",
+          "Hoy estas integraciones ya soportan configuración y prueba de credenciales, pero todavía no todas exponen tools operativas de negocio. El valor actual es dejar el catálogo listo, tipado y testeable antes de agregar herramientas de uso diario.",
+        ],
+      },
+      {
         id: "tips",
         eyebrow: "Buenas practicas",
         title: "Consejos de uso y soporte",
@@ -513,6 +531,24 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "Settings also shows `Default runtime capabilities`, listing the built-in toolsets per profile and the HermesHQ platform plugins that ship by default, so they stay clearly separate from package-installed integrations.",
           "If you use Kimi Coding, the correct preset points to `https://api.kimi.com/coding/v1`.",
           "Non-privileged users cannot change these global parameters, but they can still choose their own theme and language.",
+        ],
+      },
+      {
+        id: "integration-setup",
+        eyebrow: "Integrations",
+        title: "How to configure managed integrations",
+        summary:
+          "Managed integrations are installed first at instance level from Settings and then enabled per agent from Agent Detail. The current flow already covers install, uninstall, declarative fields, and connection testing.",
+        bullets: [
+          "General flow: install the integration from `Settings -> Integrations`; then go to `Agent -> Integrations`, complete the fields, select the required secrets, and run `Test connection` before using it in production.",
+          "Bundled integrations stay visible in Settings even when uninstalled. Uninstalling disables the integration for the instance, but it does not remove it from the catalog because it is part of the base code.",
+          "Microsoft 365 Mail and Microsoft 365 Calendar use Microsoft Graph with `client_credentials`. Create an app registration in Entra ID, obtain `tenant_id` and `client_id`, create a client secret, store it in `Settings -> Secrets`, and also provide the `mailbox` you want to validate.",
+          "SharePoint uses the same Microsoft Graph pattern. You must provide `tenant_id`, `client_id`, `client_secret_ref`, and `site_url`. The `site_url` must be a real SharePoint site URL and the health check validates that site through Graph.",
+          "Microsoft integrations require application permissions and admin consent. For mail you typically need `Mail.Read`; for calendar `Calendars.Read`; for SharePoint `Sites.Read.All` and, depending on the use case, `Files.Read.All`.",
+          "Google Workspace Mail, Google Calendar, and Google Drive use OAuth with a refresh token. Provide `client_id`, store the client secret and refresh token as secrets, and reference them through `client_secret_ref` and `refresh_token_ref`.",
+          "Google Calendar also accepts `calendar_id`; if you leave it blank, the usual value is `primary`. Google Drive accepts an optional `drive_id` for shared drives, but the base health check also works without it.",
+          "Snyk Agent Scan requires a secret containing `SNYK_TOKEN`. In this phase it is used as a manual audit integration: `Test connection` bootstraps the scanner and `Run skill scan` reviews installed agent skills while leaving traceability in the `Activity stream`.",
+          "At the moment these integrations already support configuration and credential testing, but not all of them expose day-to-day business tools yet. The current value is having a typed, testable catalog ready before adding operational tools.",
         ],
       },
       {

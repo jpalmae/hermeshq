@@ -1,0 +1,31 @@
+slug: ms365-mail
+name: Microsoft 365 Mail
+description: Managed Microsoft Graph mail integration for productivity agents.
+version: "0.1.0"
+standard_compatible: true
+supported_profiles:
+  - standard
+  - technical
+  - security
+required_fields:
+  - tenant_id
+  - client_id
+  - client_secret_ref
+  - mailbox
+fields:
+  - name: tenant_id
+    label: Microsoft tenant ID
+    kind: text
+  - name: client_id
+    label: Microsoft app client ID
+    kind: text
+  - name: client_secret_ref
+    label: Microsoft client secret
+    kind: secret_ref
+    secret_provider: ms365
+  - name: mailbox
+    label: Mailbox
+    kind: text
+secret_provider: ms365
+test_action: health
+env_map: {}

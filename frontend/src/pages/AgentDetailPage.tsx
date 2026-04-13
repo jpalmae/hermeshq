@@ -226,10 +226,10 @@ export function AgentDetailPage() {
     for (const integration of managedIntegrations ?? []) {
       const currentConfig = (agent.integration_configs?.[integration.slug] as Record<string, unknown> | undefined) ?? {};
       nextIntegrationDrafts[integration.slug] = Object.fromEntries(
-        integration.required_fields.map((field) => {
-          const defaultValue = integration.defaults?.[field] ?? "";
-          const currentValue = currentConfig[field];
-          return [field, typeof currentValue === "string" ? currentValue : defaultValue];
+        integration.fields.map((field) => {
+          const defaultValue = integration.defaults?.[field.name] ?? "";
+          const currentValue = currentConfig[field.name];
+          return [field.name, typeof currentValue === "string" ? currentValue : defaultValue];
         }),
       );
     }
@@ -371,7 +371,9 @@ export function AgentDetailPage() {
     }
     const currentDraft = integrationDrafts[integrationSlug] ?? {};
     const normalizedConfig = Object.fromEntries(
-      integration.required_fields.map((field) => [field, (currentDraft[field] ?? "").trim()]),
+      integration.fields
+        .map((field) => [field.name, (currentDraft[field.name] ?? "").trim()] as const)
+        .filter(([, value]) => value),
     );
     await updateAgent.mutateAsync({
       agentId: currentAgent.id,

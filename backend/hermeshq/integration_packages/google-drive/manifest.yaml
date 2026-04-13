@@ -1,0 +1,32 @@
+slug: google-drive
+name: Google Drive
+description: Managed Google Drive integration for productivity agents.
+version: "0.1.0"
+standard_compatible: true
+supported_profiles:
+  - standard
+  - technical
+  - security
+required_fields:
+  - client_id
+  - client_secret_ref
+  - refresh_token_ref
+fields:
+  - name: client_id
+    label: Google OAuth client ID
+    kind: text
+  - name: client_secret_ref
+    label: Google client secret
+    kind: secret_ref
+    secret_provider: google-workspace
+  - name: refresh_token_ref
+    label: Google refresh token
+    kind: secret_ref
+    secret_provider: google-workspace
+  - name: drive_id
+    label: Shared drive ID
+    kind: text
+    placeholder: Optional
+secret_provider: google-workspace
+test_action: health
+env_map: {}
