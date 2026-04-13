@@ -24,6 +24,7 @@ from hermeshq.services.managed_capabilities import (
     list_managed_plugins,
     plugin_templates_root,
 )
+from hermeshq.services.hermes_version_manager import HermesRuntimeSelection, HermesVersionManager
 from hermeshq.services.runtime_profiles import get_runtime_profile
 from hermeshq.services.secret_vault import SecretVault
 
@@ -39,9 +40,11 @@ class HermesInstallationManager:
         self,
         session_factory: async_sessionmaker[AsyncSession],
         secret_vault: SecretVault,
+        version_manager: HermesVersionManager,
     ) -> None:
         self.session_factory = session_factory
         self.secret_vault = secret_vault
+        self.version_manager = version_manager
 
     def resolve_workspace_path(self, workspace_path: str) -> Path:
         path = Path(workspace_path)
@@ -57,13 +60,14 @@ class HermesInstallationManager:
         hermes_home = self.build_hermes_home(agent.workspace_path)
         self._ensure_home_dirs(hermes_home)
         enabled_integrations = await self._load_enabled_integration_slugs()
+        runtime_selection = await self.resolve_hermes_runtime(agent)
         self._sync_managed_plugins(hermes_home, enabled_integrations)
         active_skin = await self._sync_global_skin(hermes_home)
         app_name = await self._get_instance_app_name()
         installed_skills = await self._sync_managed_skills(agent, hermes_home, enabled_integrations)
         system_prompt = await self._build_system_prompt(agent, installed_skills, app_name)
         messaging_channels = await self._load_messaging_channels(agent.id)
-        self._write_config(agent, hermes_home, system_prompt, messaging_channels, active_skin)
+        self._write_config(agent, hermes_home, system_prompt, messaging_channels, active_skin, runtime_selection)
         self._write_soul(agent, hermes_home, app_name)
         await self._sync_auth_store(agent, hermes_home)
         await self._sync_dotenv(agent, hermes_home, messaging_channels)
@@ -78,6 +82,11 @@ class HermesInstallationManager:
         env["HERMESHQ_INTERNAL_API_URL"] = get_settings().internal_api_base_url.rstrip("/")
         env["HERMESHQ_RUNTIME_PROFILE"] = profile["slug"]
         env["HERMESHQ_RUNTIME_PROFILE_NAME"] = profile["name"]
+        runtime_selection = await self.resolve_hermes_runtime(agent)
+        env["HERMESHQ_HERMES_RUNTIME_SOURCE"] = runtime_selection.source
+        env["HERMESHQ_HERMES_VERSION"] = runtime_selection.detected_version or runtime_selection.effective_version
+        if runtime_selection.release_tag:
+            env["HERMESHQ_HERMES_RELEASE_TAG"] = runtime_selection.release_tag
         api_key = await self._resolve_api_key(agent.api_key_ref)
         if api_key:
             for env_name in self._provider_env_names(agent.provider):
@@ -236,6 +245,7 @@ class HermesInstallationManager:
         system_prompt: str,
         messaging_channels: list[MessagingChannel],
         active_skin: str | None,
+        runtime_selection: HermesRuntimeSelection,
     ) -> None:
         profile = get_runtime_profile(agent.runtime_profile)
         telegram_channel = next((item for item in messaging_channels if item.platform == "telegram"), None)
@@ -253,6 +263,11 @@ class HermesInstallationManager:
                 "slug": profile["slug"],
                 "name": profile["name"],
                 "tooling_summary": profile["tooling_summary"],
+            },
+            "hermes_runtime": {
+                "source": runtime_selection.source,
+                "version": runtime_selection.detected_version or runtime_selection.effective_version,
+                "release_tag": runtime_selection.release_tag or "",
             },
             "skills": {
                 "external_dirs": [],
@@ -279,6 +294,12 @@ class HermesInstallationManager:
             }
         config_path = hermes_home / "config.yaml"
         config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    async def resolve_hermes_runtime(self, agent: Agent) -> HermesRuntimeSelection:
+        async with self.session_factory() as session:
+            app_settings = await session.get(AppSettings, "default")
+            requested_version = agent.hermes_version or (app_settings.default_hermes_version if app_settings else None)
+        return await self.version_manager.resolve_runtime(requested_version)
 
     def _write_soul(self, agent: Agent, hermes_home: Path, app_name: str) -> None:
         (hermes_home / "SOUL.md").write_text(

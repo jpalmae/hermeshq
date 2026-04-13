@@ -16,6 +16,7 @@ class AppSettings(TimestampMixin, Base):
     default_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     default_api_key_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
     default_base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    default_hermes_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     default_tui_skin: Mapped[str | None] = mapped_column(String(128), nullable=True)
     enabled_integration_packages: Mapped[list[str]] = mapped_column(JSON, default=list)
     tui_skin_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)

@@ -1,6 +1,14 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useAgents } from "../api/agents";
+import {
+  useCreateHermesVersion,
+  useDeleteHermesVersionCatalogEntry,
+  useHermesVersions,
+  useInstallHermesVersion,
+  useUninstallHermesVersion,
+  useUpdateHermesVersion,
+} from "../api/hermesVersions";
 import { useInstallIntegrationPackage, useIntegrationPackages, useUninstallIntegrationPackage, useUploadIntegrationPackage } from "../api/integrationPackages";
 import { useProviders, useUpdateProvider } from "../api/providers";
 import { useRuntimeCapabilityOverview } from "../api/runtimeProfiles";
@@ -26,6 +34,7 @@ export function SettingsPage() {
   const { data: agents } = useAgents();
   const { data: secrets } = useSecrets(isAdmin);
   const { data: providers } = useProviders(Boolean(currentUser));
+  const { data: hermesVersions } = useHermesVersions(isAdmin);
   const { data: runtimeCapabilityOverview } = useRuntimeCapabilityOverview(Boolean(currentUser));
   const { data: integrationPackages } = useIntegrationPackages(isAdmin);
   const { data: templates } = useTemplates(isAdmin);
@@ -34,6 +43,11 @@ export function SettingsPage() {
   const createSecret = useCreateSecret();
   const createTemplate = useCreateTemplate();
   const updateSettings = useUpdateSettings();
+  const createHermesVersion = useCreateHermesVersion();
+  const installHermesVersion = useInstallHermesVersion();
+  const updateHermesVersion = useUpdateHermesVersion();
+  const uninstallHermesVersion = useUninstallHermesVersion();
+  const deleteHermesVersionCatalogEntry = useDeleteHermesVersionCatalogEntry();
   const uploadLogo = useUploadBrandAsset("logo");
   const uploadFavicon = useUploadBrandAsset("favicon");
   const deleteLogo = useDeleteBrandAsset("logo");
@@ -56,6 +70,14 @@ export function SettingsPage() {
   const [defaultModel, setDefaultModel] = useState("");
   const [defaultApiKeyRef, setDefaultApiKeyRef] = useState("");
   const [defaultBaseUrl, setDefaultBaseUrl] = useState("");
+  const [defaultHermesVersion, setDefaultHermesVersion] = useState("bundled");
+  const [newHermesVersion, setNewHermesVersion] = useState("");
+  const [newHermesReleaseTag, setNewHermesReleaseTag] = useState("");
+  const [newHermesDescription, setNewHermesDescription] = useState("");
+  const [hermesVersionDrafts, setHermesVersionDrafts] = useState<Record<string, {
+    release_tag: string;
+    description: string;
+  }>>({});
   const [selectedDefaultProviderSlug, setSelectedDefaultProviderSlug] = useState("");
   const [providerDrafts, setProviderDrafts] = useState<Record<string, {
     name: string;
@@ -76,6 +98,7 @@ export function SettingsPage() {
     setDefaultModel(settings?.default_model ?? "");
     setDefaultApiKeyRef(settings?.default_api_key_ref ?? "");
     setDefaultBaseUrl(settings?.default_base_url ?? "");
+    setDefaultHermesVersion(settings?.default_hermes_version ?? "bundled");
   }, [settings]);
 
   useEffect(() => {
@@ -98,6 +121,20 @@ export function SettingsPage() {
       ),
     );
   }, [providers]);
+
+  useEffect(() => {
+    setHermesVersionDrafts(
+      Object.fromEntries(
+        (hermesVersions ?? []).map((version) => [
+          version.version,
+          {
+            release_tag: version.release_tag ?? "",
+            description: version.description ?? "",
+          },
+        ]),
+      ),
+    );
+  }, [hermesVersions]);
 
   const enabledProviders = useMemo(
     () => (providers ?? []).filter((provider) => provider.enabled),
@@ -162,6 +199,7 @@ export function SettingsPage() {
       default_model: defaultModel || null,
       default_api_key_ref: defaultApiKeyRef || null,
       default_base_url: defaultBaseUrl || null,
+      default_hermes_version: defaultHermesVersion === "bundled" ? null : defaultHermesVersion,
     });
   }
 
@@ -219,6 +257,32 @@ export function SettingsPage() {
 
   const logoUrl = resolveAssetUrl(settings?.logo_url);
   const faviconUrl = resolveAssetUrl(settings?.favicon_url);
+
+  async function submitHermesVersionCatalog(event: FormEvent) {
+    event.preventDefault();
+    await createHermesVersion.mutateAsync({
+      version: newHermesVersion.trim(),
+      release_tag: newHermesReleaseTag.trim() || null,
+      description: newHermesDescription.trim() || null,
+    });
+    setNewHermesVersion("");
+    setNewHermesReleaseTag("");
+    setNewHermesDescription("");
+  }
+
+  async function saveHermesVersion(version: string) {
+    const draft = hermesVersionDrafts[version];
+    if (!draft) {
+      return;
+    }
+    await updateHermesVersion.mutateAsync({
+      version,
+      payload: {
+        release_tag: draft.release_tag.trim() || null,
+        description: draft.description.trim() || null,
+      },
+    });
+  }
 
   if (currentUser && !isAdmin) {
     return (
@@ -333,6 +397,21 @@ export function SettingsPage() {
               <span className="panel-label">{t("agents.baseUrl")}</span>
               <input value={defaultBaseUrl} onChange={(event) => setDefaultBaseUrl(event.target.value)} />
             </label>
+            <label className="panel-field">
+              <span className="panel-label">Default Hermes version</span>
+              <select value={defaultHermesVersion} onChange={(event) => setDefaultHermesVersion(event.target.value)}>
+                <option value="bundled">Bundled runtime</option>
+                {(hermesVersions ?? [])
+                  .filter((item) => item.version !== "bundled" && item.installed)
+                  .map((item) => (
+                    <option key={item.version} value={item.version}>
+                      {item.version === "bundled"
+                        ? `Bundled runtime${item.detected_version ? ` (${item.detected_version})` : ""}`
+                        : `${item.version}${item.detected_version ? ` (${item.detected_version})` : ""}`}
+                    </option>
+                  ))}
+              </select>
+            </label>
             <button className="panel-button-primary w-full" type="submit">
               {t("settings.saveRuntimeDefaults")}
             </button>
@@ -343,6 +422,144 @@ export function SettingsPage() {
             ) : null}
           </div>
         </form>
+
+        <section className="panel-frame p-6">
+          <p className="panel-label">Hermes Agent</p>
+          <h2 className="mt-2 text-2xl text-[var(--text-display)]">Versions</h2>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+            Install Hermes Agent releases once per instance and pin agents to a tested version.
+          </p>
+          <form className="mt-6 border border-[var(--border)] bg-[var(--surface-raised)] p-4" onSubmit={submitHermesVersionCatalog}>
+            <p className="panel-label">Catalog</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <label className="panel-field">
+                <span className="panel-label">Version</span>
+                <input value={newHermesVersion} onChange={(event) => setNewHermesVersion(event.target.value)} placeholder="0.10.0" />
+              </label>
+              <label className="panel-field">
+                <span className="panel-label">Release tag</span>
+                <input value={newHermesReleaseTag} onChange={(event) => setNewHermesReleaseTag(event.target.value)} placeholder="v2026.5.1" />
+              </label>
+              <label className="panel-field">
+                <span className="panel-label">Description</span>
+                <input value={newHermesDescription} onChange={(event) => setNewHermesDescription(event.target.value)} placeholder="Canary candidate" />
+              </label>
+            </div>
+            <div className="mt-4 flex items-center gap-3">
+              <button className="panel-button-primary" type="submit" disabled={createHermesVersion.isPending}>
+                {createHermesVersion.isPending ? "Adding..." : "Add to catalog"}
+              </button>
+              <p className="panel-inline-status">New versions become installable without changing backend code.</p>
+            </div>
+          </form>
+          <div className="mt-6 space-y-4">
+            {(hermesVersions ?? []).map((version) => (
+              <article key={version.version} className="border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="panel-label">{version.source}</p>
+                    <h3 className="mt-2 text-lg text-[var(--text-display)]">
+                      {version.version === "bundled" ? "Bundled runtime" : version.version}
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                      {version.description ?? "Hermes Agent runtime"}
+                    </p>
+                    <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
+                      {version.release_tag ?? (version.detected_version ? `detected ${version.detected_version}` : "no release tag")}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="panel-label">{version.installed ? "installed" : "available"}</p>
+                    {version.is_default ? (
+                      <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--accent)]">default</p>
+                    ) : null}
+                    {version.in_use_by_agents ? (
+                      <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+                        pinned by {version.in_use_by_agents}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                {version.version !== "bundled" ? (
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <label className="panel-field">
+                      <span className="panel-label">Release tag</span>
+                      <input
+                        value={hermesVersionDrafts[version.version]?.release_tag ?? ""}
+                        onChange={(event) =>
+                          setHermesVersionDrafts((current) => ({
+                            ...current,
+                            [version.version]: {
+                              ...(current[version.version] ?? { release_tag: "", description: "" }),
+                              release_tag: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="panel-field">
+                      <span className="panel-label">Description</span>
+                      <input
+                        value={hermesVersionDrafts[version.version]?.description ?? ""}
+                        onChange={(event) =>
+                          setHermesVersionDrafts((current) => ({
+                            ...current,
+                            [version.version]: {
+                              ...(current[version.version] ?? { release_tag: "", description: "" }),
+                              description: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                ) : null}
+                <div className="mt-4 flex flex-wrap gap-3">
+                  {version.version !== "bundled" ? (
+                    <button
+                      type="button"
+                      className="panel-button-secondary"
+                      disabled={updateHermesVersion.isPending}
+                      onClick={() => void saveHermesVersion(version.version)}
+                    >
+                      {updateHermesVersion.isPending ? "Saving..." : "Save metadata"}
+                    </button>
+                  ) : null}
+                  {version.version !== "bundled" && !version.installed ? (
+                    <button
+                      type="button"
+                      className="panel-button-secondary"
+                      disabled={installHermesVersion.isPending}
+                      onClick={() => void installHermesVersion.mutateAsync(version.version)}
+                    >
+                      {installHermesVersion.isPending ? "Installing..." : "Install"}
+                    </button>
+                  ) : null}
+                  {version.version !== "bundled" && version.installed ? (
+                    <button
+                      type="button"
+                      className="panel-button-secondary"
+                      disabled={uninstallHermesVersion.isPending || version.is_default || version.in_use_by_agents > 0}
+                      onClick={() => void uninstallHermesVersion.mutateAsync(version.version)}
+                    >
+                      {uninstallHermesVersion.isPending ? "Removing..." : "Uninstall"}
+                    </button>
+                  ) : null}
+                  {version.version !== "bundled" && !version.installed ? (
+                    <button
+                      type="button"
+                      className="panel-button-secondary"
+                      disabled={deleteHermesVersionCatalogEntry.isPending || version.is_default || version.in_use_by_agents > 0}
+                      onClick={() => void deleteHermesVersionCatalogEntry.mutateAsync(version.version)}
+                    >
+                      {deleteHermesVersionCatalogEntry.isPending ? "Deleting..." : "Delete catalog entry"}
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
 
         <section className="panel-frame p-6">
           <p className="panel-label">{t("settings.activeBranding")}</p>

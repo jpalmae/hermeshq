@@ -15,6 +15,7 @@ class AppSettingsUpdate(BaseModel):
     default_model: str | None = None
     default_api_key_ref: str | None = None
     default_base_url: str | None = None
+    default_hermes_version: str | None = None
     default_tui_skin: str | None = None
 
 
@@ -28,6 +29,7 @@ class AppSettingsRead(ORMModel):
     default_model: str | None
     default_api_key_ref: str | None
     default_base_url: str | None
+    default_hermes_version: str | None
     default_tui_skin: str | None = None
     tui_skin_filename: str | None = None
     logo_url: str | None = None

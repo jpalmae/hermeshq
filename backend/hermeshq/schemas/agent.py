@@ -14,6 +14,7 @@ class AgentCreate(BaseModel):
     description: str | None = None
     run_mode: str = "hybrid"
     runtime_profile: str = "standard"
+    hermes_version: str | None = None
     model: str | None = None
     provider: str | None = None
     api_key_ref: str | None = None
@@ -35,6 +36,7 @@ class AgentUpdate(BaseModel):
     description: str | None = None
     run_mode: str | None = None
     runtime_profile: str | None = None
+    hermes_version: str | None = None
     model: str | None = None
     provider: str | None = None
     api_key_ref: str | None = None
@@ -62,6 +64,7 @@ class AgentRead(ORMModel):
     status: str
     run_mode: str
     runtime_profile: str
+    hermes_version: str | None
     model: str
     provider: str
     api_key_ref: str | None

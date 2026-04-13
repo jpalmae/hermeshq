@@ -52,6 +52,7 @@ export interface Agent {
   status: AgentStatus;
   run_mode: string;
   runtime_profile: string;
+  hermes_version: string | null;
   model: string;
   provider: string;
   api_key_ref: string | null;
@@ -87,6 +88,7 @@ export interface AppSettings {
   default_model: string | null;
   default_api_key_ref: string | null;
   default_base_url: string | null;
+  default_hermes_version: string | null;
   default_tui_skin: string | null;
   tui_skin_filename: string | null;
   logo_url: string | null;
@@ -96,6 +98,20 @@ export interface AppSettings {
   has_favicon: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface HermesVersion {
+  version: string;
+  release_tag: string | null;
+  description: string | null;
+  source: "bundled" | "managed" | string;
+  installed: boolean;
+  install_status: string;
+  installed_path: string | null;
+  detected_version: string | null;
+  is_default: boolean;
+  is_effective_default: boolean;
+  in_use_by_agents: number;
 }
 
 export interface ProviderDefinition {

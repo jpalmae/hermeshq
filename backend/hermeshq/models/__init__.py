@@ -4,6 +4,7 @@ from hermeshq.models.agent import Agent
 from hermeshq.models.agent_assignment import AgentAssignment
 from hermeshq.models.base import Base
 from hermeshq.models.conversation_thread import ConversationThread
+from hermeshq.models.hermes_version import HermesVersion
 from hermeshq.models.message import AgentMessage
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.node import Node
@@ -23,6 +24,7 @@ __all__ = [
     "AppSettings",
     "Base",
     "ConversationThread",
+    "HermesVersion",
     "MessagingChannel",
     "Node",
     "ProviderDefinition",

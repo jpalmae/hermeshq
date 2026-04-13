@@ -96,12 +96,13 @@ class GatewaySupervisor:
                 raise ValueError(channel.last_error)
             await self.installation_manager.sync_agent_installation(agent_row)
             env = await self.installation_manager.build_gateway_env(agent_row, platform)
+            runtime_selection = await self.installation_manager.resolve_hermes_runtime(agent_row)
             workspace_path = self.installation_manager.resolve_workspace_path(agent_row.workspace_path)
             log_path = self._log_path(agent_row.workspace_path, platform)
             log_path.parent.mkdir(parents=True, exist_ok=True)
             log_handle = log_path.open("a", encoding="utf-8")
             process = subprocess.Popen(
-                ["hermes", "gateway", "run"],
+                [runtime_selection.hermes_bin, "gateway", "run"],
                 cwd=str(workspace_path),
                 env=env,
                 stdin=subprocess.DEVNULL,

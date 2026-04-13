@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { useAgent, useAgentAction, useDeleteAgent, useDeleteAgentAvatar, useRunAgentIntegrationAction, useTestAgentIntegration, useUpdateAgent, useUploadAgentAvatar } from "../api/agents";
+import { useHermesVersions } from "../api/hermesVersions";
 import { useLogs } from "../api/logs";
 import { useManagedIntegrations } from "../api/managedIntegrations";
 import { useRuntimeCapabilityOverview, useRuntimeProfiles } from "../api/runtimeProfiles";
@@ -102,6 +103,7 @@ export function AgentDetailPage() {
   const { data: tasks } = useTasks();
   const { data: logs } = useLogs(agentId);
   const { data: runtimeProfiles } = useRuntimeProfiles(Boolean(currentUser));
+  const { data: hermesVersions } = useHermesVersions(Boolean(currentUser) && isAdmin);
   const { data: runtimeCapabilityOverview } = useRuntimeCapabilityOverview(Boolean(currentUser));
   const { data: managedIntegrations } = useManagedIntegrations(Boolean(currentUser));
   const { data: secrets } = useSecrets(isAdmin);
@@ -121,6 +123,7 @@ export function AgentDetailPage() {
   });
   const [systemPromptDraft, setSystemPromptDraft] = useState("");
   const [runtimeProfileDraft, setRuntimeProfileDraft] = useState("standard");
+  const [hermesVersionDraft, setHermesVersionDraft] = useState("bundled");
   const [integrationDrafts, setIntegrationDrafts] = useState<Record<string, Record<string, string>>>({});
   const [integrationTestResults, setIntegrationTestResults] = useState<
     Record<string, { success: boolean; message: string; details?: Record<string, unknown> | null }>
@@ -222,6 +225,7 @@ export function AgentDetailPage() {
     });
     setSystemPromptDraft(agent.system_prompt ?? "");
     setRuntimeProfileDraft(agent.runtime_profile || "standard");
+    setHermesVersionDraft(agent.hermes_version ?? "bundled");
     const nextIntegrationDrafts: Record<string, Record<string, string>> = {};
     for (const integration of managedIntegrations ?? []) {
       const currentConfig = (agent.integration_configs?.[integration.slug] as Record<string, unknown> | undefined) ?? {};
@@ -364,6 +368,7 @@ export function AgentDetailPage() {
       agentId: currentAgent.id,
       payload: {
         runtime_profile: runtimeProfileDraft,
+        hermes_version: hermesVersionDraft === "bundled" ? null : hermesVersionDraft,
       },
     });
   }
@@ -667,6 +672,10 @@ export function AgentDetailPage() {
                   <span>{t("agents.provider")}</span>
                   <strong>{agent.provider}</strong>
                 </div>
+                <div className="panel-stat-row">
+                  <span>Hermes Agent</span>
+                  <strong>{agent.hermes_version ?? "Bundled runtime"}</strong>
+                </div>
                 <div className="border-b border-[var(--border)] pb-5">
                   <label className="panel-field">
                     <span className="panel-label">{t("agents.runtimeProfile")}</span>
@@ -707,6 +716,28 @@ export function AgentDetailPage() {
                       <p className="panel-inline-status">{t("agent.runtimeProfileHint")}</p>
                     </div>
                   ) : null}
+                  <label className="panel-field mt-4">
+                    <span className="panel-label">Hermes Agent version</span>
+                    {isAdmin ? (
+                      <select
+                        value={hermesVersionDraft}
+                        onChange={(event) => setHermesVersionDraft(event.target.value)}
+                      >
+                        <option value="bundled">Inherit default / bundled</option>
+                        {(hermesVersions ?? [])
+                          .filter((item) => item.version !== "bundled" && item.installed)
+                          .map((item) => (
+                            <option key={item.version} value={item.version}>
+                              {item.version === "bundled"
+                                ? `Bundled runtime${item.detected_version ? ` (${item.detected_version})` : ""}`
+                                : `${item.version}${item.detected_version ? ` (${item.detected_version})` : ""}`}
+                            </option>
+                          ))}
+                      </select>
+                    ) : (
+                      <input value={agent.hermes_version ?? "Bundled runtime"} readOnly />
+                    )}
+                  </label>
                 </div>
                 <div className="panel-stat-row">
                   <span>{t("agents.secretRef")}</span>

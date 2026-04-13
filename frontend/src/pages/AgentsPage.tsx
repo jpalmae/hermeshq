@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { useAgentAction, useAgents, useCreateAgent, useDeleteAgent } from "../api/agents";
 import { AgentAvatar } from "../components/AgentAvatar";
+import { useHermesVersions } from "../api/hermesVersions";
 import { useNodes } from "../api/nodes";
 import { useProviders } from "../api/providers";
 import { useRuntimeProfiles } from "../api/runtimeProfiles";
@@ -20,6 +21,7 @@ const emptyForm = {
   description: "",
   run_mode: "hybrid",
   runtime_profile: "standard",
+  hermes_version: "bundled",
   model: "",
   provider: "",
   api_key_ref: "",
@@ -51,6 +53,7 @@ export function AgentsPage() {
   const [showArchived, setShowArchived] = useState(false);
   const { data: agents } = useAgents(showArchived && isAdmin);
   const { data: settings } = useSettings(isAdmin);
+  const { data: hermesVersions } = useHermesVersions(isAdmin);
   const { data: providers } = useProviders(Boolean(currentUser));
   const { data: runtimeProfiles } = useRuntimeProfiles(Boolean(currentUser));
   const { data: secrets } = useSecrets(isAdmin);
@@ -88,6 +91,7 @@ export function AgentsPage() {
         ...current,
         node_id: current.node_id || activeNodeId,
         runtime_profile: current.runtime_profile || "standard",
+        hermes_version: current.hermes_version || "bundled",
         model: current.model || settings?.default_model || "",
         provider: current.provider || settings?.default_provider || "",
         api_key_ref: current.api_key_ref || settings?.default_api_key_ref || "",
@@ -106,6 +110,7 @@ export function AgentsPage() {
     await createAgent.mutateAsync({
       ...form,
       node_id: form.node_id || activeNodeId,
+      hermes_version: form.hermes_version === "bundled" ? null : form.hermes_version,
       enabled_toolsets: [],
       disabled_toolsets: [],
       skills: [],
@@ -116,6 +121,7 @@ export function AgentsPage() {
       ...emptyForm,
       node_id: activeNodeId,
       runtime_profile: "standard",
+      hermes_version: "bundled",
       model: settings?.default_model ?? "",
       provider: settings?.default_provider ?? "",
       api_key_ref: settings?.default_api_key_ref ?? "",
@@ -231,6 +237,27 @@ export function AgentsPage() {
                   {profile.name}
                 </option>
               ))}
+            </select>
+          </label>
+
+          <label className="panel-field">
+            <span className="panel-label">Hermes Agent version</span>
+            <select
+              value={form.hermes_version}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, hermes_version: event.target.value }))
+              }
+            >
+              <option value="bundled">Inherit default / bundled</option>
+              {(hermesVersions ?? [])
+                .filter((item) => item.version !== "bundled" && item.installed)
+                .map((item) => (
+                  <option key={item.version} value={item.version}>
+                    {item.version === "bundled"
+                      ? `Bundled runtime${item.detected_version ? ` (${item.detected_version})` : ""}`
+                      : `${item.version}${item.detected_version ? ` (${item.detected_version})` : ""}`}
+                  </option>
+                ))}
             </select>
           </label>
 

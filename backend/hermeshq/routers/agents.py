@@ -168,6 +168,15 @@ async def _load_enabled_integration_slugs(db: AsyncSession) -> list[str]:
     return [slug for slug in enabled if isinstance(slug, str) and slug.strip()]
 
 
+async def _validate_hermes_version(request: Request, hermes_version: str | None) -> str | None:
+    normalized = (hermes_version or "").strip() or None
+    if normalized == "bundled":
+        return None
+    if normalized and not request.app.state.hermes_version_manager.is_installed(normalized):
+        raise HTTPException(status_code=400, detail=f"Hermes version '{normalized}' is not installed")
+    return normalized
+
+
 def _sync_agent_integration_toolsets(agent: Agent, enabled_integration_slugs: list[str]) -> None:
     known_toolsets = {
         package["plugin_slug"]
@@ -219,6 +228,7 @@ async def create_agent(
         slug=payload.slug,
     )
     unique_slug = await ensure_unique_agent_slug(db, slug)
+    hermes_version = await _validate_hermes_version(request, payload.hermes_version)
     agent = Agent(
         node_id=payload.node_id,
         name=name,
@@ -227,6 +237,7 @@ async def create_agent(
         description=payload.description,
         run_mode=payload.run_mode,
         runtime_profile=normalize_runtime_profile_slug(payload.runtime_profile),
+        hermes_version=hermes_version,
         model=runtime_defaults["model"],
         provider=runtime_defaults["provider"],
         api_key_ref=runtime_defaults["api_key_ref"],
@@ -303,6 +314,9 @@ async def update_agent(
     if "supervisor_agent_id" in update_data:
         await _validate_supervisor(db, agent_id, update_data.get("supervisor_agent_id"))
     runtime_profile_changed = "runtime_profile" in update_data
+    hermes_version_changed = "hermes_version" in update_data
+    if hermes_version_changed:
+        update_data["hermes_version"] = await _validate_hermes_version(request, update_data.get("hermes_version"))
     current_friendly = (agent.friendly_name or "").strip()
     current_name = (agent.name or "").strip()
     current_slug = (agent.slug or "").strip()
@@ -355,6 +369,7 @@ async def update_agent(
         "can_send_tasks",
         "can_receive_tasks",
         "runtime_profile",
+        "hermes_version",
         "integration_configs",
     }
     should_restart_gateways = bool(set(update_data).intersection(restart_gateway_fields))
@@ -370,7 +385,7 @@ async def update_agent(
         )
     await db.commit()
     await request.app.state.installation_manager.sync_agent_installation(agent)
-    if runtime_profile_changed:
+    if runtime_profile_changed or hermes_version_changed:
         await request.app.state.pty_manager.destroy_session(agent_id)
     if should_restart_gateways:
         channel_result = await db.execute(
@@ -586,6 +601,7 @@ async def create_agent_from_template(
         slug=agent_payload.slug,
     )
     unique_slug = await ensure_unique_agent_slug(db, slug)
+    hermes_version = await _validate_hermes_version(request, agent_payload.hermes_version)
     agent = Agent(
         node_id=agent_payload.node_id,
         name=name,
@@ -594,6 +610,7 @@ async def create_agent_from_template(
         description=agent_payload.description,
         run_mode=agent_payload.run_mode,
         runtime_profile=normalize_runtime_profile_slug(agent_payload.runtime_profile),
+        hermes_version=hermes_version,
         model=runtime_defaults["model"],
         provider=runtime_defaults["provider"],
         api_key_ref=runtime_defaults["api_key_ref"],

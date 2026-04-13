@@ -1,8 +1,6 @@
 import asyncio
-import importlib
 import json
 import os
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,18 +39,10 @@ class HermesRuntime:
         self.session_factory = session_factory
         self.secret_vault = secret_vault
         self.installation_manager = installation_manager
-        self._agent_class = self._load_agent_class()
 
     @property
     def available(self) -> bool:
-        return self._agent_class is not None
-
-    def _load_agent_class(self):
-        try:
-            module = importlib.import_module("run_agent")
-            return getattr(module, "AIAgent", None)
-        except Exception:
-            return None
+        return True
 
     async def execute(
         self,
@@ -62,13 +52,12 @@ class HermesRuntime:
         conversation_history: list[dict] | None = None,
         session_id: str | None = None,
     ) -> RuntimeExecutionResult:
-        if not self._agent_class:
-            raise RuntimeExecutionError("hermes-agent runtime is not installed in the backend environment")
         if not self._has_credentials(agent):
             raise RuntimeExecutionError("No runtime credentials configured for this agent")
         api_key = await self._resolve_api_key(agent.api_key_ref)
         await self.installation_manager.sync_agent_installation(agent)
         runtime_system_prompt = await self.installation_manager.get_runtime_system_prompt(agent)
+        runtime_selection = await self.installation_manager.resolve_hermes_runtime(agent)
         try:
             return await self._run_real(
                 agent,
@@ -76,6 +65,7 @@ class HermesRuntime:
                 stream_callback,
                 api_key,
                 runtime_system_prompt,
+                runtime_selection.python_bin,
                 conversation_history=conversation_history,
                 session_id=session_id,
             )
@@ -91,6 +81,7 @@ class HermesRuntime:
         stream_callback,
         api_key: str | None,
         runtime_system_prompt: str,
+        runtime_python_bin: str,
         conversation_history: list[dict] | None = None,
         session_id: str | None = None,
     ) -> RuntimeExecutionResult:
@@ -121,7 +112,7 @@ class HermesRuntime:
         }
 
         process = await asyncio.create_subprocess_exec(
-            sys.executable,
+            runtime_python_bin,
             str(Path(__file__).resolve().parents[1] / "scripts" / "hermes_task_runner.py"),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

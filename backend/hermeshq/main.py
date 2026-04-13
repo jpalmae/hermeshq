@@ -12,7 +12,7 @@ from hermeshq.core.events import EventBroker
 from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
 from hermeshq.database import AsyncSessionLocal, init_database
 from hermeshq.models import Agent, AppSettings, Node, ProviderDefinition, User
-from hermeshq.routers import agents, auth, comms, dashboard, integration_packages, internal_agents, logs, managed_integrations, messaging_channels, nodes, providers, runtime_profiles, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, users
+from hermeshq.routers import agents, auth, comms, dashboard, hermes_versions, integration_packages, internal_agents, logs, managed_integrations, messaging_channels, nodes, providers, runtime_profiles, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, users
 from hermeshq.schemas.common import HealthResponse
 from hermeshq.services.agent_identity import derive_agent_identity, slugify_agent_value
 from hermeshq.services.agent_supervisor import AgentSupervisor
@@ -20,6 +20,7 @@ from hermeshq.services.comms_router import CommsRouter
 from hermeshq.services.hermes_installation import HermesInstallationManager
 from hermeshq.services.hermes_runtime import HermesRuntime
 from hermeshq.services.gateway_supervisor import GatewaySupervisor
+from hermeshq.services.hermes_version_manager import HermesVersionManager
 from hermeshq.services.pty_manager import PTYManager
 from hermeshq.services.provider_catalog import BUILTIN_PROVIDERS, seed_provider_defaults
 from hermeshq.services.runtime_profiles import normalize_runtime_profile_slug, terminal_allowed_for_profile
@@ -61,6 +62,9 @@ async def bootstrap_defaults() -> None:
         settings_row = await session.get(AppSettings, "default")
         if not settings_row:
             session.add(AppSettings(id="default"))
+        else:
+            if settings_row.default_hermes_version == "bundled":
+                settings_row.default_hermes_version = None
         for payload in BUILTIN_PROVIDERS:
             provider = await session.get(ProviderDefinition, payload["slug"])
             if not provider:
@@ -111,7 +115,13 @@ async def lifespan(app: FastAPI):
     app.state.event_broker = EventBroker()
     app.state.workspace_manager = WorkspaceManager(settings.workspaces_root)
     app.state.secret_vault = SecretVault(settings.fernet_key or settings.jwt_secret)
-    app.state.installation_manager = HermesInstallationManager(AsyncSessionLocal, app.state.secret_vault)
+    app.state.hermes_version_manager = HermesVersionManager(AsyncSessionLocal)
+    await app.state.hermes_version_manager.ensure_default_catalog_entries()
+    app.state.installation_manager = HermesInstallationManager(
+        AsyncSessionLocal,
+        app.state.secret_vault,
+        app.state.hermes_version_manager,
+    )
     app.state.runtime = HermesRuntime(AsyncSessionLocal, app.state.secret_vault, app.state.installation_manager)
     app.state.supervisor = AgentSupervisor(
         AsyncSessionLocal,
@@ -148,6 +158,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(nodes.router, prefix=settings.api_prefix)
 app.include_router(providers.router, prefix=settings.api_prefix)
+app.include_router(hermes_versions.router, prefix=settings.api_prefix)
 app.include_router(runtime_profiles.router, prefix=settings.api_prefix)
 app.include_router(integration_packages.router, prefix=settings.api_prefix)
 app.include_router(managed_integrations.router, prefix=settings.api_prefix)
@@ -214,7 +225,8 @@ async def pty_stream(websocket: WebSocket, agent_id: str) -> None:
         await app.state.installation_manager.sync_agent_installation(agent)
         cwd = str(app.state.installation_manager.resolve_workspace_path(agent.workspace_path))
         env = await app.state.installation_manager.build_process_env(agent)
-        command = ["hermes"]
+        runtime_selection = await app.state.installation_manager.resolve_hermes_runtime(agent)
+        command = [runtime_selection.hermes_bin]
     session = await app.state.pty_manager.create_session(agent_id, mode, cwd, command=command, env=env)
     await app.state.pty_manager.attach(session, websocket)
     try:

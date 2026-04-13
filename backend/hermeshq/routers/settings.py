@@ -53,6 +53,7 @@ def _settings_to_read(item: AppSettings) -> AppSettingsRead:
         default_model=item.default_model,
         default_api_key_ref=item.default_api_key_ref,
         default_base_url=item.default_base_url,
+        default_hermes_version=item.default_hermes_version,
         default_tui_skin=item.default_tui_skin,
         tui_skin_filename=item.tui_skin_filename,
         logo_url=logo_url,
@@ -123,10 +124,19 @@ async def get_public_settings(
 
 @router.put("", response_model=AppSettingsRead)
 async def update_settings(
+    request: Request,
     payload: AppSettingsUpdate,
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> AppSettingsRead:
+    if payload.default_hermes_version == "bundled":
+        payload.default_hermes_version = None
+    if payload.default_hermes_version:
+        if not request.app.state.hermes_version_manager.is_installed(payload.default_hermes_version):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Hermes version '{payload.default_hermes_version}' is not installed",
+            )
     item = await _get_or_create_settings(db)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)

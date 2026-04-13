@@ -68,6 +68,8 @@ def _run_schema_updates(sync_connection) -> None:
     if "runtime_profile" not in agent_columns:
         sync_connection.execute(text("ALTER TABLE agents ADD COLUMN runtime_profile VARCHAR(32)"))
         sync_connection.execute(text("UPDATE agents SET runtime_profile = 'standard' WHERE runtime_profile IS NULL"))
+    if "hermes_version" not in agent_columns:
+        sync_connection.execute(text("ALTER TABLE agents ADD COLUMN hermes_version VARCHAR(32)"))
     if "is_archived" not in agent_columns:
         sync_connection.execute(text("ALTER TABLE agents ADD COLUMN is_archived BOOLEAN DEFAULT FALSE"))
         sync_connection.execute(text("UPDATE agents SET is_archived = FALSE WHERE is_archived IS NULL"))
@@ -87,6 +89,8 @@ def _run_schema_updates(sync_connection) -> None:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN theme_mode VARCHAR(16)"))
     if "default_locale" not in settings_columns:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN default_locale VARCHAR(8)"))
+    if "default_hermes_version" not in settings_columns:
+        sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN default_hermes_version VARCHAR(32)"))
     if "default_tui_skin" not in settings_columns:
         sync_connection.execute(text("ALTER TABLE app_settings ADD COLUMN default_tui_skin VARCHAR(128)"))
     if "enabled_integration_packages" not in settings_columns:
