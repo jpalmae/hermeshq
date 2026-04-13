@@ -311,6 +311,36 @@
     border: 2px solid var(--surface-raised);
   }
 
+  .org-chart-avatar {
+    transition:
+      transform 160ms ease,
+      box-shadow 160ms ease,
+      border-color 160ms ease;
+  }
+
+  .org-map-card:hover .org-chart-avatar {
+    transform: translateY(-1px);
+  }
+
+  .org-chart-avatar--standard {
+    border-radius: 999px;
+  }
+
+  .org-chart-avatar--technical {
+    border-radius: 1rem;
+  }
+
+  .org-chart-avatar--security {
+    border-radius: 0;
+    clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%);
+  }
+
+  .org-chart-avatar--supervisor {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--text-display) 18%, transparent),
+      0 0 0 5px color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+
   .org-map-footer {
     display: flex;
     align-items: center;

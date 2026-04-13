@@ -75,6 +75,9 @@ class AgentRead(ORMModel):
     team_tags: list[str]
     can_receive_tasks: bool
     can_send_tasks: bool
+    is_archived: bool
+    archived_at: datetime | None
+    archive_reason: str | None
     supervisor_agent_id: str | None
     total_tasks: int
     total_tokens_used: int

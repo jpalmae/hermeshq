@@ -68,6 +68,13 @@ def _run_schema_updates(sync_connection) -> None:
     if "runtime_profile" not in agent_columns:
         sync_connection.execute(text("ALTER TABLE agents ADD COLUMN runtime_profile VARCHAR(32)"))
         sync_connection.execute(text("UPDATE agents SET runtime_profile = 'standard' WHERE runtime_profile IS NULL"))
+    if "is_archived" not in agent_columns:
+        sync_connection.execute(text("ALTER TABLE agents ADD COLUMN is_archived BOOLEAN DEFAULT FALSE"))
+        sync_connection.execute(text("UPDATE agents SET is_archived = FALSE WHERE is_archived IS NULL"))
+    if "archived_at" not in agent_columns:
+        sync_connection.execute(text("ALTER TABLE agents ADD COLUMN archived_at TIMESTAMP WITH TIME ZONE"))
+    if "archive_reason" not in agent_columns:
+        sync_connection.execute(text("ALTER TABLE agents ADD COLUMN archive_reason TEXT"))
     if "integration_configs" not in agent_columns:
         sync_connection.execute(text("ALTER TABLE agents ADD COLUMN integration_configs JSON"))
         sync_connection.execute(text("UPDATE agents SET integration_configs = '{}' WHERE integration_configs IS NULL"))

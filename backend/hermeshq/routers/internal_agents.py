@@ -39,13 +39,13 @@ async def _get_internal_agent(
     if agent_token != expected:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid agent credentials")
     agent = await db.get(Agent, agent_id)
-    if not agent:
+    if not agent or agent.is_archived:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown agent")
     return agent
 
 
 async def _load_agent_map(db: AsyncSession) -> dict[str, Agent]:
-    result = await db.execute(select(Agent).order_by(Agent.created_at.asc()))
+    result = await db.execute(select(Agent).where(Agent.is_archived.is_(False)).order_by(Agent.created_at.asc()))
     return {agent.id: agent for agent in result.scalars().all()}
 
 

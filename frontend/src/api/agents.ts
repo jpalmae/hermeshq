@@ -4,11 +4,13 @@ import axios from "axios";
 import { apiClient } from "./client";
 import type { Agent } from "../types/api";
 
-export function useAgents() {
+export function useAgents(includeArchived = false) {
   return useQuery({
-    queryKey: ["agents"],
+    queryKey: ["agents", { includeArchived }],
     queryFn: async () => {
-      const { data } = await apiClient.get<Agent[]>("/agents");
+      const { data } = await apiClient.get<Agent[]>("/agents", {
+        params: includeArchived ? { include_archived: true } : undefined,
+      });
       return data;
     },
   });

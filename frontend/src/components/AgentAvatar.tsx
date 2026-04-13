@@ -12,28 +12,31 @@ export function AgentAvatar({
   agent,
   sizeClass = "h-28 w-28",
   roundedClass = "rounded-full",
+  variantClass = "",
   className = "",
 }: {
   agent: Pick<Agent, "friendly_name" | "name" | "avatar_url" | "has_avatar">;
   sizeClass?: string;
   roundedClass?: string;
+  variantClass?: string;
   className?: string;
 }) {
   const avatarUrl = resolveAssetUrl(agent.avatar_url);
+  const visualClass = `${sizeClass} ${roundedClass} ${variantClass} border border-[var(--border-visible)] ${className}`.trim();
 
   if (avatarUrl) {
     return (
       <img
         src={avatarUrl}
         alt={agent.friendly_name || agent.name}
-        className={`${sizeClass} ${roundedClass} border border-[var(--border-visible)] object-cover ${className}`.trim()}
+        className={`${visualClass} object-cover`.trim()}
       />
     );
   }
 
   return (
     <div
-      className={`${sizeClass} ${roundedClass} grid place-items-center border border-[var(--border-visible)] bg-[var(--org-icon-background)] text-[var(--text-display)] ${className}`.trim()}
+      className={`${visualClass} grid place-items-center bg-[var(--org-icon-background)] text-[var(--text-display)]`.trim()}
     >
       <span className="font-mono text-sm uppercase tracking-[0.14em]">{initials(agent)}</span>
     </div>

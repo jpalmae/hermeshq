@@ -93,6 +93,8 @@ class AgentSupervisor:
             agent = await session.get(Agent, agent_id)
             if not agent:
                 raise ValueError("Agent not found")
+            if agent.is_archived:
+                raise ValueError("Archived agents cannot be started")
             agent.status = "running"
             agent.last_activity = utcnow()
             self.running_agents.add(agent.id)

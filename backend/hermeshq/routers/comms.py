@@ -14,7 +14,7 @@ router = APIRouter(prefix="/comms", tags=["comms"])
 
 
 async def _load_agent_map(session: AsyncSession) -> dict[str, Agent]:
-    result = await session.execute(select(Agent))
+    result = await session.execute(select(Agent).where(Agent.is_archived.is_(False)))
     return {agent.id: agent for agent in result.scalars().all()}
 
 @router.post("/send", response_model=MessageRead)
@@ -28,7 +28,7 @@ async def send_message(
         if not await can_access_agent(session, current_user, payload.to_agent_id):
             raise HTTPException(status_code=403, detail="Destination agent access denied")
         target_agent = await session.get(Agent, payload.to_agent_id)
-        if not target_agent:
+        if not target_agent or target_agent.is_archived:
             raise HTTPException(status_code=404, detail="Destination agent not found")
         if payload.message_type == "delegate":
             agent_map = await _load_agent_map(session)
@@ -53,7 +53,7 @@ async def broadcast(
     async with request.app.state.supervisor.session_factory() as session:
         await ensure_agent_access(session, current_user, payload.from_agent_id)
         if not is_admin(current_user):
-            result = await session.execute(select(Agent))
+            result = await session.execute(select(Agent).where(Agent.is_archived.is_(False)))
             target_ids = {
                 agent.id
                 for agent in result.scalars().all()
@@ -88,7 +88,7 @@ async def topology(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
-    agents_statement = select(Agent).order_by(Agent.created_at.asc())
+    agents_statement = select(Agent).where(Agent.is_archived.is_(False)).order_by(Agent.created_at.asc())
     messages_statement = select(AgentMessage).order_by(desc(AgentMessage.created_at)).limit(300)
     if not is_admin(current_user):
         accessible_ids = await get_accessible_agent_ids(db, current_user)

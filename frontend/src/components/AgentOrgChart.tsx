@@ -24,6 +24,16 @@ function statusClass(status: string) {
   return "bg-[var(--warning)]";
 }
 
+function avatarShapeClasses(runtimeProfile: string, hasReports: boolean) {
+  const shapeClass =
+    runtimeProfile === "security"
+      ? "rounded-none org-chart-avatar--security"
+      : runtimeProfile === "technical"
+        ? "rounded-[1rem] org-chart-avatar--technical"
+        : "rounded-full org-chart-avatar--standard";
+  return `${shapeClass} ${hasReports ? "org-chart-avatar--supervisor" : ""}`.trim();
+}
+
 function buildForest(agents: Agent[]) {
   const childrenByParent = new Map<string | null, Agent[]>();
   for (const agent of agents) {
@@ -141,6 +151,14 @@ export function AgentOrgChart({
   const [{ positions, height, zoom, nodeScale }, setLayout] = useState<LayoutState>(() => readStoredLayout());
   const cardWidth = Math.round(BASE_CARD_WIDTH * nodeScale);
   const cardHeight = Math.round(BASE_CARD_HEIGHT * nodeScale);
+  const hierarchy = useMemo(() => buildForest(agents), [agents]);
+  const subordinateCountByAgent = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const agent of agents) {
+      counts.set(agent.id, (hierarchy.get(agent.id) ?? []).length);
+    }
+    return counts;
+  }, [agents, hierarchy]);
 
   const mergedPositions = useMemo(() => {
     const defaults = buildDefaultPositions(agents, cardWidth, cardHeight);
@@ -345,6 +363,8 @@ export function AgentOrgChart({
             {agents.map((agent) => {
               const position = mergedPositions[agent.id];
               const options = agents.filter((item) => item.id !== agent.id);
+              const hasReports = (subordinateCountByAgent.get(agent.id) ?? 0) > 0;
+              const avatarVariantClass = avatarShapeClasses(agent.runtime_profile, hasReports);
 
               return (
                 <article
@@ -368,7 +388,13 @@ export function AgentOrgChart({
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-start gap-4">
                       <div className="relative">
-                        <AgentAvatar agent={agent} sizeClass="h-12 w-12" className="org-chart-avatar" />
+                        <AgentAvatar
+                          agent={agent}
+                          sizeClass="h-12 w-12"
+                          roundedClass=""
+                          variantClass={avatarVariantClass}
+                          className="org-chart-avatar"
+                        />
                         <span className={`org-chart-status ${statusClass(agent.status)}`} />
                       </div>
                       <div className="min-w-0">

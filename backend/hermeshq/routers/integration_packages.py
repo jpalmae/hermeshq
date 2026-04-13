@@ -44,7 +44,7 @@ async def _sync_agents_for_package(
 ) -> None:
     plugin_slug = package.get("plugin_slug")
     skill_identifier = package.get("skill_identifier")
-    result = await db.execute(select(Agent))
+    result = await db.execute(select(Agent).where(Agent.is_archived.is_(False)))
     agents = list(result.scalars().all())
     for agent in agents:
         changed = False

@@ -41,6 +41,9 @@ class Agent(TimestampMixin, Base):
     command_allowlist: Mapped[list[str]] = mapped_column(JSON, default=list)
     can_receive_tasks: Mapped[bool] = mapped_column(Boolean, default=True)
     can_send_tasks: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archive_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     supervisor_agent_id: Mapped[str | None] = mapped_column(
         ForeignKey("agents.id"), nullable=True
     )
@@ -53,7 +56,6 @@ class Agent(TimestampMixin, Base):
     tasks = relationship(
         "Task",
         back_populates="agent",
-        cascade="all, delete-orphan",
         foreign_keys="Task.agent_id",
     )
     messaging_channels = relationship(

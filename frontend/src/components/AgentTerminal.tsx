@@ -30,10 +30,12 @@ export function AgentTerminal({
   agentId,
   mode,
   runtimeProfile,
+  archived = false,
 }: {
   agentId: string;
   mode: string;
   runtimeProfile?: string;
+  archived?: boolean;
 }) {
   const { t } = useI18n();
   const token = useSessionStore((state) => state.token);
@@ -49,7 +51,7 @@ export function AgentTerminal({
   const reconnectTimerRef = useRef<number | null>(null);
   const shouldReconnectRef = useRef(true);
   const shouldAutoScrollRef = useRef(true);
-  const terminalDisabledByProfile = runtimeProfile === "standard";
+  const terminalDisabledByProfile = runtimeProfile === "standard" || archived;
   const readOnly = useMemo(() => mode === "hybrid" || mode === "interactive", [mode]);
 
   const isTerminalNearBottom = () => {
@@ -256,13 +258,15 @@ export function AgentTerminal({
           <p className="panel-label">{t("agent.terminal")}</p>
           <p className="mt-2 text-lg text-[var(--text-display)]">
             {terminalDisabledByProfile
-              ? t("agent.tuiDisabledByProfile")
+              ? archived
+                ? t("agent.archived")
+                : t("agent.tuiDisabledByProfile")
               : connected
                 ? t("agent.tuiAttached")
                 : t("agent.tuiOffline")}
           </p>
           <p className="mt-2 max-w-[44rem] text-sm leading-6 text-[var(--text-secondary)]">
-            {terminalDisabledByProfile ? t("agent.terminalProfileCopy") : t("agent.terminalCopy")}
+            {terminalDisabledByProfile ? (archived ? t("agent.archivedRuntimeCopy") : t("agent.terminalProfileCopy")) : t("agent.terminalCopy")}
           </p>
         </div>
         <p className={`panel-label ${connected ? "text-[var(--success)]" : "text-[var(--warning)]"}`}>
@@ -273,7 +277,7 @@ export function AgentTerminal({
       <div className={terminalBodyClassName}>
         {terminalDisabledByProfile ? (
           <div className="border border-[var(--border)] bg-[var(--surface-raised)] p-4 font-mono text-sm text-[var(--text-secondary)]">
-            {t("agent.terminalDisabledByProfile")}
+            {archived ? t("agent.archivedTerminalDisabled") : t("agent.terminalDisabledByProfile")}
           </div>
         ) : readOnly ? (
           <div ref={containerRef} className={terminalViewportClassName} />

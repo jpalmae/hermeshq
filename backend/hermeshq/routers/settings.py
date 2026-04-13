@@ -95,7 +95,7 @@ def _tui_skin_path(filename: str) -> Path:
 
 
 async def _resync_global_tui_skin(request: Request, db: AsyncSession) -> None:
-    agents = (await db.execute(select(Agent))).scalars().all()
+    agents = (await db.execute(select(Agent).where(Agent.is_archived.is_(False)))).scalars().all()
     installation_manager = request.app.state.installation_manager
     for agent in agents:
         await installation_manager.sync_agent_installation(agent)

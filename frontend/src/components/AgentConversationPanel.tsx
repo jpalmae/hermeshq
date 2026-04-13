@@ -48,12 +48,14 @@ export function AgentConversationPanel({
   agentStatus,
   onSubmit,
   isSubmitting,
+  disabled = false,
   embedded = false,
 }: {
   tasks: Task[];
   agentStatus: string;
   onSubmit: (prompt: string) => Promise<void>;
   isSubmitting: boolean;
+  disabled?: boolean;
   embedded?: boolean;
 }) {
   const { t, formatDateTime } = useI18n();
@@ -103,7 +105,7 @@ export function AgentConversationPanel({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draftPrompt.trim()) {
+    if (disabled || !draftPrompt.trim()) {
       return;
     }
     await onSubmit(draftPrompt.trim());
@@ -185,6 +187,7 @@ export function AgentConversationPanel({
             value={draftPrompt}
             onChange={(event) => setDraftPrompt(event.target.value)}
             placeholder={t("agent.messagePlaceholder")}
+            disabled={disabled}
           />
         </label>
 
@@ -192,12 +195,14 @@ export function AgentConversationPanel({
           <button
             type="submit"
             className="panel-button-primary"
-            disabled={isSubmitting || !draftPrompt.trim()}
+            disabled={disabled || isSubmitting || !draftPrompt.trim()}
           >
             {isSubmitting ? t("common.loading") : t("agent.sendMessage")}
           </button>
           <p className="panel-inline-status">
-            {agentStatus === "running"
+            {disabled
+              ? t("agent.archivedConversationDisabled")
+              : agentStatus === "running"
               ? t("agent.liveDispatch")
               : t("agent.autoDispatch")}
           </p>

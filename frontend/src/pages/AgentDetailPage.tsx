@@ -303,6 +303,7 @@ export function AgentDetailPage() {
   }
 
   const currentAgent = agent;
+  const archived = currentAgent.is_archived;
 
   async function onDelete() {
     const confirmed = window.confirm(t("agents.deleteConfirm", { name: currentAgent.name }));
@@ -320,6 +321,9 @@ export function AgentDetailPage() {
   }
 
   async function onSendInstruction(prompt: string) {
+    if (archived) {
+      return;
+    }
     if (currentAgent.status !== "running") {
       await startAgent.mutateAsync(currentAgent.id);
     }
@@ -503,6 +507,11 @@ export function AgentDetailPage() {
               <p className={`mt-2 text-lg uppercase tracking-[0.1em] ${statusTone(agent.status)}`}>
                 {agent.status}
               </p>
+              {archived ? (
+                <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--accent)]">
+                  {t("agent.archived")}
+                </p>
+              ) : null}
             </div>
             <div>
               <p className="panel-label">{t("agent.mode")}</p>
@@ -518,11 +527,17 @@ export function AgentDetailPage() {
             </div>
           </div>
 
+          {archived ? (
+            <div className="mt-6 border border-[var(--accent)] bg-[var(--accent-subtle)] px-4 py-3 text-sm text-[var(--text-primary)]">
+              {t("agent.archivedBanner")}
+            </div>
+          ) : null}
+
           <div className="mt-8 flex flex-wrap gap-3">
-            <button className="panel-button-primary" onClick={() => startAgent.mutate(agent.id)}>
+            <button className="panel-button-primary" onClick={() => startAgent.mutate(agent.id)} disabled={archived}>
               {t("agent.startRuntime")}
             </button>
-            <button className="panel-button-secondary" onClick={() => stopAgent.mutate(agent.id)}>
+            <button className="panel-button-secondary" onClick={() => stopAgent.mutate(agent.id)} disabled={archived}>
               {t("agent.stopRuntime")}
             </button>
             <Link className="panel-button-secondary" to={`/schedules?agentId=${agent.id}`}>
@@ -713,18 +728,19 @@ export function AgentDetailPage() {
         </section>
       </section>
 
-      <AgentTerminal agentId={agent.id} mode={agent.run_mode} runtimeProfile={agent.runtime_profile} />
+      <AgentTerminal agentId={agent.id} mode={agent.run_mode} runtimeProfile={agent.runtime_profile} archived={archived} />
 
       {renderSectionShell(
         "conversation",
         t("agent.conversation"),
         t("agent.talkToAgent"),
-        agent.status === "running" ? t("agent.liveRuntime") : t("agent.autoStartOnSend"),
+        archived ? t("agent.archived") : agent.status === "running" ? t("agent.liveRuntime") : t("agent.autoStartOnSend"),
         <AgentConversationPanel
           tasks={agentTasks}
           agentStatus={agent.status}
           onSubmit={onSendInstruction}
           isSubmitting={createTask.isPending}
+          disabled={archived}
           embedded
         />,
       )}

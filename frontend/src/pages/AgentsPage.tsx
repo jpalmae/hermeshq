@@ -48,7 +48,8 @@ export function AgentsPage() {
   const isAdmin = currentUser?.role === "admin";
   const { t } = useI18n();
   const { data: nodes } = useNodes(isAdmin);
-  const { data: agents } = useAgents();
+  const [showArchived, setShowArchived] = useState(false);
+  const { data: agents } = useAgents(showArchived && isAdmin);
   const { data: settings } = useSettings(isAdmin);
   const { data: providers } = useProviders(Boolean(currentUser));
   const { data: runtimeProfiles } = useRuntimeProfiles(Boolean(currentUser));
@@ -349,7 +350,19 @@ export function AgentsPage() {
             <p className="panel-label">{t("agents.fleetInventory")}</p>
             <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("agents.agentMatrix")}</h2>
           </div>
-          <p className="panel-label">{t("agents.registered", { count: agents?.length ?? 0 })}</p>
+          <div className="flex items-center gap-4">
+            {isAdmin ? (
+              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(event) => setShowArchived(event.target.checked)}
+                />
+                <span>{t("agents.showArchived")}</span>
+              </label>
+            ) : null}
+            <p className="panel-label">{t("agents.registered", { count: agents?.length ?? 0 })}</p>
+          </div>
         </div>
         <div className="mt-2">
           {(agents ?? []).map((agent) => (
@@ -374,6 +387,11 @@ export function AgentsPage() {
                   <p className="mt-1 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
                     {agent.provider} / {agent.runtime_profile}
                   </p>
+                  {agent.is_archived ? (
+                    <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--accent)]">
+                      {t("agent.archived")}
+                    </p>
+                  ) : null}
                 </div>
                 <div>
                   <p className="panel-label">Status</p>
@@ -386,13 +404,13 @@ export function AgentsPage() {
                 </div>
               </div>
               <div className="grid min-w-[18rem] gap-2 md:grid-cols-2">
-                <button className="panel-button-secondary w-full" onClick={() => startAgent.mutate(agent.id)}>
+                <button className="panel-button-secondary w-full" onClick={() => startAgent.mutate(agent.id)} disabled={agent.is_archived}>
                   Start
                 </button>
-                <button className="panel-button-secondary w-full" onClick={() => stopAgent.mutate(agent.id)}>
+                <button className="panel-button-secondary w-full" onClick={() => stopAgent.mutate(agent.id)} disabled={agent.is_archived}>
                   Stop
                 </button>
-                <button className="panel-button-secondary w-full" onClick={() => restartAgent.mutate(agent.id)}>
+                <button className="panel-button-secondary w-full" onClick={() => restartAgent.mutate(agent.id)} disabled={agent.is_archived}>
                   Restart
                 </button>
                 {isAdmin ? (
@@ -401,7 +419,7 @@ export function AgentsPage() {
                     onClick={() => onDelete(agent.id, agent.name)}
                     disabled={deleteAgent.isPending}
                   >
-                    Delete agent
+                    {t("agent.delete")}
                   </button>
                 ) : null}
               </div>

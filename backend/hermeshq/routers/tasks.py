@@ -35,6 +35,8 @@ async def create_task(
     db: AsyncSession = Depends(get_db_session),
 ) -> TaskRead:
     agent = await ensure_agent_access(db, current_user, payload.agent_id)
+    if agent.is_archived:
+        raise HTTPException(status_code=400, detail="Archived agents cannot receive new tasks")
     payload_data = payload.model_dump()
     metadata = payload_data.pop("metadata", {}) or {}
     inferred_conversation = (payload.title or "").strip() == "Chat message"

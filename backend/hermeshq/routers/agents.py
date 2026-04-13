@@ -1,8 +1,10 @@
+import contextlib
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import delete, false, or_, select, update
+from sqlalchemy import false, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,7 +14,6 @@ from hermeshq.database import get_db_session
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
 from hermeshq.models.app_settings import AppSettings
-from hermeshq.models.message import AgentMessage
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.node import Node
 from hermeshq.models.scheduled_task import ScheduledTask
@@ -52,6 +53,10 @@ ALLOWED_AVATAR_TYPES = {
     "image/webp": ".webp",
 }
 MAX_AVATAR_BYTES = 2 * 1024 * 1024
+
+
+def _active_agent_clause():
+    return Agent.is_archived.is_(False)
 
 
 def _normalize_integration_configs(value: dict | None) -> dict[str, dict]:
@@ -182,10 +187,13 @@ def _sync_agent_integration_toolsets(agent: Agent, enabled_integration_slugs: li
 @router.get("", response_model=list[AgentRead])
 async def list_agents(
     request: Request,
+    include_archived: bool = Query(default=False),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> list[AgentRead]:
     statement = select(Agent).options(selectinload(Agent.node)).order_by(Agent.created_at.asc())
+    if not include_archived:
+        statement = statement.where(_active_agent_clause())
     if not is_admin(current_user):
         accessible_ids = await get_accessible_agent_ids(db, current_user)
         statement = statement.where(Agent.id.in_(accessible_ids)) if accessible_ids else statement.where(false())
@@ -471,20 +479,44 @@ async def run_agent_integration_action(
 async def delete_agent(
     agent_id: str,
     request: Request,
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
     agent = await db.get(Agent, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.is_archived:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    task_ids = list(
+    active_task_ids = list(
         (
             await db.execute(
-                select(Task.id).where(Task.agent_id == agent_id)
+                select(Task.id).where(
+                    Task.agent_id == agent_id,
+                    Task.status.in_(["queued", "running"]),
+                )
             )
         ).scalars()
     )
+
+    supervisor = request.app.state.supervisor
+    if agent.status == "running":
+        try:
+            await supervisor.stop_agent(agent_id)
+        except ValueError:
+            pass
+    for task_id in active_task_ids:
+        await supervisor.cancel_task(task_id)
+    channel_platforms = list(
+        (
+            await db.execute(
+                select(MessagingChannel.platform).where(MessagingChannel.agent_id == agent_id)
+            )
+        ).scalars()
+    )
+    for platform in channel_platforms:
+        with contextlib.suppress(Exception):
+            await request.app.state.gateway_supervisor.stop_channel(agent_id, platform)
 
     await db.execute(
         update(Agent)
@@ -493,47 +525,39 @@ async def delete_agent(
     )
     await db.execute(
         update(Task)
-        .where(Task.source_agent_id == agent_id)
-        .values(source_agent_id=None)
+        .where(Task.agent_id == agent_id, Task.status == "queued")
+        .values(status="cancelled", error_message="Agent archived", completed_at=func.now())
+    )
+    await db.execute(
+        update(Task)
+        .where(Task.agent_id == agent_id, Task.status == "running")
+        .values(status="cancelled", error_message="Agent archived", completed_at=func.now())
+    )
+    await db.execute(
+        update(MessagingChannel)
+        .where(MessagingChannel.agent_id == agent_id)
+        .values(enabled=False, status="stopped")
+    )
+    await db.execute(
+        update(ScheduledTask)
+        .where(ScheduledTask.agent_id == agent_id)
+        .values(enabled=False)
     )
 
-    if task_ids:
-        await db.execute(
-            update(Task)
-            .where(Task.parent_task_id.in_(task_ids))
-            .values(parent_task_id=None)
+    agent.status = "stopped"
+    agent.is_archived = True
+    agent.archived_at = datetime.now(timezone.utc)
+    agent.archive_reason = f"Archived by {current_user.username}"
+    agent.last_activity = agent.archived_at
+    db.add(
+        ActivityLog(
+            agent_id=agent.id,
+            event_type="agent.archived",
+            severity="info",
+            message=f"{agent.name} archived",
+            details={"archived_by": current_user.username},
         )
-        await db.execute(
-            delete(ActivityLog).where(
-                or_(ActivityLog.agent_id == agent_id, ActivityLog.task_id.in_(task_ids))
-            )
-        )
-        await db.execute(
-            delete(AgentMessage).where(
-                or_(
-                    AgentMessage.from_agent_id == agent_id,
-                    AgentMessage.to_agent_id == agent_id,
-                    AgentMessage.task_id.in_(task_ids),
-                )
-            )
-        )
-        await db.execute(delete(Task).where(Task.agent_id == agent_id))
-    else:
-        await db.execute(delete(ActivityLog).where(ActivityLog.agent_id == agent_id))
-        await db.execute(
-            delete(AgentMessage).where(
-                or_(
-                    AgentMessage.from_agent_id == agent_id,
-                    AgentMessage.to_agent_id == agent_id,
-                )
-            )
-        )
-
-    await db.execute(delete(ScheduledTask).where(ScheduledTask.agent_id == agent_id))
-    workspace_manager = _get_workspace_manager(request)
-    workspace_manager.delete_workspace(agent_id)
-    _delete_avatar_files(agent_id)
-    await db.delete(agent)
+    )
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -621,7 +645,10 @@ async def start_agent(
 ) -> AgentRead:
     await ensure_agent_access(db, current_user, agent_id)
     supervisor = request.app.state.supervisor
-    await supervisor.start_agent(agent_id)
+    try:
+        await supervisor.start_agent(agent_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     result = await db.execute(
         select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id)
     )
@@ -653,7 +680,10 @@ async def restart_agent(
 ) -> AgentRead:
     await ensure_agent_access(db, current_user, agent_id)
     supervisor = request.app.state.supervisor
-    await supervisor.restart_agent(agent_id)
+    try:
+        await supervisor.restart_agent(agent_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     result = await db.execute(
         select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id)
     )

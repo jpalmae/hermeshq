@@ -65,6 +65,9 @@ export interface Agent {
   team_tags: string[];
   can_receive_tasks: boolean;
   can_send_tasks: boolean;
+  is_archived: boolean;
+  archived_at: string | null;
+  archive_reason: string | null;
   supervisor_agent_id: string | null;
   total_tasks: number;
   total_tokens_used: number;
