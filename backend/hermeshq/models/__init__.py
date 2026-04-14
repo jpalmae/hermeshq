@@ -13,6 +13,7 @@ from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.secret import Secret
 from hermeshq.models.task import Task
 from hermeshq.models.template import AgentTemplate
+from hermeshq.models.terminal_session import TerminalSession
 from hermeshq.models.user import User
 
 __all__ = [
@@ -31,5 +32,6 @@ __all__ = [
     "ScheduledTask",
     "Secret",
     "Task",
+    "TerminalSession",
     "User",
 ]

@@ -49,6 +49,21 @@ export function useCreateAgent() {
   });
 }
 
+export function useBootstrapSystemOperator() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.post<Agent>("/agents/system/operator/bootstrap");
+      return data;
+    },
+    onSuccess: async (agent) => {
+      await queryClient.invalidateQueries({ queryKey: ["agents"] });
+      await queryClient.invalidateQueries({ queryKey: ["agents", agent.id] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
 export function useUpdateAgent() {
   const queryClient = useQueryClient();
   return useMutation({

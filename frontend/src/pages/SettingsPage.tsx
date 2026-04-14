@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { useAgents } from "../api/agents";
+import { useAgents, useBootstrapSystemOperator } from "../api/agents";
 import {
   useCreateHermesVersion,
   useDeleteHermesVersionCatalogEntry,
@@ -41,6 +41,7 @@ export function SettingsPage() {
   const isAdmin = currentUser?.role === "admin";
   const { t } = useI18n();
   const { data: agents } = useAgents();
+  const bootstrapSystemOperator = useBootstrapSystemOperator();
   const { data: secrets } = useSecrets(isAdmin);
   const { data: providers } = useProviders(Boolean(currentUser));
   const { data: hermesVersions } = useHermesVersions(isAdmin);
@@ -174,6 +175,10 @@ export function SettingsPage() {
   const enabledProviders = useMemo(
     () => (providers ?? []).filter((provider) => provider.enabled),
     [providers],
+  );
+  const systemOperator = useMemo(
+    () => (agents ?? []).find((agent) => agent.is_system_agent && agent.slug === "hq-operator") ?? null,
+    [agents],
   );
   const integrationCatalog = useMemo(
     () => integrationPackages ?? [],
@@ -639,6 +644,46 @@ export function SettingsPage() {
             <p className="panel-label">Hermes version</p>
             <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.default_hermes_version ?? "bundled")}</p>
           </div>
+        </div>
+        <div className="mt-6 border-t border-[var(--border)] pt-6">
+          <p className="panel-label">{t("settings.hqOperator")}</p>
+          <h3 className="mt-2 text-lg text-[var(--text-display)]">{t("settings.hqOperatorTitle")}</h3>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+            {t("settings.hqOperatorCopy")}
+          </p>
+          {systemOperator ? (
+            <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+              <p className="panel-label">{t("settings.hqOperatorReady")}</p>
+              <p className="mt-2 text-sm text-[var(--text-display)]">
+                {systemOperator.friendly_name || systemOperator.name}
+              </p>
+              <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[var(--text-secondary)]">
+                {systemOperator.runtime_profile} / {systemOperator.system_scope ?? "operator"}
+              </p>
+            </div>
+          ) : null}
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              className="panel-button-primary"
+              type="button"
+              onClick={() => bootstrapSystemOperator.mutate()}
+              disabled={bootstrapSystemOperator.isPending}
+            >
+              {systemOperator
+                ? t("settings.hqOperatorRefresh")
+                : bootstrapSystemOperator.isPending
+                  ? t("settings.hqOperatorCreating")
+                  : t("settings.hqOperatorCreate")}
+            </button>
+            <p className="panel-inline-status">
+              {t("settings.hqOperatorHint")}
+            </p>
+          </div>
+          {bootstrapSystemOperator.error ? (
+            <p className="mt-3 text-sm text-[var(--danger)]">
+              {bootstrapSystemOperator.error instanceof Error ? bootstrapSystemOperator.error.message : t("settings.hqOperatorFailed")}
+            </p>
+          ) : null}
         </div>
       </div>
 

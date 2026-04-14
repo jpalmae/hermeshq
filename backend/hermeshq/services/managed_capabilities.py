@@ -16,6 +16,13 @@ CORE_MANAGED_PLUGIN_CATALOG: list[dict] = [
         "toolset": "hermeshq_comms",
         "standard_compatible": True,
     },
+    {
+        "slug": "hermeshq_control",
+        "template_dir": "hermeshq_control",
+        "toolset": "hermeshq_control",
+        "standard_compatible": False,
+        "system_only": True,
+    },
 ]
 
 
@@ -37,8 +44,16 @@ def uploaded_integration_packages_root() -> Path:
     return root
 
 
-def list_managed_plugins(enabled_integration_slugs: list[str] | None = None) -> list[dict]:
-    plugins = [dict(item) for item in CORE_MANAGED_PLUGIN_CATALOG]
+def list_managed_plugins(
+    enabled_integration_slugs: list[str] | None = None,
+    *,
+    include_system_plugins: bool = False,
+) -> list[dict]:
+    plugins = [
+        dict(item)
+        for item in CORE_MANAGED_PLUGIN_CATALOG
+        if include_system_plugins or not item.get("system_only")
+    ]
     for integration in list_managed_integrations(enabled_integration_slugs):
         plugin_dir = integration.get("plugin_source_root")
         plugin_slug = integration.get("plugin_slug")

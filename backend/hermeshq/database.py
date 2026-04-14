@@ -70,6 +70,11 @@ def _run_schema_updates(sync_connection) -> None:
         sync_connection.execute(text("UPDATE agents SET runtime_profile = 'standard' WHERE runtime_profile IS NULL"))
     if "hermes_version" not in agent_columns:
         sync_connection.execute(text("ALTER TABLE agents ADD COLUMN hermes_version VARCHAR(32)"))
+    if "is_system_agent" not in agent_columns:
+        sync_connection.execute(text("ALTER TABLE agents ADD COLUMN is_system_agent BOOLEAN DEFAULT FALSE"))
+        sync_connection.execute(text("UPDATE agents SET is_system_agent = FALSE WHERE is_system_agent IS NULL"))
+    if "system_scope" not in agent_columns:
+        sync_connection.execute(text("ALTER TABLE agents ADD COLUMN system_scope VARCHAR(32)"))
     if "is_archived" not in agent_columns:
         sync_connection.execute(text("ALTER TABLE agents ADD COLUMN is_archived BOOLEAN DEFAULT FALSE"))
         sync_connection.execute(text("UPDATE agents SET is_archived = FALSE WHERE is_archived IS NULL"))
@@ -165,6 +170,33 @@ def _run_schema_updates(sync_connection) -> None:
         sync_connection.execute(text("CREATE INDEX ix_messaging_channels_agent_id ON messaging_channels(agent_id)"))
         sync_connection.execute(text("CREATE INDEX ix_messaging_channels_platform ON messaging_channels(platform)"))
         sync_connection.execute(text("CREATE INDEX ix_messaging_channels_status ON messaging_channels(status)"))
+    if not inspector.has_table("terminal_sessions"):
+        sync_connection.execute(
+            text(
+                """
+                CREATE TABLE terminal_sessions (
+                    id VARCHAR(36) PRIMARY KEY,
+                    agent_id VARCHAR(36) NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                    node_id VARCHAR(36) NULL REFERENCES nodes(id) ON DELETE SET NULL,
+                    mode VARCHAR(32) NOT NULL DEFAULT 'hybrid',
+                    cwd TEXT NULL,
+                    command_json JSON NOT NULL DEFAULT '[]'::json,
+                    status VARCHAR(16) NOT NULL DEFAULT 'open',
+                    started_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                    ended_at TIMESTAMP WITH TIME ZONE NULL,
+                    exit_code INTEGER NULL,
+                    input_transcript TEXT NOT NULL DEFAULT '',
+                    output_transcript TEXT NOT NULL DEFAULT '',
+                    transcript_text TEXT NOT NULL DEFAULT '',
+                    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        sync_connection.execute(text("CREATE INDEX ix_terminal_sessions_agent_id ON terminal_sessions(agent_id)"))
+        sync_connection.execute(text("CREATE INDEX ix_terminal_sessions_node_id ON terminal_sessions(node_id)"))
+        sync_connection.execute(text("CREATE INDEX ix_terminal_sessions_status ON terminal_sessions(status)"))
     if not inspector.has_table("conversation_threads"):
         sync_connection.execute(
             text(

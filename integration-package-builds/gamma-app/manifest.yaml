@@ -1,0 +1,36 @@
+slug: gamma-app
+name: Gamma.app
+description: Managed Gamma.app integration for creating presentations, documents, webpages, and social content through the Gamma public API.
+version: "0.1.0"
+standard_compatible: true
+supported_profiles:
+  - standard
+  - technical
+  - security
+required_fields:
+  - api_key_ref
+fields:
+  - name: api_key_ref
+    label: Gamma API key secret
+    kind: secret_ref
+    secret_provider: gamma
+  - name: base_url
+    label: Gamma API base URL
+    kind: url
+    placeholder: https://public-api.gamma.app/v1.0
+defaults:
+  base_url: https://public-api.gamma.app/v1.0
+secret_provider: gamma
+plugin_slug: hermeshq_gamma_app
+skill_identifier: local/gamma-app
+test_action: health
+actions:
+  - slug: list_themes
+    label: List themes
+    description: List Gamma themes available to the configured workspace.
+  - slug: list_folders
+    label: List folders
+    description: List Gamma folders available to the configured workspace.
+env_map:
+  base_url: GAMMA_BASE_URL
+  api_key_ref: GAMMA_API_KEY

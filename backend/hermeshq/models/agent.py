@@ -40,6 +40,8 @@ class Agent(TimestampMixin, Base):
     max_tokens_per_task: Mapped[int] = mapped_column(Integer, default=100000)
     auto_approve_cmds: Mapped[bool] = mapped_column(Boolean, default=False)
     command_allowlist: Mapped[list[str]] = mapped_column(JSON, default=list)
+    is_system_agent: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    system_scope: Mapped[str | None] = mapped_column(String(32), nullable=True)
     can_receive_tasks: Mapped[bool] = mapped_column(Boolean, default=True)
     can_send_tasks: Mapped[bool] = mapped_column(Boolean, default=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)

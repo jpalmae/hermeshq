@@ -1,0 +1,31 @@
+name: hermeshq-control
+version: "1.0.0"
+description: HermesHQ administrative control-plane tools for system agents
+author: HermesHQ
+provides_tools:
+  - hq_control_list_agents
+  - hq_control_create_agent
+  - hq_control_update_agent
+  - hq_control_archive_agent
+  - hq_control_agent_runtime
+  - hq_control_list_users
+  - hq_control_create_user
+  - hq_control_update_user
+  - hq_control_delete_user
+  - hq_control_list_providers
+  - hq_control_create_provider
+  - hq_control_update_provider
+  - hq_control_delete_provider
+  - hq_control_list_secrets
+  - hq_control_create_secret
+  - hq_control_update_secret
+  - hq_control_delete_secret
+  - hq_control_list_integrations
+  - hq_control_install_integration
+  - hq_control_uninstall_integration
+  - hq_control_configure_agent_integration
+  - hq_control_test_agent_integration
+  - hq_control_list_schedules
+  - hq_control_create_schedule
+  - hq_control_update_schedule
+  - hq_control_delete_schedule

@@ -16,6 +16,7 @@ from hermeshq.models.agent import Agent
 from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.node import Node
+from hermeshq.models.provider import ProviderDefinition
 from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.secret import Secret
 from hermeshq.models.task import Task
@@ -278,6 +279,135 @@ async def create_agent(
     await request.app.state.installation_manager.sync_agent_installation(agent)
     result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent.id))
     created = result.scalar_one_or_none() or agent
+    return _serialize_agent(request, created)
+
+
+@router.post("/system/operator/bootstrap", response_model=AgentRead, status_code=status.HTTP_201_CREATED)
+async def bootstrap_system_operator(
+    request: Request,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db_session),
+) -> AgentRead:
+    result = await db.execute(
+        select(Agent)
+        .options(selectinload(Agent.node))
+        .where(Agent.is_system_agent.is_(True), Agent.slug == "hq-operator")
+        .order_by(Agent.created_at.asc())
+    )
+    existing = result.scalar_one_or_none()
+
+    app_settings = await db.get(AppSettings, "default")
+    default_provider = (app_settings.default_provider or "").strip() if app_settings else ""
+    default_model = (app_settings.default_model or "").strip() if app_settings else ""
+    default_api_key_ref = (app_settings.default_api_key_ref or "").strip() if app_settings else ""
+    default_base_url = (app_settings.default_base_url or "").strip() if app_settings else ""
+    default_hermes_version = (app_settings.default_hermes_version or "").strip() if app_settings else ""
+    if not default_provider or not default_model:
+        raise HTTPException(
+            status_code=400,
+            detail="Configure default provider and model first so HQ Operator can use inference",
+        )
+    provider = await db.get(ProviderDefinition, default_provider)
+    if provider and provider.auth_type == "api_key" and provider.supports_secret_ref and not default_api_key_ref:
+        raise HTTPException(
+            status_code=400,
+            detail="Configure a default secret ref first so HQ Operator can authenticate",
+        )
+    local_runtime_result = await db.execute(select(Node).where(Node.name == "Local Runtime").order_by(Node.created_at.asc()))
+    node = local_runtime_result.scalar_one_or_none()
+    if not node:
+        raise HTTPException(status_code=404, detail="Local Runtime node not found")
+
+    if existing:
+        existing.is_archived = False
+        existing.archived_at = None
+        existing.archive_reason = None
+        existing.status = "stopped"
+        existing.last_activity = None
+        existing.node_id = node.id
+        existing.run_mode = "hybrid"
+        existing.runtime_profile = "technical"
+        existing.provider = default_provider
+        existing.model = default_model
+        existing.api_key_ref = default_api_key_ref or None
+        existing.base_url = default_base_url or None
+        existing.hermes_version = default_hermes_version or None
+        existing.is_system_agent = True
+        existing.system_scope = "admin"
+        existing.team_tags = ["system", "control-plane", "operations"]
+        existing.enabled_toolsets = []
+        existing.disabled_toolsets = []
+        existing.can_send_tasks = True
+        existing.can_receive_tasks = True
+        existing.description = "HermesHQ control-plane operator with administrative tools and shell access."
+        existing.system_prompt = (
+            "You are HQ Operator, the HermesHQ system operations agent. "
+            "Use HermesHQ control tools for control-plane changes first, keep actions explicit, "
+            "and use shell only when the administrative tools do not cover the task."
+        )
+        existing.soul_md = "# Soul\n\nControl-plane operator for HermesHQ."
+        await db.commit()
+        await request.app.state.installation_manager.sync_agent_installation(existing)
+        refreshed = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == existing.id))
+        return _serialize_agent(request, refreshed.scalar_one())
+
+    agent = Agent(
+        node_id=node.id,
+        name="hq-operator",
+        friendly_name="HQ Operator",
+        slug="hq-operator",
+        description="HermesHQ control-plane operator with administrative tools and shell access.",
+        run_mode="hybrid",
+        runtime_profile="technical",
+        hermes_version=default_hermes_version or None,
+        model=default_model,
+        provider=default_provider,
+        api_key_ref=default_api_key_ref or None,
+        base_url=default_base_url or None,
+        system_prompt=(
+            "You are HQ Operator, the HermesHQ system operations agent. "
+            "Use HermesHQ control tools for control-plane changes first, keep actions explicit, "
+            "and use shell only when the administrative tools do not cover the task."
+        ),
+        soul_md="# Soul\n\nControl-plane operator for HermesHQ.",
+        enabled_toolsets=[],
+        disabled_toolsets=[],
+        skills=[],
+        integration_configs={},
+        team_tags=["system", "control-plane", "operations"],
+        workspace_path="pending",
+        is_system_agent=True,
+        system_scope="admin",
+        can_send_tasks=True,
+        can_receive_tasks=True,
+    )
+    _apply_runtime_profile_defaults(agent, "technical", overwrite_toolsets=True)
+    agent.enabled_toolsets = []
+    agent.disabled_toolsets = []
+    db.add(agent)
+    await db.flush()
+    workspace_manager = _get_workspace_manager(request)
+    agent.workspace_path = workspace_manager.create_workspace(
+        agent.id,
+        agent.name,
+        agent.system_prompt,
+        agent.soul_md,
+    )
+    await db.commit()
+    await db.refresh(agent)
+    await request.app.state.installation_manager.sync_agent_installation(agent)
+    created_result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent.id))
+    created = created_result.scalar_one_or_none() or agent
+    db.add(
+        ActivityLog(
+            agent_id=created.id,
+            event_type="agent.system_operator.created",
+            severity="info",
+            message="HQ Operator bootstrapped",
+            details={"system_scope": "admin", "runtime_profile": "technical"},
+        )
+    )
+    await db.commit()
     return _serialize_agent(request, created)
 
 

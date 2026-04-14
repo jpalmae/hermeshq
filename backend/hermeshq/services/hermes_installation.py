@@ -61,7 +61,7 @@ class HermesInstallationManager:
         self._ensure_home_dirs(hermes_home)
         enabled_integrations = await self._load_enabled_integration_slugs()
         runtime_selection = await self.resolve_hermes_runtime(agent)
-        self._sync_managed_plugins(hermes_home, enabled_integrations)
+        self._sync_managed_plugins(agent, hermes_home, enabled_integrations)
         active_skin = await self._sync_global_skin(hermes_home)
         app_name = await self._get_instance_app_name()
         installed_skills = await self._sync_managed_skills(agent, hermes_home, enabled_integrations)
@@ -199,12 +199,18 @@ class HermesInstallationManager:
         for subdir in ("cron", "sessions", "logs", "memories", "skills", "plugins"):
             (hermes_home / subdir).mkdir(parents=True, exist_ok=True)
 
-    def _sync_managed_plugins(self, hermes_home: Path, enabled_integration_slugs: list[str]) -> None:
+    def _sync_managed_plugins(self, agent: Agent, hermes_home: Path, enabled_integration_slugs: list[str]) -> None:
         plugins_root = hermes_home / "plugins"
         plugins_root.mkdir(parents=True, exist_ok=True)
-        desired_plugins = list_managed_plugins(enabled_integration_slugs)
+        desired_plugins = list_managed_plugins(
+            enabled_integration_slugs,
+            include_system_plugins=bool(agent.is_system_agent),
+        )
         desired_names = {plugin["template_dir"] for plugin in desired_plugins}
-        known_names = {plugin["template_dir"] for plugin in list_managed_plugins([])}
+        known_names = {
+            plugin["template_dir"]
+            for plugin in list_managed_plugins([], include_system_plugins=True)
+        }
         known_names.update(
             package["plugin_slug"]
             for package in list_available_integration_packages([])
@@ -501,6 +507,23 @@ class HermesInstallationManager:
                 ]
             )
         )
+        if agent.is_system_agent:
+            parts.append(
+                "\n".join(
+                    [
+                        "You are a HermesHQ system agent operating on the control plane.",
+                        f"System scope: {agent.system_scope or 'operator'}.",
+                        (
+                            "Use typed HermesHQ control tools for administrative changes first. "
+                            "Use shell access only when the typed tools do not cover the task or when direct host inspection is explicitly needed."
+                        ),
+                        (
+                            "Administrative actions must remain explicit, auditable, and minimally destructive. "
+                            "Do not disable or archive yourself."
+                        ),
+                    ]
+                )
+            )
         if installed_skills:
             lines = [
                 f"{app_name} assigned skills are installed in your Hermes home.",

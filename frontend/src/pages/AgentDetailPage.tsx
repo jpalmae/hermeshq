@@ -7,6 +7,7 @@ import { useLogs } from "../api/logs";
 import { useManagedIntegrations } from "../api/managedIntegrations";
 import { useRuntimeCapabilityOverview, useRuntimeProfiles } from "../api/runtimeProfiles";
 import { useSecrets } from "../api/secrets";
+import { useTerminalSessions } from "../api/terminalSessions";
 import { useCreateTask, useTasks } from "../api/tasks";
 import { AgentAvatar } from "../components/AgentAvatar";
 import { AgentConversationPanel } from "../components/AgentConversationPanel";
@@ -24,6 +25,7 @@ const DEFAULT_SECTION_STATE = {
   skills: false,
   ledger: false,
   logs: false,
+  terminalSessions: false,
   workspace: false,
 };
 
@@ -109,6 +111,7 @@ export function AgentDetailPage() {
   const { data: agent, isLoading } = useAgent(agentId);
   const { data: tasks } = useTasks();
   const { data: logs } = useLogs(agentId);
+  const { data: terminalSessions } = useTerminalSessions(agentId);
   const { data: runtimeProfiles } = useRuntimeProfiles(Boolean(currentUser));
   const { data: hermesVersions } = useHermesVersions(Boolean(currentUser) && isAdmin);
   const { data: runtimeCapabilityOverview } = useRuntimeCapabilityOverview(Boolean(currentUser));
@@ -143,6 +146,7 @@ export function AgentDetailPage() {
   const [slugTouched, setSlugTouched] = useState(false);
   const [ledgerQuery, setLedgerQuery] = useState("");
   const [activityQuery, setActivityQuery] = useState("");
+  const [selectedTerminalSessionId, setSelectedTerminalSessionId] = useState<string | null>(null);
   const agentTasks = useMemo(
     () => (tasks ?? []).filter((task) => task.agent_id === agentId),
     [tasks, agentId],
@@ -192,6 +196,20 @@ export function AgentDetailPage() {
         .some((value) => String(value).toLowerCase().includes(query)),
     );
   }, [activityQuery, groupedActivityLogs]);
+  const orderedTerminalSessions = useMemo(
+    () =>
+      [...(terminalSessions ?? [])].sort(
+        (left, right) => new Date(right.started_at).getTime() - new Date(left.started_at).getTime(),
+      ),
+    [terminalSessions],
+  );
+  const selectedTerminalSession = useMemo(
+    () =>
+      orderedTerminalSessions.find((session) => session.id === selectedTerminalSessionId)
+      ?? orderedTerminalSessions[0]
+      ?? null,
+    [orderedTerminalSessions, selectedTerminalSessionId],
+  );
   const selectedRuntimeProfile = useMemo(
     () => (runtimeProfiles ?? []).find((profile) => profile.slug === runtimeProfileDraft) ?? null,
     [runtimeProfileDraft, runtimeProfiles],
@@ -267,6 +285,16 @@ export function AgentDetailPage() {
       setSectionState(DEFAULT_SECTION_STATE);
     }
   }, [agentId]);
+
+  useEffect(() => {
+    if (!orderedTerminalSessions.length) {
+      setSelectedTerminalSessionId(null);
+      return;
+    }
+    if (!selectedTerminalSessionId || !orderedTerminalSessions.some((session) => session.id === selectedTerminalSessionId)) {
+      setSelectedTerminalSessionId(orderedTerminalSessions[0]?.id ?? null);
+    }
+  }, [orderedTerminalSessions, selectedTerminalSessionId]);
 
   function toggleSection(section: keyof typeof DEFAULT_SECTION_STATE) {
     setSectionState((current) => {
@@ -1158,6 +1186,74 @@ export function AgentDetailPage() {
             <p className="panel-inline-status pt-5">{t("agent.noActivityStreamMatches")}</p>
           )}
         </div>,
+      )}
+
+      {renderSectionShell(
+        "terminalSessions",
+        t("agent.terminalSessions"),
+        t("agent.terminalTranscripts"),
+        t("agent.sessions", { count: orderedTerminalSessions.length }),
+        orderedTerminalSessions.length ? (
+          <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+            <div className="space-y-3">
+              {orderedTerminalSessions.map((session) => {
+                const selected = session.id === selectedTerminalSession?.id;
+                return (
+                  <button
+                    key={session.id}
+                    type="button"
+                    onClick={() => setSelectedTerminalSessionId(session.id)}
+                    className={`w-full rounded-[1.15rem] border px-4 py-3 text-left transition ${
+                      selected
+                        ? "border-[color-mix(in_srgb,var(--accent)_36%,transparent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]"
+                        : "border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_76%,transparent)] hover:border-[color-mix(in_srgb,var(--accent)_26%,transparent)]"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="panel-label">{formatDateTime(session.started_at)}</p>
+                        <p className="mt-2 text-sm text-[var(--text-primary)]">{session.mode}</p>
+                      </div>
+                      <p className="panel-label">{session.status}</p>
+                    </div>
+                    <p className="mt-3 line-clamp-2 text-xs text-[var(--text-secondary)]">{session.cwd || t("agent.none")}</p>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="rounded-[1.15rem] border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_82%,transparent)] p-4">
+              {selectedTerminalSession ? (
+                <>
+                  <div className="grid gap-3 border-b border-[var(--border)] pb-4 md:grid-cols-3">
+                    <div>
+                      <p className="panel-label">{t("agent.startedAt")}</p>
+                      <p className="mt-2 text-sm text-[var(--text-primary)]">{formatDateTime(selectedTerminalSession.started_at)}</p>
+                    </div>
+                    <div>
+                      <p className="panel-label">{t("agent.endedAt")}</p>
+                      <p className="mt-2 text-sm text-[var(--text-primary)]">
+                        {selectedTerminalSession.ended_at ? formatDateTime(selectedTerminalSession.ended_at) : t("agent.live")}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="panel-label">{t("agent.exitCode")}</p>
+                      <p className="mt-2 text-sm text-[var(--text-primary)]">
+                        {selectedTerminalSession.exit_code ?? t("common.unknown")}
+                      </p>
+                    </div>
+                  </div>
+                  <pre className="mt-4 max-h-[30rem] overflow-auto whitespace-pre-wrap rounded-[1rem] border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface-strong)_86%,transparent)] p-4 font-mono text-xs leading-6 text-[var(--text-primary)]">
+                    {selectedTerminalSession.transcript_text || t("agent.noTerminalTranscript")}
+                  </pre>
+                </>
+              ) : (
+                <p className="panel-inline-status">{t("agent.noTerminalSessions")}</p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="panel-inline-status">{t("agent.noTerminalSessions")}</p>
+        ),
       )}
 
       {renderSectionShell(

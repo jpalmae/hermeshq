@@ -76,6 +76,8 @@ class AgentRead(ORMModel):
     skills: list[str]
     integration_configs: dict[str, dict]
     team_tags: list[str]
+    is_system_agent: bool
+    system_scope: str | None
     can_receive_tasks: bool
     can_send_tasks: bool
     is_archived: bool

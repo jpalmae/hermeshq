@@ -402,6 +402,11 @@ export function AgentsPage() {
                     <Link to={`/agents/${agent.id}`} className="mt-2 block text-xl text-[var(--text-display)]">
                       {agent.friendly_name || agent.name}
                     </Link>
+                    {agent.is_system_agent ? (
+                      <span className="mt-2 inline-flex rounded-full border border-[var(--border)] px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-[var(--text-secondary)]">
+                        system / {agent.system_scope ?? "operator"}
+                      </span>
+                    ) : null}
                     {agent.friendly_name && agent.friendly_name !== agent.name ? (
                       <p className="mt-2 text-sm text-[var(--text-primary)]">{agent.name}</p>
                     ) : null}

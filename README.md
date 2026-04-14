@@ -235,11 +235,21 @@ Admins can:
 - enable and configure them per agent
 - run per-agent connection tests
 
+HermesHQ also supports uploaded `standard`-compatible integrations built as real plugins instead of shell wrappers. A practical example is `gamma-app`, which can be uploaded as an integration package and then enabled on administrative agents to create presentations, documents, webpages, and social content through Gamma's public API.
+
 This separation is intentional:
 
 - skills describe behavior
 - integration packages install real plugins/tools
 - runtime profiles decide which capabilities are allowed
+
+Typical package requirements:
+
+- `manifest.yaml` with slug, version, supported profiles, fields, and actions
+- `plugin/` with `__init__.py` and `plugin.yaml`
+- optional `healthcheck.py` and `actions.py`
+- optional `skill/` companion content for agent guidance
+- secrets referenced through HermesHQ `Settings -> Secrets`, not hardcoded into the package
 
 ## Runtime Profiles
 

@@ -11,6 +11,7 @@
 - bundled productivity integrations always visible in `Settings -> Integrations`: `ms365-mail`, `ms365-calendar`, `sharepoint`, `google-workspace-mail`, `google-calendar`, and `google-drive`
 - real integration health checks for Microsoft Graph and Google OAuth-backed managed integrations
 - a bundled `snyk-agent-scan` managed integration with health check and manual `scan_skills` action traced into agent activity
+- support for uploaded `standard`-compatible integration packages built from legacy Hermes skills, validated with a new `gamma-app` package that exposes Gamma API tools, actions, and a companion skill bundle in HermesHQ format
 - a task board / Kanban phase 1 with board columns, drag state persistence, manual board ownership, and a collapsible `Submit task` rail
 - agent archival instead of hard delete: archived agents keep `Activity stream`, `Runtime ledger`, and messages for audit, can be listed again with `Show archived`, and open in read-only operational mode
 - per-agent Hermes Agent version pinning plus instance default Hermes version selection
@@ -31,6 +32,7 @@
 - `standard` agents now lose direct terminal/process execution in the shared backend runtime and no longer expose the Hermes TUI
 - `Settings -> Integrations` now separates built-in runtime capabilities, HermesHQ platform plugins, and installable integration packages more clearly
 - agent detail now has a dedicated `Integrations` section with effective capability summaries, managed integration metadata, actions, and connectivity testing
+- managed integrations documentation now includes package requirements and the Gamma.app upload flow for converting older skill bundles into HermesHQ-native integration packages
 - `Activity stream` now groups streamed `agent.output` fragments into readable consolidated blocks instead of showing token-like fragments line by line
 - `Runtime ledger` and `Activity stream` now include client-side search
 - the dependency canvas now varies agent identity shapes by runtime profile instead of rendering every agent the same way

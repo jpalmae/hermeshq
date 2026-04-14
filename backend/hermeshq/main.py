@@ -11,8 +11,8 @@ from hermeshq.config import get_settings
 from hermeshq.core.events import EventBroker
 from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
 from hermeshq.database import AsyncSessionLocal, init_database
-from hermeshq.models import Agent, AppSettings, Node, ProviderDefinition, User
-from hermeshq.routers import agents, auth, comms, dashboard, hermes_versions, integration_packages, internal_agents, logs, managed_integrations, messaging_channels, nodes, providers, runtime_profiles, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, users
+from hermeshq.models import ActivityLog, Agent, AppSettings, Node, ProviderDefinition, TerminalSession, User
+from hermeshq.routers import agents, auth, comms, dashboard, hermes_versions, integration_packages, internal_agents, internal_control, logs, managed_integrations, messaging_channels, nodes, providers, runtime_profiles, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, terminal_sessions, users
 from hermeshq.schemas.common import HealthResponse
 from hermeshq.services.agent_identity import derive_agent_identity, slugify_agent_value
 from hermeshq.services.agent_supervisor import AgentSupervisor
@@ -135,7 +135,63 @@ async def lifespan(app: FastAPI):
         app.state.installation_manager,
     )
     app.state.comms_router = CommsRouter(AsyncSessionLocal, app.state.event_broker)
-    app.state.pty_manager = PTYManager(settings.pty_shell)
+    async def log_terminal_activity(agent_id: str, event_type: str, message: str, details: dict) -> None:
+        async with AsyncSessionLocal() as session:
+            agent = await session.get(Agent, agent_id)
+            if not agent:
+                return
+            agent.last_activity = datetime.now(timezone.utc)
+            session_id = str(details.get("session_id") or "").strip()
+            terminal_session = None
+            if session_id:
+                terminal_session = await session.get(TerminalSession, session_id)
+                if event_type == "terminal.session.started":
+                    terminal_session = terminal_session or TerminalSession(
+                        id=session_id,
+                        agent_id=agent_id,
+                        node_id=agent.node_id,
+                        mode=str(details.get("mode") or "hybrid"),
+                        cwd=str(details.get("cwd") or ""),
+                        command_json=list(details.get("command") or []),
+                        status="open",
+                        started_at=datetime.now(timezone.utc),
+                    )
+                    session.add(terminal_session)
+                elif terminal_session:
+                    terminal_session.updated_at = datetime.now(timezone.utc)
+            if terminal_session:
+                if event_type == "terminal.input":
+                    terminal_session.input_transcript += f"{message}\n"
+                    terminal_session.transcript_text += f"> {message}\n"
+                elif event_type == "terminal.output":
+                    terminal_session.output_transcript += f"{message}\n"
+                    terminal_session.transcript_text += f"< {message}\n"
+                elif event_type == "terminal.session.closed":
+                    terminal_session.status = "closed"
+                    terminal_session.ended_at = datetime.now(timezone.utc)
+                    exit_code = details.get("exit_code")
+                    terminal_session.exit_code = int(exit_code) if isinstance(exit_code, int) else None
+            session.add(
+                ActivityLog(
+                    agent_id=agent_id,
+                    node_id=agent.node_id,
+                    event_type=event_type,
+                    severity="info",
+                    message=message,
+                    details=details,
+                )
+            )
+            await session.commit()
+        await app.state.event_broker.publish(
+            {
+                "type": "activity.created",
+                "agent_id": agent_id,
+                "event_type": event_type,
+                "message": message,
+            }
+        )
+
+    app.state.pty_manager = PTYManager(settings.pty_shell, audit_callback=log_terminal_activity)
     app.state.supervisor.pty_manager = app.state.pty_manager
     app.state.scheduler = SchedulerService(AsyncSessionLocal, app.state.supervisor.submit_task)
     await app.state.supervisor.bootstrap_runtime()
@@ -167,12 +223,14 @@ app.include_router(tasks.router, prefix=settings.api_prefix)
 app.include_router(dashboard.router, prefix=settings.api_prefix)
 app.include_router(comms.router, prefix=settings.api_prefix)
 app.include_router(internal_agents.router, prefix=settings.api_prefix)
+app.include_router(internal_control.router, prefix=settings.api_prefix)
 app.include_router(secrets.router, prefix=settings.api_prefix)
 app.include_router(settings_router.router, prefix=settings.api_prefix)
 app.include_router(skills.router, prefix=settings.api_prefix)
 app.include_router(messaging_channels.router, prefix=settings.api_prefix)
 app.include_router(templates.router, prefix=settings.api_prefix)
 app.include_router(logs.router, prefix=settings.api_prefix)
+app.include_router(terminal_sessions.router, prefix=settings.api_prefix)
 app.include_router(scheduled_tasks.router, prefix=settings.api_prefix)
 app.include_router(users.router, prefix=settings.api_prefix)
 

@@ -64,6 +64,8 @@ export interface Agent {
   skills: string[];
   integration_configs: Record<string, Record<string, unknown>>;
   team_tags: string[];
+  is_system_agent: boolean;
+  system_scope: string | null;
   can_receive_tasks: boolean;
   can_send_tasks: boolean;
   is_archived: boolean;
@@ -236,6 +238,24 @@ export interface Task {
 export interface TaskBoardUpdate {
   board_column: string;
   board_order?: number | null;
+}
+
+export interface TerminalSession {
+  id: string;
+  agent_id: string;
+  node_id: string | null;
+  mode: string;
+  cwd: string | null;
+  command_json: string[];
+  status: string;
+  started_at: string;
+  ended_at: string | null;
+  exit_code: number | null;
+  input_transcript: string;
+  output_transcript: string;
+  transcript_text: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ScheduledTask {
