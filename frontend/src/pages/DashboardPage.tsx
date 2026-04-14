@@ -61,7 +61,7 @@ export function DashboardPage() {
                 </div>
               </div>
             </div>
-            <div className="mt-4 grid gap-3 border-t border-[var(--border)] pt-3 md:grid-cols-3">
+            <div className="dashboard-metric-stack mt-4 grid gap-3 border-t border-[var(--border)] pt-3 md:grid-cols-3">
               <div className="dashboard-metric-chip">
                   <p className="panel-label">{t("dashboard.fleet")}</p>
                 <p className="mt-1 text-base text-[var(--text-display)]">{overview?.stats.total_agents ?? 0}</p>

@@ -374,6 +374,17 @@
     padding: 0.9rem 1rem;
   }
 
+  :root[data-theme="enterprise"] .dashboard-metric-stack {
+    grid-template-columns: 1fr !important;
+  }
+
+  :root[data-theme="enterprise"] .dashboard-metric-chip {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
   :root[data-theme="enterprise"] .dashboard-feed-row,
   :root[data-theme="enterprise"] .dashboard-activity-row,
   :root[data-theme="enterprise"] .dashboard-agent-row {
