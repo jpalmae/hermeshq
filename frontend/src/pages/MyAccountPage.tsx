@@ -135,8 +135,8 @@ export function MyAccountPage() {
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[0.72fr_1.28fr]">
-      <section className="panel-frame p-6">
+    <div className="account-page grid gap-6 xl:grid-cols-[0.72fr_1.28fr]">
+      <section className="account-profile-card panel-frame p-6">
         <p className="panel-label">{t("account.myAccount")}</p>
         <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("account.operatorProfile")}</h2>
         <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
@@ -148,7 +148,7 @@ export function MyAccountPage() {
           <div className="min-w-0">
             <p className="panel-label">{t("account.username")}</p>
             <p className="mt-2 text-lg text-[var(--text-display)]">{currentUser?.username ?? "..."}</p>
-            <p className="mt-2 text-sm uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+            <p className="account-role-pill mt-2 text-sm uppercase tracking-[0.1em] text-[var(--text-secondary)]">
               {currentUser?.role ?? "offline"}
             </p>
           </div>
@@ -255,7 +255,7 @@ export function MyAccountPage() {
         </form>
       </section>
 
-      <section className="panel-frame p-6">
+      <section className="account-security-card panel-frame p-6">
         <p className="panel-label">{t("account.security")}</p>
         <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("account.changePassword")}</h2>
         <p className="mt-3 max-w-[44rem] text-sm leading-6 text-[var(--text-secondary)]">

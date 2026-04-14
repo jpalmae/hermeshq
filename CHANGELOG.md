@@ -26,7 +26,8 @@
 ### Changed
 
 - `Settings` is now organized into internal tabs (`General`, `Runtime`, `Providers`, `Integrations`, `Hermes Versions`, `Secrets`, `Templates`) to reduce the operational sprawl of one long admin page
-- the `enterprise` theme now applies a more structured enterprise control-surface look across the shell, overview, surface system, task board, and agent detail screens without replacing the older themes
+- the `enterprise` theme now applies a more structured enterprise control-surface look across the shell, overview, surface system, task board, agent detail, comms, users, settings, manual, nodes, my account, and login screens without replacing the older themes
+- the login screen now follows the instance default public theme instead of always presenting a dark entry surface
 - `standard` agents now lose direct terminal/process execution in the shared backend runtime and no longer expose the Hermes TUI
 - `Settings -> Integrations` now separates built-in runtime capabilities, HermesHQ platform plugins, and installable integration packages more clearly
 - agent detail now has a dedicated `Integrations` section with effective capability summaries, managed integration metadata, actions, and connectivity testing

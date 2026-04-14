@@ -1116,8 +1116,8 @@ export function SettingsPage() {
   );
 
   return (
-    <div className="grid gap-6">
-      <section className="panel-frame p-6">
+    <div className="settings-page grid gap-6">
+      <section className="settings-shell panel-frame p-6">
         <div className="flex flex-col gap-4 border-b border-[var(--border)] pb-5">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -1128,7 +1128,7 @@ export function SettingsPage() {
               {activeTabMeta.copy}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="settings-tab-strip flex flex-wrap gap-2">
             {settingsTabs.map((tab) => {
               const isActive = tab.id === activeTab;
               return (
@@ -1136,11 +1136,11 @@ export function SettingsPage() {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={
+                  className={`settings-tab-button ${
                     isActive
-                      ? "rounded-full border border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] px-4 py-2 text-sm text-[var(--text-display)]"
+                      ? "is-active rounded-full border border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] px-4 py-2 text-sm text-[var(--text-display)]"
                       : "rounded-full border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2 text-sm text-[var(--text-secondary)] transition hover:text-[var(--text-display)]"
-                  }
+                  }`}
                 >
                   {tab.label}
                 </button>
@@ -1150,13 +1150,15 @@ export function SettingsPage() {
         </div>
       </section>
 
-      {activeTab === "general" ? renderGeneralTab() : null}
-      {activeTab === "runtime" ? renderRuntimeTab() : null}
-      {activeTab === "providers" ? renderProvidersTab() : null}
-      {activeTab === "integrations" ? renderIntegrationsTab() : null}
-      {activeTab === "hermesVersions" ? renderHermesVersionsTab() : null}
-      {activeTab === "secrets" ? renderSecretsTab() : null}
-      {activeTab === "templates" ? renderTemplatesTab() : null}
+      <div className="settings-content">
+        {activeTab === "general" ? renderGeneralTab() : null}
+        {activeTab === "runtime" ? renderRuntimeTab() : null}
+        {activeTab === "providers" ? renderProvidersTab() : null}
+        {activeTab === "integrations" ? renderIntegrationsTab() : null}
+        {activeTab === "hermesVersions" ? renderHermesVersionsTab() : null}
+        {activeTab === "secrets" ? renderSecretsTab() : null}
+        {activeTab === "templates" ? renderTemplatesTab() : null}
+      </div>
     </div>
   );
 }

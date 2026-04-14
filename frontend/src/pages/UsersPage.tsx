@@ -128,8 +128,8 @@ export function UsersPage() {
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[0.68fr_1.32fr]">
-      <form className="panel-frame p-6" onSubmit={onCreateUser}>
+    <div className="users-page grid gap-6 xl:grid-cols-[0.68fr_1.32fr]">
+      <form className="users-create-card panel-frame p-6" onSubmit={onCreateUser}>
         <p className="panel-label">{t("users.users")}</p>
         <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("users.createOperator")}</h2>
         <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
@@ -204,7 +204,7 @@ export function UsersPage() {
         </div>
       </form>
 
-      <section className="panel-frame p-6">
+      <section className="users-directory-card panel-frame p-6">
         <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
           <div>
             <p className="panel-label">{t("users.directory")}</p>
@@ -214,7 +214,7 @@ export function UsersPage() {
         </div>
         <div className="mt-2">
           {(users ?? []).map((user) => (
-            <article key={user.id} className="border-b border-[var(--border)] py-5">
+            <article key={user.id} className="users-row border-b border-[var(--border)] py-5">
               <div className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
                 <div className="flex items-start gap-4">
                   <UserAvatar user={user} sizeClass="h-14 w-14" className="shrink-0" />
@@ -277,7 +277,7 @@ export function UsersPage() {
                         </div>
                       </div>
                     </div>
-                    <p className="mt-3 text-sm uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+                    <p className="users-role-pill mt-3 text-sm uppercase tracking-[0.1em] text-[var(--text-secondary)]">
                       {user.role} / {user.is_active ? "active" : "inactive"}
                     </p>
                     <p className="mt-3 text-sm text-[var(--text-secondary)]">

@@ -504,6 +504,191 @@
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   }
 
+  :root[data-theme="enterprise"] .comms-router-card,
+  :root[data-theme="enterprise"] .comms-routing-card,
+  :root[data-theme="enterprise"] .comms-topology-card,
+  :root[data-theme="enterprise"] .comms-history-card,
+  :root[data-theme="enterprise"] .users-create-card,
+  :root[data-theme="enterprise"] .users-directory-card,
+  :root[data-theme="enterprise"] .nodes-page,
+  :root[data-theme="enterprise"] .account-profile-card,
+  :root[data-theme="enterprise"] .account-security-card,
+  :root[data-theme="enterprise"] .login-access-card,
+  :root[data-theme="enterprise"] .login-hero,
+  :root[data-theme="enterprise"] .settings-shell,
+  :root[data-theme="enterprise"] .manual-sidebar,
+  :root[data-theme="enterprise"] .manual-quickstart,
+  :root[data-theme="enterprise"] .manual-section,
+  :root[data-theme="enterprise"] .manual-image {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 18%),
+      var(--panel-background);
+  }
+
+  :root[data-theme="enterprise"] .comms-node-card,
+  :root[data-theme="enterprise"] .comms-edge-card {
+    border-radius: 1rem;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.014), transparent 20%),
+      color-mix(in srgb, var(--surface-raised) 96%, transparent);
+    box-shadow:
+      0 10px 20px rgba(0, 0, 0, 0.14),
+      inset 0 1px 0 rgba(255, 255, 255, 0.018);
+  }
+
+  :root[data-theme="enterprise"] .comms-history-row {
+    border-bottom-color: color-mix(in srgb, var(--border) 88%, transparent);
+  }
+
+  :root[data-theme="enterprise"] .users-row {
+    border-bottom-color: color-mix(in srgb, var(--border) 88%, transparent);
+    transition:
+      background-color 160ms ease-out,
+      border-color 160ms ease-out;
+  }
+
+  :root[data-theme="enterprise"] .users-row:hover {
+    background: rgba(255, 255, 255, 0.014);
+  }
+
+  :root[data-theme="enterprise"] .users-role-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.014);
+    padding: 0.42rem 0.75rem;
+    width: fit-content;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018);
+  }
+
+  :root[data-theme="enterprise"] .nodes-row {
+    border-bottom-color: color-mix(in srgb, var(--border) 88%, transparent);
+    transition:
+      background-color 160ms ease-out,
+      border-color 160ms ease-out;
+  }
+
+  :root[data-theme="enterprise"] .nodes-row:hover {
+    background: rgba(255, 255, 255, 0.014);
+  }
+
+  :root[data-theme="enterprise"] .nodes-status-pill,
+  :root[data-theme="enterprise"] .account-role-pill {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.014);
+    padding: 0.42rem 0.75rem;
+    width: fit-content;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018);
+  }
+
+  :root[data-theme="enterprise"] .settings-shell {
+    position: relative;
+    overflow: hidden;
+  }
+
+  :root[data-theme="enterprise"] .settings-shell::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at top right, rgba(79, 140, 255, 0.13), transparent 28%),
+      linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.01));
+    pointer-events: none;
+  }
+
+  :root[data-theme="enterprise"] .settings-tab-strip {
+    gap: 0.65rem;
+  }
+
+  :root[data-theme="enterprise"] .settings-tab-button {
+    position: relative;
+    border-radius: 0.9rem;
+    padding: 0.75rem 0.95rem;
+    font-family: var(--font-sans);
+    font-size: 0.87rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    transition:
+      transform 160ms ease-out,
+      border-color 160ms ease-out,
+      background-color 160ms ease-out,
+      color 160ms ease-out;
+  }
+
+  :root[data-theme="enterprise"] .settings-tab-button:hover {
+    transform: translateY(-1px);
+  }
+
+  :root[data-theme="enterprise"] .settings-tab-button.is-active {
+    border-color: color-mix(in srgb, var(--interactive) 58%, white 4%);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent),
+      color-mix(in srgb, var(--interactive) 16%, transparent);
+    box-shadow:
+      0 10px 18px rgba(79, 140, 255, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.024);
+  }
+
+  :root[data-theme="enterprise"] .manual-sidebar {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 16%),
+      linear-gradient(180deg, rgba(79, 140, 255, 0.05), transparent 40%),
+      var(--panel-background);
+  }
+
+  :root[data-theme="enterprise"] .manual-sidebar-link {
+    border-bottom-color: color-mix(in srgb, var(--border) 88%, transparent);
+    transition:
+      color 160ms ease-out,
+      transform 160ms ease-out,
+      border-color 160ms ease-out;
+  }
+
+  :root[data-theme="enterprise"] .manual-sidebar-link:hover {
+    color: var(--text-display);
+    transform: translateX(2px);
+    border-bottom-color: var(--border-visible);
+  }
+
+  :root[data-theme="enterprise"] .manual-bullet {
+    border-bottom-color: color-mix(in srgb, var(--border) 88%, transparent);
+  }
+
+  :root[data-theme="enterprise"] .login-page {
+    background:
+      radial-gradient(circle at top right, rgba(79, 140, 255, 0.14), transparent 22rem),
+      radial-gradient(circle at bottom left, rgba(34, 50, 70, 0.4), transparent 18rem),
+      linear-gradient(180deg, #09111c 0%, #07101a 100%);
+  }
+
+  :root[data-theme="enterprise"] .login-hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1.3rem;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 18%),
+      linear-gradient(180deg, rgba(79, 140, 255, 0.045), transparent 42%),
+      color-mix(in srgb, var(--surface) 96%, transparent);
+    box-shadow:
+      0 18px 42px rgba(0, 0, 0, 0.24),
+      inset 0 1px 0 rgba(255, 255, 255, 0.022);
+  }
+
+  :root[data-theme="enterprise"] .login-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at top right, rgba(99, 163, 255, 0.1), transparent 30%),
+      linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.01));
+    pointer-events: none;
+  }
+
   .panel-button-secondary:hover,
   .panel-button-primary:hover {
     cursor: pointer;

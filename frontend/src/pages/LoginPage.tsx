@@ -35,9 +35,9 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--black)] px-4 py-6 text-[var(--text-primary)] md:px-8 md:py-8">
+    <div className="login-page min-h-screen bg-[var(--black)] px-4 py-6 text-[var(--text-primary)] md:px-8 md:py-8">
       <div className="mx-auto grid max-w-[1440px] gap-8 md:grid-cols-[1.2fr_0.8fr]">
-        <section className="flex min-h-[65vh] flex-col justify-between border border-[var(--border)] bg-[var(--surface)] p-8 md:p-12">
+        <section className="login-hero flex min-h-[65vh] flex-col justify-between border border-[var(--border)] bg-[var(--surface)] p-8 md:p-12">
           <div>
             <p className="panel-label">{t("login.instanceBranding")}</p>
             <p className="mt-3 text-sm text-[var(--text-secondary)]">
@@ -73,7 +73,7 @@ export function LoginPage() {
           </div>
         </section>
 
-        <section className="panel-frame flex items-end p-8 md:p-10">
+        <section className="login-access-card panel-frame flex items-end p-8 md:p-10">
           <form className="w-full space-y-6" onSubmit={onSubmit}>
             <div className="space-y-3">
               <p className="panel-label">{t("login.operatorAccess")}</p>

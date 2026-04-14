@@ -254,6 +254,7 @@ const manualContent: Record<"en" | "es", ManualContent> = {
         bullets: [
           "Branding permite definir nombre de la app, short name, logo y favicon persistentes.",
           "Default Theme establece el modo base de la instancia; cada usuario puede luego aplicar su override personal desde el shell.",
+          "La pantalla de login ahora sigue ese mismo tema público por defecto de la instancia. Si cambias el tema global a `light` o `enterprise`, el acceso inicial refleja esa decisión sin depender de una sesión previa.",
           "Default Language define el idioma base de la interfaz. Cada usuario puede mantener ese valor o elegir su propio override entre inglés y español.",
           "TUI Skin permite subir un archivo YAML de skin de Hermes y usarlo como apariencia global para todas las TUI de agentes.",
           "Runtime defaults controla provider, modelo, base URL, secreto por defecto y ahora también la versión Hermes Agent por defecto para los agentes nuevos o para los que heredan la configuración global.",
@@ -547,6 +548,7 @@ const manualContent: Record<"en" | "es", ManualContent> = {
         bullets: [
           "Branding lets you define persistent app name, short name, logo, and favicon.",
           "Default Theme sets the base look for the instance; each user can then apply a personal override from the shell.",
+          "The login screen now follows that same public instance default theme. If the global theme changes to `light` or `enterprise`, the unauthenticated entry surface reflects it without relying on a previous session.",
           "The `enterprise` theme is now a first-class selectable mode, not a replacement for the current themes. It is intended for a more executive dark presentation and coexists with the existing theme options.",
           "Default Language defines the base UI language. Each user can keep it or choose a personal override between English and Spanish.",
           "TUI Skin lets you upload a Hermes YAML skin and use it as the shared appearance for all agent TUIs.",
@@ -623,7 +625,7 @@ function ManualImage({
   caption: string;
 }) {
   return (
-    <figure className="panel-frame overflow-hidden">
+    <figure className="manual-image panel-frame overflow-hidden">
       <img src={src} alt={alt} className="block w-full object-cover object-top" />
       <figcaption className="border-t border-[var(--border)] px-5 py-4 text-sm text-[var(--text-secondary)]">
         {caption}
@@ -637,9 +639,9 @@ export function ManualPage() {
   const content = manualContent[locale] ?? manualContent.en;
 
   return (
-    <div className="space-y-8">
+    <div className="manual-page space-y-8">
       <section className="grid gap-6 xl:grid-cols-[0.42fr_1fr]">
-        <aside className="panel-frame p-6 xl:sticky xl:top-8 xl:self-start">
+        <aside className="manual-sidebar panel-frame p-6 xl:sticky xl:top-8 xl:self-start">
           <p className="panel-label">{content.sidebarLabel}</p>
           <h1 className="mt-4 max-w-[12ch] text-4xl leading-none text-[var(--text-display)] md:text-5xl">
             {content.heroTitle}
@@ -650,7 +652,7 @@ export function ManualPage() {
               <a
                 key={section.id}
                 href={`#${section.id}`}
-                className="flex items-start justify-between gap-3 border-b border-[var(--border)] py-3 text-sm text-[var(--text-primary)]"
+                className="manual-sidebar-link flex items-start justify-between gap-3 border-b border-[var(--border)] py-3 text-sm text-[var(--text-primary)]"
               >
                 <span className="min-w-0">
                   <span className="panel-label">{String(index + 1).padStart(2, "0")}</span>
@@ -667,7 +669,7 @@ export function ManualPage() {
         </aside>
 
         <div className="space-y-6">
-          <section className="panel-frame p-6 md:p-8">
+          <section className="manual-quickstart panel-frame p-6 md:p-8">
             <p className="panel-label">{content.quickstartLabel}</p>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               {content.quickstartSteps.map((step, index) => (
@@ -687,7 +689,7 @@ export function ManualPage() {
           </section>
 
           {content.sections.map((section) => (
-            <section id={section.id} key={section.id} className="panel-frame p-6 md:p-8">
+            <section id={section.id} key={section.id} className="manual-section panel-frame p-6 md:p-8">
               <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border)] pb-5">
                 <div className="max-w-[52rem]">
                   <p className="panel-label">{section.eyebrow}</p>
@@ -704,7 +706,7 @@ export function ManualPage() {
               <div className={`mt-6 grid gap-6 ${section.image ? "xl:grid-cols-[0.9fr_1.1fr]" : ""}`}>
                 <div className="space-y-3">
                   {section.bullets.map((bullet) => (
-                    <div key={bullet} className="border-b border-[var(--border)] pb-3 last:border-b-0 last:pb-0">
+                    <div key={bullet} className="manual-bullet border-b border-[var(--border)] pb-3 last:border-b-0 last:pb-0">
                       <p className="text-sm leading-7 text-[var(--text-primary)]">{bullet}</p>
                     </div>
                   ))}

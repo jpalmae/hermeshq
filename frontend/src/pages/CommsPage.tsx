@@ -178,8 +178,8 @@ export function CommsPage() {
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[0.7fr_1.3fr]">
-      <form className="panel-frame p-6" onSubmit={onSubmit}>
+    <div className="comms-page grid gap-6 xl:grid-cols-[0.7fr_1.3fr]">
+      <form className="comms-router-card panel-frame p-6" onSubmit={onSubmit}>
         <div className="space-y-3">
           <p className="panel-label">{t("comms.router")}</p>
           <h2 className="text-3xl text-[var(--text-display)]">{t("comms.exchange")}</h2>
@@ -261,7 +261,7 @@ export function CommsPage() {
 
       <div className="space-y-6">
         {messageType === "delegate" && sourceAgent ? (
-          <section className="panel-frame p-6">
+          <section className="comms-routing-card panel-frame p-6">
             <div className="border-b border-[var(--border)] pb-4">
               <p className="panel-label">{t("comms.hierarchyRouting")}</p>
               <h3 className="mt-2 text-2xl text-[var(--text-display)]">{t("comms.allowedDelegateMap")}</h3>
@@ -275,7 +275,7 @@ export function CommsPage() {
                 <p className="panel-label">{t("comms.escalateUpward")}</p>
                 {routingPreview.upward.length ? (
                   routingPreview.upward.map(({ agent, state }) => (
-                    <div key={agent.id} className="border border-[var(--interactive)]/40 p-3">
+                    <div key={agent.id} className="comms-node-card border border-[var(--interactive)]/40 p-3">
                       <div className="flex items-center gap-3">
                         <AgentAvatar agent={agent} sizeClass="h-10 w-10" className="shrink-0" />
                         <div className="min-w-0">
@@ -290,7 +290,7 @@ export function CommsPage() {
                 )}
               </div>
 
-              <div className="border border-[var(--border-visible)] p-4">
+              <div className="comms-node-card border border-[var(--border-visible)] p-4">
                 <p className="panel-label">{t("comms.source")}</p>
                 <div className="mt-3 flex items-center gap-3">
                   <AgentAvatar agent={sourceAgent} sizeClass="h-12 w-12" className="shrink-0" />
@@ -317,7 +317,7 @@ export function CommsPage() {
                 {(sourceAgent.supervisor_agent_id ? routingPreview.downward : routingPreview.unrestricted).length ? (
                   <div className="grid gap-3 md:grid-cols-2">
                     {(sourceAgent.supervisor_agent_id ? routingPreview.downward : routingPreview.unrestricted).map(({ agent, state }) => (
-                      <div key={agent.id} className="border border-[var(--success)]/40 p-3">
+                      <div key={agent.id} className="comms-node-card border border-[var(--success)]/40 p-3">
                         <div className="flex items-center gap-3">
                           <AgentAvatar agent={agent} sizeClass="h-10 w-10" className="shrink-0" />
                           <div className="min-w-0">
@@ -347,7 +347,7 @@ export function CommsPage() {
                 </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   {routingPreview.blocked.map(({ agent, state }) => (
-                    <div key={agent.id} className="border border-[var(--accent)]/40 p-3">
+                    <div key={agent.id} className="comms-node-card border border-[var(--accent)]/40 p-3">
                       <div className="flex items-center gap-3">
                         <AgentAvatar agent={agent} sizeClass="h-10 w-10" className="shrink-0" />
                         <div className="min-w-0">
@@ -364,7 +364,7 @@ export function CommsPage() {
           </section>
         ) : null}
 
-        <section className="panel-frame p-6">
+        <section className="comms-topology-card panel-frame p-6">
           <div className="border-b border-[var(--border)] pb-4">
             <p className="panel-label">{t("comms.topology")}</p>
             <h3 className="mt-2 text-2xl text-[var(--text-display)]">{t("comms.messageEdges")}</h3>
@@ -374,7 +374,7 @@ export function CommsPage() {
               const sourceLabel = topology?.nodes.find((node) => node.id === edge.source)?.label ?? edge.source;
               const targetLabel = topology?.nodes.find((node) => node.id === edge.target)?.label ?? edge.target;
               return (
-                <div key={`${edge.source}->${edge.target}`} className="border border-[var(--border)] p-4">
+                <div key={`${edge.source}->${edge.target}`} className="comms-edge-card border border-[var(--border)] p-4">
                   <p className="panel-label">
                     {sourceLabel} -&gt; {targetLabel}
                   </p>
@@ -388,14 +388,14 @@ export function CommsPage() {
           </div>
         </section>
 
-        <section className="panel-frame p-6">
+        <section className="comms-history-card panel-frame p-6">
           <div className="border-b border-[var(--border)] pb-4">
             <p className="panel-label">{t("comms.history")}</p>
             <h3 className="mt-2 text-2xl text-[var(--text-display)]">{t("comms.recentMessages")}</h3>
           </div>
           <div className="mt-2">
             {(history ?? []).map((message) => (
-              <article key={message.id} className="border-b border-[var(--border)] py-4">
+              <article key={message.id} className="comms-history-row border-b border-[var(--border)] py-4">
                 <div className="flex items-center justify-between gap-4">
                   <p className="panel-label">{message.message_type}</p>
                   <p className="panel-label">{formatDateTime(message.created_at)}</p>

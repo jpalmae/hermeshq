@@ -26,6 +26,12 @@ export default function App() {
   const currentUser = useSessionStore((state) => state.user);
   const { data: branding } = usePublicBranding();
   const { data: me } = useMe(Boolean(token));
+  const effectiveThemeMode = token
+    ? resolveEffectiveThemeMode(branding?.theme_mode, currentUser?.theme_preference)
+    : (branding?.theme_mode ?? "dark");
+  const effectiveLocale = token
+    ? resolveEffectiveLocale(branding?.default_locale, currentUser?.locale_preference)
+    : (branding?.default_locale ?? "en");
 
   useEffect(() => {
     if (me) {
@@ -37,10 +43,10 @@ export default function App() {
     document.title = branding?.app_name || "HermesHQ";
     const mediaQuery = window.matchMedia("(prefers-color-scheme: light)");
     const syncTheme = () => {
-      applyThemeToDocument(resolveEffectiveThemeMode(branding?.theme_mode, currentUser?.theme_preference));
+      applyThemeToDocument(effectiveThemeMode);
     };
     syncTheme();
-    document.documentElement.lang = resolveEffectiveLocale(branding?.default_locale, currentUser?.locale_preference);
+    document.documentElement.lang = effectiveLocale;
     mediaQuery.addEventListener("change", syncTheme);
     const href = resolveAssetUrl(branding?.favicon_url);
     const existing = document.querySelector<HTMLLinkElement>("link[rel='icon']");
@@ -55,9 +61,7 @@ export default function App() {
     return () => {
       mediaQuery.removeEventListener("change", syncTheme);
     };
-  }, [branding?.app_name, branding?.favicon_url, branding?.theme_mode, currentUser?.theme_preference]);
-
-  const effectiveLocale = resolveEffectiveLocale(branding?.default_locale, currentUser?.locale_preference);
+  }, [branding?.app_name, branding?.favicon_url, effectiveLocale, effectiveThemeMode]);
 
   if (!token) {
     return (
