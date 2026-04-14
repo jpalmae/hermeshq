@@ -4,6 +4,7 @@
 
 ### Added
 
+- a new selectable `enterprise` theme for both instance default branding and per-user override, alongside the existing `dark`, `light`, and `system` options
 - runtime profiles (`standard`, `technical`, `security`) so an agent can carry a declared execution policy across Talk to agent, TUI, schedules, Telegram, and delegated work
 - visible runtime capability maps in the UI: `Settings` now shows built-in runtime toolsets and HermesHQ platform plugins, while each agent `Integrations` panel shows the effective built-ins, platform plugins, and enabled integration packages for that specific agent
 - a managed integration package system with upload, install, uninstall, catalog metadata, and per-agent enable/disable flows
@@ -24,6 +25,8 @@
 
 ### Changed
 
+- `Settings` is now organized into internal tabs (`General`, `Runtime`, `Providers`, `Integrations`, `Hermes Versions`, `Secrets`, `Templates`) to reduce the operational sprawl of one long admin page
+- the `enterprise` theme now applies a more structured enterprise control-surface look across the shell, overview, surface system, task board, and agent detail screens without replacing the older themes
 - `standard` agents now lose direct terminal/process execution in the shared backend runtime and no longer expose the Hermes TUI
 - `Settings -> Integrations` now separates built-in runtime capabilities, HermesHQ platform plugins, and installable integration packages more clearly
 - agent detail now has a dedicated `Integrations` section with effective capability summaries, managed integration metadata, actions, and connectivity testing

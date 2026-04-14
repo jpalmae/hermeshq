@@ -14,6 +14,13 @@ function statusTone(status: string) {
   return "text-[var(--text-secondary)]";
 }
 
+function statusBadgeTone(status: string) {
+  if (status === "completed") return "border-[color-mix(in_srgb,var(--success)_45%,transparent)] bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-[var(--success)]";
+  if (status === "running" || status === "queued") return "border-[color-mix(in_srgb,var(--warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] text-[var(--warning)]";
+  if (status === "failed" || status === "cancelled") return "border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] text-[var(--accent)]";
+  return "border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_76%,transparent)] text-[var(--text-secondary)]";
+}
+
 function agentLabel(agent: { friendly_name: string | null; name: string }) {
   return agent.friendly_name || agent.name;
 }
@@ -102,9 +109,9 @@ export function TasksPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="tasks-page space-y-6">
       <section className={`grid gap-6 ${composerCollapsed ? "lg:grid-cols-[112px_minmax(0,1fr)]" : "lg:grid-cols-[minmax(22rem,0.5fr)_minmax(0,1.5fr)]"}`}>
-        <form className={`panel-frame ${composerCollapsed ? "p-4" : "p-6"}`} onSubmit={onSubmit}>
+        <form className={`tasks-composer panel-frame ${composerCollapsed ? "p-4" : "p-6"}`} onSubmit={onSubmit}>
           {composerCollapsed ? (
             <div className="flex min-h-[20rem] flex-col items-center gap-6 py-4">
               <button type="button" className="panel-button-secondary !min-h-0 px-4 py-2" onClick={toggleComposer}>
@@ -161,7 +168,7 @@ export function TasksPage() {
           )}
         </form>
 
-        <section className="panel-frame p-6">
+        <section className="tasks-board panel-frame p-6">
           <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
             <div>
               <p className="panel-label">{t("tasks.kanban")}</p>
@@ -184,7 +191,7 @@ export function TasksPage() {
             {kanbanColumns.map((column) => (
               <section
                 key={column}
-                className="rounded-[1.25rem] border border-[var(--border)] bg-[var(--surface-raised)] p-4"
+                className="tasks-column rounded-[1.25rem] border border-[var(--border)] bg-[var(--surface-raised)] p-4"
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => {
                   event.preventDefault();
@@ -194,7 +201,7 @@ export function TasksPage() {
                   setDraggedTaskId(null);
                 }}
               >
-                <div className="border-b border-[var(--border)] pb-3">
+                <div className="tasks-column-header border-b border-[var(--border)] pb-3">
                   <p className="panel-label">{t(`tasks.column.${column}`)}</p>
                   <p className="mt-2 text-xl text-[var(--text-display)]">
                     {grouped.get(column)?.length ?? 0}
@@ -206,7 +213,7 @@ export function TasksPage() {
                     return (
                       <article
                         key={task.id}
-                        className="cursor-grab rounded-[1rem] border border-[var(--border)] bg-[var(--black)] p-4 active:cursor-grabbing"
+                        className="tasks-card cursor-grab rounded-[1rem] border border-[var(--border)] bg-[var(--black)] p-4 active:cursor-grabbing"
                         draggable
                         onDragStart={() => setDraggedTaskId(task.id)}
                         onDragEnd={() => setDraggedTaskId(null)}
@@ -214,10 +221,10 @@ export function TasksPage() {
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="panel-label">
+                              <span className="tasks-card-badge panel-label rounded-full border border-[var(--border)] px-2.5 py-1">
                                 {t("tasks.boardState")}: {t(`tasks.column.${task.board_column}`)}
                               </span>
-                              <span className={`panel-label ${statusTone(task.status)}`}>
+                              <span className={`tasks-card-badge panel-label rounded-full border px-2.5 py-1 ${statusBadgeTone(task.status)}`}>
                                 {t("tasks.runtimeState")}: {task.status}
                               </span>
                             </div>
@@ -226,7 +233,7 @@ export function TasksPage() {
                             </h3>
                           </div>
                           {task.board_manual ? (
-                            <span className="rounded-full border border-[var(--border)] px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-[var(--text-secondary)]">
+                            <span className="tasks-card-badge rounded-full border border-[var(--border)] px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-[var(--text-secondary)]">
                               {t("tasks.manual")}
                             </span>
                           ) : null}
@@ -252,7 +259,7 @@ export function TasksPage() {
                         <p className="mt-3 text-xs text-[var(--text-disabled)]">
                           {formatDateTime(task.completed_at ?? task.started_at ?? task.queued_at)}
                         </p>
-                        <div className="mt-4 space-y-3">
+                        <div className="tasks-card-actions mt-4 space-y-3">
                           <label className="panel-field !mt-0">
                             <span className="panel-label">{t("tasks.moveTo")}</span>
                             <select

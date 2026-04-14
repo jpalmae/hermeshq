@@ -83,6 +83,13 @@ function statusTone(status: string) {
   return "text-[var(--warning)]";
 }
 
+function statusBadgeTone(status: string) {
+  if (status === "running") return "border-[color-mix(in_srgb,var(--success)_45%,transparent)] bg-[color-mix(in_srgb,var(--success)_16%,transparent)] text-[var(--success)]";
+  if (status === "stopped") return "border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_76%,transparent)] text-[var(--text-secondary)]";
+  if (status === "error" || status === "failed") return "border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] text-[var(--accent)]";
+  return "border-[color-mix(in_srgb,var(--warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] text-[var(--warning)]";
+}
+
 function slugify(value: string) {
   return value
     .normalize("NFKD")
@@ -280,10 +287,10 @@ export function AgentDetailPage() {
   ) {
     const isOpen = sectionState[section];
     return (
-      <section className="panel-frame p-6">
+      <section className="agent-section panel-frame p-6">
         <button
           type="button"
-          className="flex w-full items-end justify-between gap-4 border-b border-[var(--border)] pb-4 text-left"
+          className="agent-section-toggle flex w-full items-end justify-between gap-4 border-b border-[var(--border)] pb-4 text-left"
           onClick={() => toggleSection(section)}
         >
           <div>
@@ -466,9 +473,9 @@ export function AgentDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="agent-detail-page space-y-6">
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="panel-frame p-8">
+        <div className="agent-hero panel-frame p-8">
           <p className="panel-label">{agent.slug}</p>
           <div className="mt-6 grid gap-8 md:grid-cols-[1fr_auto]">
             <div>
@@ -507,9 +514,9 @@ export function AgentDetailPage() {
           </div>
 
           <div className="mt-10 grid gap-6 border-t border-[var(--border)] pt-6 md:grid-cols-4">
-            <div>
+            <div className="agent-hero-metric">
               <p className="panel-label">{t("dashboard.status")}</p>
-              <p className={`mt-2 text-lg uppercase tracking-[0.1em] ${statusTone(agent.status)}`}>
+              <p className={`agent-status-pill mt-2 inline-flex rounded-full border px-3 py-1.5 text-lg uppercase tracking-[0.1em] ${statusBadgeTone(agent.status)}`}>
                 {agent.status}
               </p>
               {archived ? (
@@ -518,15 +525,15 @@ export function AgentDetailPage() {
                 </p>
               ) : null}
             </div>
-            <div>
+            <div className="agent-hero-metric">
               <p className="panel-label">{t("agent.mode")}</p>
               <p className="mt-2 text-lg text-[var(--text-display)]">{agent.run_mode}</p>
             </div>
-            <div>
+            <div className="agent-hero-metric">
               <p className="panel-label">{t("dashboard.tasks")}</p>
               <p className="mt-2 text-lg text-[var(--text-display)]">{agent.total_tasks}</p>
             </div>
-            <div>
+            <div className="agent-hero-metric">
               <p className="panel-label">{t("agent.tokens")}</p>
               <p className="mt-2 text-lg text-[var(--text-display)]">{agent.total_tokens_used}</p>
             </div>
@@ -560,10 +567,10 @@ export function AgentDetailPage() {
           </div>
         </div>
 
-        <section className="panel-frame p-6">
+        <section className="agent-config panel-frame p-6">
           <button
             type="button"
-            className="flex w-full items-end justify-between gap-4 border-b border-[var(--border)] pb-4 text-left"
+            className="agent-section-toggle flex w-full items-end justify-between gap-4 border-b border-[var(--border)] pb-4 text-left"
             onClick={() => toggleSection("configuration")}
           >
             <div>
@@ -829,7 +836,7 @@ export function AgentDetailPage() {
         t("agent.integrationRegistry"),
         t("agent.availableCount", { count: managedIntegrations?.length ?? 0 }),
         <div className="space-y-5">
-          <article className="border border-[var(--border)] bg-[var(--surface-raised)] p-5">
+          <article className="agent-integration-card border border-[var(--border)] bg-[var(--surface-raised)] p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="panel-label">{t("agent.effectiveCapabilities")}</p>
@@ -837,7 +844,7 @@ export function AgentDetailPage() {
                   {currentRuntimeCapabilityProfile?.name ?? agent.runtime_profile}
                 </h4>
               </div>
-              <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--text-secondary)]">
+              <span className="agent-capability-badge rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--text-secondary)]">
                 {currentRuntimeCapabilityProfile?.terminal_allowed ? t("agent.terminalEnabled") : t("agent.terminalDisabled")}
               </span>
             </div>
@@ -858,7 +865,7 @@ export function AgentDetailPage() {
                         <span
                           key={toolset.slug}
                           title={toolset.description}
-                          className="rounded-full border border-[var(--border)] px-3 py-1 font-mono text-xs text-[var(--text-secondary)]"
+                          className="agent-capability-badge rounded-full border border-[var(--border)] px-3 py-1 font-mono text-xs text-[var(--text-secondary)]"
                         >
                           {toolset.slug}
                         </span>
@@ -890,7 +897,7 @@ export function AgentDetailPage() {
                             {integration.tools.map((tool) => (
                               <span
                                 key={tool}
-                                className="rounded-full border border-[var(--border)] px-3 py-1 font-mono text-xs text-[var(--text-secondary)]"
+                                className="agent-capability-badge rounded-full border border-[var(--border)] px-3 py-1 font-mono text-xs text-[var(--text-secondary)]"
                               >
                                 {tool}
                               </span>
@@ -915,7 +922,7 @@ export function AgentDetailPage() {
               const testResult = integrationTestResults[integration.slug];
               const actionResults = integrationActionResults[integration.slug] ?? {};
               return (
-                <article key={integration.slug} className="border border-[var(--border)] bg-[var(--surface-raised)] p-5">
+                <article key={integration.slug} className="agent-integration-card border border-[var(--border)] bg-[var(--surface-raised)] p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                       <p className="panel-label">{integration.slug}</p>

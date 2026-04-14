@@ -59,10 +59,10 @@ export function AppShell() {
 
   const navContent = (
     <>
-      <div className="space-y-10">
+      <div className="app-shell-nav-content space-y-10">
         <Link to="/" className="block">
           <p className="panel-label">{sidebarCollapsed ? appShortName : t("shell.nodeControl", { appName })}</p>
-          <div className="mt-4">
+          <div className="app-shell-brand mt-4">
             {logoUrl ? (
               <img
                 src={logoUrl}
@@ -89,7 +89,7 @@ export function AppShell() {
               end={item.to === "/"}
               onClick={() => setMobileNavOpen(false)}
               className={({ isActive }) =>
-                `flex items-center ${sidebarCollapsed ? "justify-center" : "justify-between"} border-b border-[var(--border)] py-3 text-sm uppercase tracking-[0.12em] ${
+                `app-shell-nav-link flex items-center ${sidebarCollapsed ? "justify-center" : "justify-between"} border-b border-[var(--border)] py-3 text-sm uppercase tracking-[0.12em] ${
                   isActive ? "text-[var(--text-display)]" : "text-[var(--text-secondary)]"
                 }`
               }
@@ -103,7 +103,7 @@ export function AppShell() {
           <p className="panel-label">{t("shell.operator")}</p>
           {!sidebarCollapsed ? (
             <>
-              <div className="mt-2 flex items-center gap-3">
+              <div className="app-shell-operator mt-2 flex items-center gap-3">
                 {user ? <UserAvatar user={user} sizeClass="h-10 w-10" className="shrink-0" /> : null}
                 <p className="text-sm text-[var(--text-display)]">{user?.display_name ?? "..."}</p>
               </div>
@@ -114,7 +114,7 @@ export function AppShell() {
                 to="/account"
                 onClick={() => setMobileNavOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center justify-between border-b border-[var(--border)] py-3 text-sm uppercase tracking-[0.12em] ${
+                  `app-shell-nav-link flex items-center justify-between border-b border-[var(--border)] py-3 text-sm uppercase tracking-[0.12em] ${
                     isActive ? "text-[var(--text-display)]" : "text-[var(--text-secondary)]"
                   }`
                 }
@@ -125,7 +125,7 @@ export function AppShell() {
                 to="/manual"
                 onClick={() => setMobileNavOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center justify-between border-b border-[var(--border)] py-3 text-sm uppercase tracking-[0.12em] ${
+                  `app-shell-nav-link flex items-center justify-between border-b border-[var(--border)] py-3 text-sm uppercase tracking-[0.12em] ${
                     isActive ? "text-[var(--text-display)]" : "text-[var(--text-secondary)]"
                   }`
                 }
@@ -138,7 +138,7 @@ export function AppShell() {
                   value={user?.theme_preference ?? "default"}
                   onChange={(event) => {
                     void updatePreferences.mutateAsync({
-                      theme_preference: event.target.value as "default" | "dark" | "light" | "system",
+                      theme_preference: event.target.value as "default" | "dark" | "light" | "system" | "enterprise",
                     }).then((updatedUser) => {
                       setUser(updatedUser);
                     });
@@ -148,6 +148,7 @@ export function AppShell() {
                   <option value="dark">{t("common.dark")}</option>
                   <option value="light">{t("common.light")}</option>
                   <option value="system">{t("common.system")}</option>
+                  <option value="enterprise">{t("common.enterprise")}</option>
                 </select>
               </label>
               <label className="panel-field">
@@ -177,7 +178,7 @@ export function AppShell() {
                 to="/account"
                 onClick={() => setMobileNavOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center justify-center border-b border-[var(--border)] py-3 text-sm uppercase tracking-[0.12em] ${
+                  `app-shell-nav-link flex items-center justify-center border-b border-[var(--border)] py-3 text-sm uppercase tracking-[0.12em] ${
                     isActive ? "text-[var(--text-display)]" : "text-[var(--text-secondary)]"
                   }`
                 }
@@ -189,7 +190,7 @@ export function AppShell() {
                 to="/manual"
                 onClick={() => setMobileNavOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center justify-center border-b border-[var(--border)] py-3 text-sm uppercase tracking-[0.12em] ${
+                  `app-shell-nav-link flex items-center justify-center border-b border-[var(--border)] py-3 text-sm uppercase tracking-[0.12em] ${
                     isActive ? "text-[var(--text-display)]" : "text-[var(--text-secondary)]"
                   }`
                 }
@@ -208,9 +209,9 @@ export function AppShell() {
   );
 
   return (
-    <div className="min-h-screen bg-[var(--black)] text-[var(--text-primary)]">
+    <div className="app-shell-root min-h-screen bg-[var(--black)] text-[var(--text-primary)]">
       <div
-        className="mx-auto grid min-h-screen max-w-[1600px] grid-cols-1 gap-8 px-4 py-4 md:grid-cols-[var(--sidebar-width)_minmax(0,1fr)] md:px-8 md:py-8"
+        className="app-shell-grid mx-auto grid min-h-screen max-w-[1600px] grid-cols-1 gap-8 px-4 py-4 md:grid-cols-[var(--sidebar-width)_minmax(0,1fr)] md:px-8 md:py-8"
         style={
           {
             "--sidebar-width": sidebarCollapsed ? "92px" : "260px",
@@ -219,12 +220,12 @@ export function AppShell() {
       >
         <div className="hidden md:block">
           <aside
-            className={`panel-frame flex h-full flex-col justify-between p-6 transition-[width,padding] duration-200 md:min-h-[calc(100vh-4rem)] ${
+            className={`app-shell-sidebar panel-frame flex h-full flex-col justify-between p-6 transition-[width,padding] duration-200 md:min-h-[calc(100vh-4rem)] ${
               sidebarCollapsed ? "items-center px-4" : ""
             }`}
           >
             <div className="mb-6 flex w-full justify-end">
-              <button type="button" className="panel-button-secondary !min-h-0 px-4 py-2" onClick={toggleSidebar}>
+              <button type="button" className="app-shell-sidebar-toggle panel-button-secondary !min-h-0 px-4 py-2" onClick={toggleSidebar}>
                 {sidebarCollapsed ? "»" : "«"}
               </button>
             </div>
@@ -234,7 +235,7 @@ export function AppShell() {
           </aside>
         </div>
 
-        <main className="pb-8">
+        <main className="app-shell-main pb-8">
           <div className="mb-4 flex items-center justify-between gap-3 md:hidden">
             <button
               type="button"
@@ -254,7 +255,7 @@ export function AppShell() {
       {mobileNavOpen ? (
         <div className="fixed inset-0 z-50 bg-[var(--overlay)] md:hidden" onClick={() => setMobileNavOpen(false)}>
           <aside
-            className="panel-frame absolute left-4 top-4 bottom-4 w-[min(82vw,320px)] p-6"
+            className="app-shell-mobile panel-frame absolute left-4 top-4 bottom-4 w-[min(82vw,320px)] p-6"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-6 flex justify-end">

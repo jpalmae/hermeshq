@@ -2,11 +2,14 @@ import type { AppSettings } from "../types/api";
 
 export type ThemeMode = AppSettings["theme_mode"];
 export type UserThemePreference = "default" | ThemeMode;
-export type ResolvedTheme = "dark" | "light";
+export type ResolvedTheme = "dark" | "light" | "enterprise";
 
 export function resolveThemeMode(mode: ThemeMode | null | undefined): ResolvedTheme {
   if (mode === "light") {
     return "light";
+  }
+  if (mode === "enterprise") {
+    return "enterprise";
   }
   if (mode === "system") {
     return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
@@ -17,7 +20,7 @@ export function resolveThemeMode(mode: ThemeMode | null | undefined): ResolvedTh
 export function applyThemeToDocument(mode: ThemeMode | null | undefined) {
   const resolvedTheme = resolveThemeMode(mode);
   document.documentElement.dataset.theme = resolvedTheme;
-  document.documentElement.style.colorScheme = resolvedTheme;
+  document.documentElement.style.colorScheme = resolvedTheme === "light" ? "light" : "dark";
   return resolvedTheme;
 }
 

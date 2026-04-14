@@ -167,7 +167,7 @@ export function MyAccountPage() {
               onChange={(event) => {
                 void updatePreferences
                   .mutateAsync({
-                    theme_preference: event.target.value as "default" | "dark" | "light" | "system",
+                    theme_preference: event.target.value as "default" | "dark" | "light" | "system" | "enterprise",
                   })
                   .then((updated) => {
                     setUser(updated);
@@ -182,6 +182,7 @@ export function MyAccountPage() {
               <option value="dark">{t("common.dark")}</option>
               <option value="light">{t("common.light")}</option>
               <option value="system">{t("common.system")}</option>
+              <option value="enterprise">{t("common.enterprise")}</option>
             </select>
           </label>
 

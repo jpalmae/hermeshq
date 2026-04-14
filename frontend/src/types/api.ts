@@ -7,7 +7,7 @@ export interface User {
   display_name: string;
   role: "admin" | "user";
   is_active: boolean;
-  theme_preference: "default" | "dark" | "light" | "system";
+  theme_preference: "default" | "dark" | "light" | "system" | "enterprise";
   locale_preference: "default" | "en" | "es";
   avatar_url: string | null;
   has_avatar: boolean;
@@ -82,7 +82,7 @@ export interface AppSettings {
   id: string;
   app_name: string | null;
   app_short_name: string | null;
-  theme_mode: "dark" | "light" | "system";
+  theme_mode: "dark" | "light" | "system" | "enterprise";
   default_locale: "en" | "es";
   default_provider: string | null;
   default_model: string | null;

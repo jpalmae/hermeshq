@@ -9,7 +9,12 @@ import {
   useUninstallHermesVersion,
   useUpdateHermesVersion,
 } from "../api/hermesVersions";
-import { useInstallIntegrationPackage, useIntegrationPackages, useUninstallIntegrationPackage, useUploadIntegrationPackage } from "../api/integrationPackages";
+import {
+  useInstallIntegrationPackage,
+  useIntegrationPackages,
+  useUninstallIntegrationPackage,
+  useUploadIntegrationPackage,
+} from "../api/integrationPackages";
 import { useProviders, useUpdateProvider } from "../api/providers";
 import { useRuntimeCapabilityOverview } from "../api/runtimeProfiles";
 import { useCreateSecret, useSecrets } from "../api/secrets";
@@ -26,6 +31,10 @@ import { useCreateTemplate, useTemplates } from "../api/templates";
 import { useI18n } from "../lib/i18n";
 import { applyProviderPreset, findMatchingProvider } from "../lib/providers";
 import { useSessionStore } from "../stores/sessionStore";
+
+type SettingsTab = "general" | "runtime" | "providers" | "integrations" | "hermesVersions" | "secrets" | "templates";
+
+const SETTINGS_TAB_STORAGE_KEY = "hermeshq.settings.activeTab";
 
 export function SettingsPage() {
   const currentUser = useSessionStore((state) => state.user);
@@ -60,7 +69,7 @@ export function SettingsPage() {
 
   const [appName, setAppName] = useState("");
   const [appShortName, setAppShortName] = useState("");
-  const [themeMode, setThemeMode] = useState<"dark" | "light" | "system">("dark");
+  const [themeMode, setThemeMode] = useState<"dark" | "light" | "system" | "enterprise">("dark");
   const [defaultLocale, setDefaultLocale] = useState<"en" | "es">("en");
   const [secretName, setSecretName] = useState("");
   const [secretProvider, setSecretProvider] = useState("");
@@ -88,6 +97,7 @@ export function SettingsPage() {
 
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
   useEffect(() => {
     setAppName(settings?.app_name ?? "");
@@ -136,6 +146,31 @@ export function SettingsPage() {
     );
   }, [hermesVersions]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const stored = window.localStorage.getItem(SETTINGS_TAB_STORAGE_KEY);
+    if (
+      stored === "general" ||
+      stored === "runtime" ||
+      stored === "providers" ||
+      stored === "integrations" ||
+      stored === "hermesVersions" ||
+      stored === "secrets" ||
+      stored === "templates"
+    ) {
+      setActiveTab(stored);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(SETTINGS_TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
+
   const enabledProviders = useMemo(
     () => (providers ?? []).filter((provider) => provider.enabled),
     [providers],
@@ -149,6 +184,17 @@ export function SettingsPage() {
     () => enabledProviders.find((provider) => provider.slug === selectedDefaultProviderSlug) ?? null,
     [enabledProviders, selectedDefaultProviderSlug],
   );
+
+  const settingsTabs: Array<{ id: SettingsTab; label: string; copy: string }> = [
+    { id: "general", label: t("settings.tabGeneral"), copy: t("settings.tabGeneralCopy") },
+    { id: "runtime", label: t("settings.tabRuntime"), copy: t("settings.tabRuntimeCopy") },
+    { id: "providers", label: t("settings.tabProviders"), copy: t("settings.tabProvidersCopy") },
+    { id: "integrations", label: t("settings.tabIntegrations"), copy: t("settings.tabIntegrationsCopy") },
+    { id: "hermesVersions", label: t("settings.tabHermesVersions"), copy: t("settings.tabHermesVersionsCopy") },
+    { id: "secrets", label: t("settings.tabSecrets"), copy: t("settings.tabSecretsCopy") },
+    { id: "templates", label: t("settings.tabTemplates"), copy: t("settings.tabTemplatesCopy") },
+  ];
+  const activeTabMeta = settingsTabs.find((tab) => tab.id === activeTab) ?? settingsTabs[0];
 
   async function submitSecret(event: FormEvent) {
     event.preventDefault();
@@ -255,9 +301,6 @@ export function SettingsPage() {
     }
   }
 
-  const logoUrl = resolveAssetUrl(settings?.logo_url);
-  const faviconUrl = resolveAssetUrl(settings?.favicon_url);
-
   async function submitHermesVersionCatalog(event: FormEvent) {
     event.preventDefault();
     await createHermesVersion.mutateAsync({
@@ -284,6 +327,9 @@ export function SettingsPage() {
     });
   }
 
+  const logoUrl = resolveAssetUrl(settings?.logo_url);
+  const faviconUrl = resolveAssetUrl(settings?.favicon_url);
+
   if (currentUser && !isAdmin) {
     return (
       <section className="panel-frame p-6">
@@ -296,749 +342,821 @@ export function SettingsPage() {
     );
   }
 
-  return (
-    <div className="grid gap-6">
-      <section className="grid gap-6 xl:grid-cols-4">
-        <form className="panel-frame p-6" onSubmit={submitBranding}>
-          <p className="panel-label">{t("settings.branding")}</p>
-          <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("settings.instanceIdentity")}</h2>
-          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-            {t("settings.identityCopy")}
-          </p>
-          <div className="mt-6 space-y-4">
-            <label className="panel-field">
-              <span className="panel-label">{t("settings.appName")}</span>
-              <input value={appName} onChange={(event) => setAppName(event.target.value)} placeholder="HermesHQ" />
-            </label>
-            <label className="panel-field">
-              <span className="panel-label">{t("settings.shortName")}</span>
-              <input value={appShortName} onChange={(event) => setAppShortName(event.target.value)} placeholder="HQ" />
-            </label>
-            <label className="panel-field">
-              <span className="panel-label">{t("settings.theme")}</span>
-              <select value={themeMode} onChange={(event) => setThemeMode(event.target.value as "dark" | "light" | "system")}>
-                <option value="dark">{t("common.dark")}</option>
-                <option value="light">{t("common.light")}</option>
-                <option value="system">{t("common.system")}</option>
-              </select>
-            </label>
-            <label className="panel-field">
-              <span className="panel-label">{t("settings.language")}</span>
-              <select value={defaultLocale} onChange={(event) => setDefaultLocale(event.target.value as "en" | "es")}>
-                <option value="en">{t("common.english")}</option>
-                <option value="es">{t("common.spanish")}</option>
-              </select>
-            </label>
-            <button className="panel-button-primary w-full" type="submit">
-              {t("settings.saveBranding")}
-            </button>
-          </div>
-        </form>
+  const renderGeneralTab = () => (
+    <section className="grid gap-6 xl:grid-cols-2">
+      <form className="panel-frame p-6" onSubmit={submitBranding}>
+        <p className="panel-label">{t("settings.branding")}</p>
+        <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("settings.instanceIdentity")}</h2>
+        <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+          {t("settings.identityCopy")}
+        </p>
+        <div className="mt-6 space-y-4">
+          <label className="panel-field">
+            <span className="panel-label">{t("settings.appName")}</span>
+            <input value={appName} onChange={(event) => setAppName(event.target.value)} placeholder="HermesHQ" />
+          </label>
+          <label className="panel-field">
+            <span className="panel-label">{t("settings.shortName")}</span>
+            <input value={appShortName} onChange={(event) => setAppShortName(event.target.value)} placeholder="HQ" />
+          </label>
+          <label className="panel-field">
+            <span className="panel-label">{t("settings.theme")}</span>
+            <select value={themeMode} onChange={(event) => setThemeMode(event.target.value as "dark" | "light" | "system" | "enterprise")}>
+              <option value="dark">{t("common.dark")}</option>
+              <option value="light">{t("common.light")}</option>
+              <option value="system">{t("common.system")}</option>
+              <option value="enterprise">{t("common.enterprise")}</option>
+            </select>
+          </label>
+          <label className="panel-field">
+            <span className="panel-label">{t("settings.language")}</span>
+            <select value={defaultLocale} onChange={(event) => setDefaultLocale(event.target.value as "en" | "es")}>
+              <option value="en">{t("common.english")}</option>
+              <option value="es">{t("common.spanish")}</option>
+            </select>
+          </label>
+          <button className="panel-button-primary w-full" type="submit">
+            {t("settings.saveBranding")}
+          </button>
+        </div>
+      </form>
 
-        <form className="panel-frame p-6" onSubmit={submitDefaults}>
-          <p className="panel-label">{t("settings.runtimeDefaults")}</p>
-          <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("settings.instanceProviders")}</h2>
-          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-            {t("settings.providersCopy")}
-          </p>
-          <div className="mt-6 space-y-4">
-            <label className="panel-field">
-              <span className="panel-label">{t("providers.catalogProvider")}</span>
-              <select
-                value={selectedDefaultProviderSlug}
-                onChange={(event) => {
-                  const slug = event.target.value;
-                  setSelectedDefaultProviderSlug(slug);
-                  const provider = enabledProviders.find((item) => item.slug === slug);
-                  if (!provider) {
-                    return;
-                  }
-                  const applied = applyProviderPreset(provider, defaultApiKeyRef);
-                  setDefaultProvider(applied.provider);
-                  setDefaultModel(applied.model);
-                  setDefaultBaseUrl(applied.base_url);
-                  if (!provider.supports_secret_ref) {
-                    setDefaultApiKeyRef("");
+      <section className="panel-frame p-6">
+        <p className="panel-label">{t("settings.activeBranding")}</p>
+        <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("settings.assets")}</h2>
+        <div className="mt-6 space-y-5">
+          <div className="border-b border-[var(--border)] pb-4">
+            <p className="panel-label">{t("settings.logo")}</p>
+            <div className="mt-3 flex items-center gap-3">
+              {logoUrl ? (
+                <img src={logoUrl} alt={settings?.app_name ?? "Logo"} className="h-12 w-auto max-w-[8rem] object-contain" />
+              ) : (
+                <p className="text-sm text-[var(--text-secondary)]">{t("settings.noLogo")}</p>
+              )}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <label className="panel-button-secondary cursor-pointer">
+                Upload PNG
+                <input
+                  className="hidden"
+                  type="file"
+                  accept="image/png"
+                  onChange={(event) => void onLogoSelected(event.target.files?.[0] ?? null)}
+                />
+              </label>
+              <button
+                type="button"
+                className="panel-button-secondary"
+                onClick={async () => {
+                  try {
+                    await deleteLogo.mutateAsync();
+                  } catch (error) {
+                    window.alert(error instanceof Error ? error.message : "Logo removal failed");
                   }
                 }}
+                disabled={!settings?.has_logo}
               >
-                <option value="">{t("providers.selectProviderPreset")}</option>
-                {enabledProviders.map((provider) => (
-                  <option key={provider.slug} value={provider.slug}>
-                    {provider.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="panel-field">
-              <span className="panel-label">{t("agents.provider")}</span>
-              <input value={defaultProvider} onChange={(event) => setDefaultProvider(event.target.value)} />
-            </label>
-            <label className="panel-field">
-              <span className="panel-label">{t("agents.model")}</span>
-              <input value={defaultModel} onChange={(event) => setDefaultModel(event.target.value)} />
-            </label>
-            <label className="panel-field">
-              <span className="panel-label">{t("agents.secretRef")}</span>
-              <select
-                value={defaultApiKeyRef}
-                onChange={(event) => setDefaultApiKeyRef(event.target.value)}
-                disabled={selectedDefaultProvider?.supports_secret_ref === false}
-              >
-                <option value="">{selectedDefaultProvider?.supports_secret_ref === false ? t("providers.oauthManaged") : t("providers.noSecret")}</option>
-                {(secrets ?? []).map((secret) => (
-                  <option key={String(secret.id)} value={String(secret.name)}>
-                    {String(secret.name)}{secret.provider ? ` (${secret.provider})` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="panel-field">
-              <span className="panel-label">{t("agents.baseUrl")}</span>
-              <input value={defaultBaseUrl} onChange={(event) => setDefaultBaseUrl(event.target.value)} />
-            </label>
-            <label className="panel-field">
-              <span className="panel-label">Default Hermes version</span>
-              <select value={defaultHermesVersion} onChange={(event) => setDefaultHermesVersion(event.target.value)}>
-                <option value="bundled">Bundled runtime</option>
-                {(hermesVersions ?? [])
-                  .filter((item) => item.version !== "bundled" && item.installed)
-                  .map((item) => (
-                    <option key={item.version} value={item.version}>
-                      {item.version === "bundled"
-                        ? `Bundled runtime${item.detected_version ? ` (${item.detected_version})` : ""}`
-                        : `${item.version}${item.detected_version ? ` (${item.detected_version})` : ""}`}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <button className="panel-button-primary w-full" type="submit">
-              {t("settings.saveRuntimeDefaults")}
-            </button>
-            {selectedDefaultProvider ? (
-              <p className="text-sm leading-6 text-[var(--text-secondary)]">
-                {selectedDefaultProvider.description}
-              </p>
-            ) : null}
-          </div>
-        </form>
-
-        <section className="panel-frame p-6">
-          <p className="panel-label">Hermes Agent</p>
-          <h2 className="mt-2 text-2xl text-[var(--text-display)]">Versions</h2>
-          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-            Install Hermes Agent releases once per instance and pin agents to a tested version.
-          </p>
-          <form className="mt-6 border border-[var(--border)] bg-[var(--surface-raised)] p-4" onSubmit={submitHermesVersionCatalog}>
-            <p className="panel-label">Catalog</p>
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <label className="panel-field">
-                <span className="panel-label">Version</span>
-                <input value={newHermesVersion} onChange={(event) => setNewHermesVersion(event.target.value)} placeholder="0.10.0" />
-              </label>
-              <label className="panel-field">
-                <span className="panel-label">Release tag</span>
-                <input value={newHermesReleaseTag} onChange={(event) => setNewHermesReleaseTag(event.target.value)} placeholder="v2026.5.1" />
-              </label>
-              <label className="panel-field">
-                <span className="panel-label">Description</span>
-                <input value={newHermesDescription} onChange={(event) => setNewHermesDescription(event.target.value)} placeholder="Canary candidate" />
-              </label>
-            </div>
-            <div className="mt-4 flex items-center gap-3">
-              <button className="panel-button-primary" type="submit" disabled={createHermesVersion.isPending}>
-                {createHermesVersion.isPending ? "Adding..." : "Add to catalog"}
+                {t("settings.removeLogo")}
               </button>
-              <p className="panel-inline-status">New versions become installable without changing backend code.</p>
-            </div>
-          </form>
-          <div className="mt-6 space-y-4">
-            {(hermesVersions ?? []).map((version) => (
-              <article key={version.version} className="border border-[var(--border)] bg-[var(--surface-raised)] p-4">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <p className="panel-label">{version.source}</p>
-                    <h3 className="mt-2 text-lg text-[var(--text-display)]">
-                      {version.version === "bundled" ? "Bundled runtime" : version.version}
-                    </h3>
-                    <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                      {version.description ?? "Hermes Agent runtime"}
-                    </p>
-                    <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
-                      {version.release_tag ?? (version.detected_version ? `detected ${version.detected_version}` : "no release tag")}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="panel-label">{version.installed ? "installed" : "available"}</p>
-                    {version.is_default ? (
-                      <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--accent)]">default</p>
-                    ) : null}
-                    {version.in_use_by_agents ? (
-                      <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-secondary)]">
-                        pinned by {version.in_use_by_agents}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-                {version.version !== "bundled" ? (
-                  <div className="mt-4 grid gap-4 md:grid-cols-2">
-                    <label className="panel-field">
-                      <span className="panel-label">Release tag</span>
-                      <input
-                        value={hermesVersionDrafts[version.version]?.release_tag ?? ""}
-                        onChange={(event) =>
-                          setHermesVersionDrafts((current) => ({
-                            ...current,
-                            [version.version]: {
-                              ...(current[version.version] ?? { release_tag: "", description: "" }),
-                              release_tag: event.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </label>
-                    <label className="panel-field">
-                      <span className="panel-label">Description</span>
-                      <input
-                        value={hermesVersionDrafts[version.version]?.description ?? ""}
-                        onChange={(event) =>
-                          setHermesVersionDrafts((current) => ({
-                            ...current,
-                            [version.version]: {
-                              ...(current[version.version] ?? { release_tag: "", description: "" }),
-                              description: event.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </label>
-                  </div>
-                ) : null}
-                <div className="mt-4 flex flex-wrap gap-3">
-                  {version.version !== "bundled" ? (
-                    <button
-                      type="button"
-                      className="panel-button-secondary"
-                      disabled={updateHermesVersion.isPending}
-                      onClick={() => void saveHermesVersion(version.version)}
-                    >
-                      {updateHermesVersion.isPending ? "Saving..." : "Save metadata"}
-                    </button>
-                  ) : null}
-                  {version.version !== "bundled" && !version.installed ? (
-                    <button
-                      type="button"
-                      className="panel-button-secondary"
-                      disabled={installHermesVersion.isPending}
-                      onClick={() => void installHermesVersion.mutateAsync(version.version)}
-                    >
-                      {installHermesVersion.isPending ? "Installing..." : "Install"}
-                    </button>
-                  ) : null}
-                  {version.version !== "bundled" && version.installed ? (
-                    <button
-                      type="button"
-                      className="panel-button-secondary"
-                      disabled={uninstallHermesVersion.isPending || version.is_default || version.in_use_by_agents > 0}
-                      onClick={() => void uninstallHermesVersion.mutateAsync(version.version)}
-                    >
-                      {uninstallHermesVersion.isPending ? "Removing..." : "Uninstall"}
-                    </button>
-                  ) : null}
-                  {version.version !== "bundled" && !version.installed ? (
-                    <button
-                      type="button"
-                      className="panel-button-secondary"
-                      disabled={deleteHermesVersionCatalogEntry.isPending || version.is_default || version.in_use_by_agents > 0}
-                      onClick={() => void deleteHermesVersionCatalogEntry.mutateAsync(version.version)}
-                    >
-                      {deleteHermesVersionCatalogEntry.isPending ? "Deleting..." : "Delete catalog entry"}
-                    </button>
-                  ) : null}
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="panel-frame p-6">
-          <p className="panel-label">{t("settings.activeBranding")}</p>
-          <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("settings.assets")}</h2>
-          <div className="mt-6 space-y-5">
-            <div className="border-b border-[var(--border)] pb-4">
-              <p className="panel-label">{t("settings.logo")}</p>
-              <div className="mt-3 flex items-center gap-3">
-                {logoUrl ? (
-                  <img src={logoUrl} alt={settings?.app_name ?? "Logo"} className="h-12 w-auto max-w-[8rem] object-contain" />
-                ) : (
-                  <p className="text-sm text-[var(--text-secondary)]">{t("settings.noLogo")}</p>
-                )}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <label className="panel-button-secondary cursor-pointer">
-                  Upload PNG
-                  <input
-                    className="hidden"
-                    type="file"
-                    accept="image/png"
-                    onChange={(event) => void onLogoSelected(event.target.files?.[0] ?? null)}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="panel-button-secondary"
-                  onClick={async () => {
-                    try {
-                      await deleteLogo.mutateAsync();
-                    } catch (error) {
-                      window.alert(error instanceof Error ? error.message : "Logo removal failed");
-                    }
-                  }}
-                  disabled={!settings?.has_logo}
-                >
-                  {t("settings.removeLogo")}
-                </button>
-              </div>
-            </div>
-
-            <div className="border-b border-[var(--border)] pb-4">
-              <p className="panel-label">{t("settings.favicon")}</p>
-              <div className="mt-3 flex items-center gap-3">
-                {faviconUrl ? (
-                  <img src={faviconUrl} alt="Favicon" className="h-10 w-10 rounded border border-[var(--border)] object-contain" />
-                ) : (
-                  <p className="text-sm text-[var(--text-secondary)]">{t("settings.noFavicon")}</p>
-                )}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <label className="panel-button-secondary cursor-pointer">
-                  Upload PNG/ICO
-                  <input
-                    className="hidden"
-                    type="file"
-                    accept="image/png,.ico,image/x-icon,image/vnd.microsoft.icon"
-                    onChange={(event) => void onFaviconSelected(event.target.files?.[0] ?? null)}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="panel-button-secondary"
-                  onClick={async () => {
-                    try {
-                      await deleteFavicon.mutateAsync();
-                    } catch (error) {
-                      window.alert(error instanceof Error ? error.message : "Favicon removal failed");
-                    }
-                  }}
-                  disabled={!settings?.has_favicon}
-                >
-                  {t("settings.removeFavicon")}
-                </button>
-              </div>
-            </div>
-
-            <div className="border-b border-[var(--border)] pb-4">
-              <p className="panel-label">{t("settings.tuiSkin")}</p>
-              <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                {t("settings.tuiSkinCopy")}
-              </p>
-              <div className="mt-3 flex items-center gap-3">
-                {settings?.has_tui_skin ? (
-                  <div>
-                    <p className="text-sm text-[var(--text-display)]">
-                      {String(settings?.default_tui_skin ?? "unset")}
-                    </p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.24em] text-[var(--text-secondary)]">
-                      {String(settings?.tui_skin_filename ?? "")}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-sm text-[var(--text-secondary)]">{t("settings.noTuiSkin")}</p>
-                )}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <label className="panel-button-secondary cursor-pointer">
-                  {t("settings.uploadTuiSkin")}
-                  <input
-                    className="hidden"
-                    type="file"
-                    accept=".yaml,.yml,text/yaml,application/yaml"
-                    onChange={(event) => void onTuiSkinSelected(event.target.files?.[0] ?? null)}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="panel-button-secondary"
-                  onClick={async () => {
-                    try {
-                      await deleteTuiSkin.mutateAsync();
-                    } catch (error) {
-                      window.alert(error instanceof Error ? error.message : "TUI skin removal failed");
-                    }
-                  }}
-                  disabled={!settings?.has_tui_skin}
-                >
-                  {t("settings.removeTuiSkin")}
-                </button>
-              </div>
-            </div>
-
-            <div className="border-b border-[var(--border)] pb-3">
-              <p className="panel-label">Current app name</p>
-              <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.app_name ?? "HermesHQ")}</p>
-            </div>
-            <div className="pb-3">
-              <p className="panel-label">Current short name</p>
-              <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.app_short_name ?? settings?.app_name ?? "HermesHQ")}</p>
-            </div>
-            <div className="pb-3">
-              <p className="panel-label">Current default theme</p>
-              <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.theme_mode ?? "dark")}</p>
-            </div>
-            <div className="pb-3">
-              <p className="panel-label">{t("settings.currentTuiSkin")}</p>
-              <p className="mt-2 text-sm text-[var(--text-display)]">
-                {String(settings?.default_tui_skin ?? t("settings.hermesDefaultSkin"))}
-              </p>
             </div>
           </div>
-        </section>
 
-        <form className="panel-frame p-6" onSubmit={submitSecret}>
-          <p className="panel-label">Secrets</p>
-          <h2 className="mt-2 text-2xl text-[var(--text-display)]">Vault</h2>
-          <div className="mt-6 space-y-4">
-            <label className="panel-field">
-              <span className="panel-label">Name</span>
-              <input value={secretName} onChange={(event) => setSecretName(event.target.value)} />
-            </label>
-            <label className="panel-field">
-              <span className="panel-label">Provider</span>
-              <select value={secretProvider} onChange={(event) => setSecretProvider(event.target.value)}>
-                <option value="">{t("providers.genericSecret")}</option>
-                {(providers ?? []).map((provider) => (
-                  <option key={provider.slug} value={provider.slug}>
-                    {provider.name}
+          <div className="border-b border-[var(--border)] pb-4">
+            <p className="panel-label">{t("settings.favicon")}</p>
+            <div className="mt-3 flex items-center gap-3">
+              {faviconUrl ? (
+                <img src={faviconUrl} alt="Favicon" className="h-10 w-10 rounded border border-[var(--border)] object-contain" />
+              ) : (
+                <p className="text-sm text-[var(--text-secondary)]">{t("settings.noFavicon")}</p>
+              )}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <label className="panel-button-secondary cursor-pointer">
+                Upload PNG/ICO
+                <input
+                  className="hidden"
+                  type="file"
+                  accept="image/png,.ico,image/x-icon,image/vnd.microsoft.icon"
+                  onChange={(event) => void onFaviconSelected(event.target.files?.[0] ?? null)}
+                />
+              </label>
+              <button
+                type="button"
+                className="panel-button-secondary"
+                onClick={async () => {
+                  try {
+                    await deleteFavicon.mutateAsync();
+                  } catch (error) {
+                    window.alert(error instanceof Error ? error.message : "Favicon removal failed");
+                  }
+                }}
+                disabled={!settings?.has_favicon}
+              >
+                {t("settings.removeFavicon")}
+              </button>
+            </div>
+          </div>
+
+          <div className="border-b border-[var(--border)] pb-4">
+            <p className="panel-label">{t("settings.tuiSkin")}</p>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+              {t("settings.tuiSkinCopy")}
+            </p>
+            <div className="mt-3 flex items-center gap-3">
+              {settings?.has_tui_skin ? (
+                <div>
+                  <p className="text-sm text-[var(--text-display)]">
+                    {String(settings?.default_tui_skin ?? "unset")}
+                  </p>
+                  <p className="mt-1 text-xs uppercase tracking-[0.24em] text-[var(--text-secondary)]">
+                    {String(settings?.tui_skin_filename ?? "")}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-[var(--text-secondary)]">{t("settings.noTuiSkin")}</p>
+              )}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <label className="panel-button-secondary cursor-pointer">
+                {t("settings.uploadTuiSkin")}
+                <input
+                  className="hidden"
+                  type="file"
+                  accept=".yaml,.yml,text/yaml,application/yaml"
+                  onChange={(event) => void onTuiSkinSelected(event.target.files?.[0] ?? null)}
+                />
+              </label>
+              <button
+                type="button"
+                className="panel-button-secondary"
+                onClick={async () => {
+                  try {
+                    await deleteTuiSkin.mutateAsync();
+                  } catch (error) {
+                    window.alert(error instanceof Error ? error.message : "TUI skin removal failed");
+                  }
+                }}
+                disabled={!settings?.has_tui_skin}
+              >
+                {t("settings.removeTuiSkin")}
+              </button>
+            </div>
+          </div>
+
+          <div className="border-b border-[var(--border)] pb-3">
+            <p className="panel-label">Current app name</p>
+            <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.app_name ?? "HermesHQ")}</p>
+          </div>
+          <div className="pb-3">
+            <p className="panel-label">Current short name</p>
+            <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.app_short_name ?? settings?.app_name ?? "HermesHQ")}</p>
+          </div>
+          <div className="pb-3">
+            <p className="panel-label">Current default theme</p>
+            <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.theme_mode ?? "dark")}</p>
+          </div>
+          <div className="pb-3">
+            <p className="panel-label">{t("settings.currentTuiSkin")}</p>
+            <p className="mt-2 text-sm text-[var(--text-display)]">
+              {String(settings?.default_tui_skin ?? t("settings.hermesDefaultSkin"))}
+            </p>
+          </div>
+        </div>
+      </section>
+    </section>
+  );
+
+  const renderRuntimeTab = () => (
+    <section className="grid gap-6 xl:grid-cols-3">
+      <form className="panel-frame p-6" onSubmit={submitDefaults}>
+        <p className="panel-label">{t("settings.runtimeDefaults")}</p>
+        <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("settings.instanceProviders")}</h2>
+        <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+          {t("settings.providersCopy")}
+        </p>
+        <div className="mt-6 space-y-4">
+          <label className="panel-field">
+            <span className="panel-label">{t("providers.catalogProvider")}</span>
+            <select
+              value={selectedDefaultProviderSlug}
+              onChange={(event) => {
+                const slug = event.target.value;
+                setSelectedDefaultProviderSlug(slug);
+                const provider = enabledProviders.find((item) => item.slug === slug);
+                if (!provider) {
+                  return;
+                }
+                const applied = applyProviderPreset(provider, defaultApiKeyRef);
+                setDefaultProvider(applied.provider);
+                setDefaultModel(applied.model);
+                setDefaultBaseUrl(applied.base_url);
+                if (!provider.supports_secret_ref) {
+                  setDefaultApiKeyRef("");
+                }
+              }}
+            >
+              <option value="">{t("providers.selectProviderPreset")}</option>
+              {enabledProviders.map((provider) => (
+                <option key={provider.slug} value={provider.slug}>
+                  {provider.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="panel-field">
+            <span className="panel-label">{t("agents.provider")}</span>
+            <input value={defaultProvider} onChange={(event) => setDefaultProvider(event.target.value)} />
+          </label>
+          <label className="panel-field">
+            <span className="panel-label">{t("agents.model")}</span>
+            <input value={defaultModel} onChange={(event) => setDefaultModel(event.target.value)} />
+          </label>
+          <label className="panel-field">
+            <span className="panel-label">{t("agents.secretRef")}</span>
+            <select
+              value={defaultApiKeyRef}
+              onChange={(event) => setDefaultApiKeyRef(event.target.value)}
+              disabled={selectedDefaultProvider?.supports_secret_ref === false}
+            >
+              <option value="">{selectedDefaultProvider?.supports_secret_ref === false ? t("providers.oauthManaged") : t("providers.noSecret")}</option>
+              {(secrets ?? []).map((secret) => (
+                <option key={String(secret.id)} value={String(secret.name)}>
+                  {String(secret.name)}{secret.provider ? ` (${secret.provider})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="panel-field">
+            <span className="panel-label">{t("agents.baseUrl")}</span>
+            <input value={defaultBaseUrl} onChange={(event) => setDefaultBaseUrl(event.target.value)} />
+          </label>
+          <label className="panel-field">
+            <span className="panel-label">Default Hermes version</span>
+            <select value={defaultHermesVersion} onChange={(event) => setDefaultHermesVersion(event.target.value)}>
+              <option value="bundled">Bundled runtime</option>
+              {(hermesVersions ?? [])
+                .filter((item) => item.version !== "bundled" && item.installed)
+                .map((item) => (
+                  <option key={item.version} value={item.version}>
+                    {item.version === "bundled"
+                      ? `Bundled runtime${item.detected_version ? ` (${item.detected_version})` : ""}`
+                      : `${item.version}${item.detected_version ? ` (${item.detected_version})` : ""}`}
                   </option>
                 ))}
-              </select>
-            </label>
-            <label className="panel-field">
-              <span className="panel-label">Value</span>
-              <input value={secretValue} onChange={(event) => setSecretValue(event.target.value)} />
-            </label>
-            <button className="panel-button-primary w-full" type="submit">
-              Store secret
-            </button>
-          </div>
-        </form>
+            </select>
+          </label>
+          <button className="panel-button-primary w-full" type="submit">
+            {t("settings.saveRuntimeDefaults")}
+          </button>
+          {selectedDefaultProvider ? (
+            <p className="text-sm leading-6 text-[var(--text-secondary)]">
+              {selectedDefaultProvider.description}
+            </p>
+          ) : null}
+        </div>
+      </form>
 
-        <form className="panel-frame p-6" onSubmit={submitTemplate}>
-          <p className="panel-label">Templates</p>
-          <h2 className="mt-2 text-2xl text-[var(--text-display)]">Agent presets</h2>
-          <div className="mt-6 space-y-4">
-            <label className="panel-field">
-              <span className="panel-label">Name</span>
-              <input value={templateName} onChange={(event) => setTemplateName(event.target.value)} />
-            </label>
-            <label className="panel-field">
-              <span className="panel-label">Description</span>
-              <textarea rows={4} value={templateDescription} onChange={(event) => setTemplateDescription(event.target.value)} />
-            </label>
-            <button className="panel-button-primary w-full" type="submit">
-              Save template
-            </button>
+      <div className="panel-frame p-6">
+        <p className="panel-label">Instance defaults</p>
+        <div className="mt-4 space-y-3">
+          <div className="border-b border-[var(--border)] pb-3">
+            <p className="panel-label">Provider</p>
+            <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.default_provider ?? "unset")}</p>
           </div>
-        </form>
-      </section>
+          <div className="border-b border-[var(--border)] pb-3">
+            <p className="panel-label">Model</p>
+            <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.default_model ?? "unset")}</p>
+          </div>
+          <div className="border-b border-[var(--border)] pb-3">
+            <p className="panel-label">Secret ref</p>
+            <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.default_api_key_ref ?? "unset")}</p>
+          </div>
+          <div className="border-b border-[var(--border)] pb-3">
+            <p className="panel-label">Base URL</p>
+            <p className="mt-2 break-all text-sm text-[var(--text-display)]">{String(settings?.default_base_url ?? "unset")}</p>
+          </div>
+          <div className="pb-3">
+            <p className="panel-label">Hermes version</p>
+            <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.default_hermes_version ?? "bundled")}</p>
+          </div>
+        </div>
+      </div>
 
-      <section className="grid gap-6 xl:grid-cols-3">
-        <div className="panel-frame p-6 xl:col-span-3">
-          <p className="panel-label">{t("settings.runtimeBuiltins")}</p>
-          <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("settings.runtimeBuiltinsTitle")}</h2>
-          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-            {t("settings.runtimeBuiltinsCopy")}
-          </p>
-          <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
-            <div className="grid gap-4 lg:grid-cols-3">
-              {(runtimeCapabilityOverview?.profiles ?? []).map((profile) => (
-                <article key={profile.slug} className="border border-[var(--border)] bg-[var(--surface-raised)] p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="panel-label">{profile.slug}</p>
-                      <h3 className="mt-2 text-lg text-[var(--text-display)]">{profile.name}</h3>
-                    </div>
-                    <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--text-secondary)]">
-                      {profile.terminal_allowed ? t("settings.terminalEnabled") : t("settings.terminalDisabled")}
-                    </span>
+      <div className="panel-frame p-6 xl:col-span-3">
+        <p className="panel-label">{t("settings.runtimeBuiltins")}</p>
+        <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("settings.runtimeBuiltinsTitle")}</h2>
+        <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+          {t("settings.runtimeBuiltinsCopy")}
+        </p>
+        <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+          <div className="grid gap-4 lg:grid-cols-3">
+            {(runtimeCapabilityOverview?.profiles ?? []).map((profile) => (
+              <article key={profile.slug} className="border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="panel-label">{profile.slug}</p>
+                    <h3 className="mt-2 text-lg text-[var(--text-display)]">{profile.name}</h3>
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-                    {profile.tooling_summary}
-                  </p>
-                  {profile.phase1_full_access ? (
-                    <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-                      {t("settings.phase1FullAccess")}
-                    </p>
-                  ) : (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {profile.builtin_toolsets.map((toolset) => (
-                        <span
-                          key={toolset.slug}
-                          title={toolset.description}
-                          className="rounded-full border border-[var(--border)] px-3 py-1 font-mono text-xs text-[var(--text-secondary)]"
-                        >
-                          {toolset.slug}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </article>
-              ))}
-            </div>
-            <div className="border border-[var(--border)] bg-[var(--surface-raised)] p-4">
-              <p className="panel-label">{t("settings.platformPlugins")}</p>
-              <div className="mt-4 space-y-4">
-                {(runtimeCapabilityOverview?.platform_plugins ?? []).map((plugin) => (
-                  <article key={plugin.slug} className="border-b border-[var(--border)] pb-4 last:border-b-0 last:pb-0">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="panel-label">{plugin.toolset}</p>
-                        <h3 className="mt-2 text-base text-[var(--text-display)]">{plugin.name}</h3>
-                      </div>
-                      <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--text-secondary)]">
-                        {plugin.standard_compatible ? t("settings.standardCompatible") : t("settings.technicalOnly")}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-                      {plugin.description}
-                    </p>
-                  </article>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="panel-frame p-6">
-          <p className="panel-label">Instance defaults</p>
-          <div className="mt-4 space-y-3">
-            <div className="border-b border-[var(--border)] pb-3">
-              <p className="panel-label">Provider</p>
-              <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.default_provider ?? "unset")}</p>
-            </div>
-            <div className="border-b border-[var(--border)] pb-3">
-              <p className="panel-label">Model</p>
-              <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.default_model ?? "unset")}</p>
-            </div>
-            <div className="border-b border-[var(--border)] pb-3">
-              <p className="panel-label">Secret ref</p>
-              <p className="mt-2 text-sm text-[var(--text-display)]">{String(settings?.default_api_key_ref ?? "unset")}</p>
-            </div>
-            <div className="pb-3">
-              <p className="panel-label">Base URL</p>
-              <p className="mt-2 break-all text-sm text-[var(--text-display)]">{String(settings?.default_base_url ?? "unset")}</p>
-            </div>
-          </div>
-        </div>
-        <div className="panel-frame p-6">
-          <p className="panel-label">Stored secrets</p>
-          <div className="mt-4 space-y-3">
-            {(secrets ?? []).map((secret) => (
-              <div key={String(secret.id)} className="border-b border-[var(--border)] pb-3">
-                <p className="panel-label">{String(secret.provider ?? "generic")}</p>
-                <p className="mt-2 text-sm text-[var(--text-display)]">{String(secret.name)}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="panel-frame p-6">
-          <p className="panel-label">Stored templates</p>
-          <div className="mt-4 space-y-3">
-            {(templates ?? []).map((template) => (
-              <div key={String(template.id)} className="border-b border-[var(--border)] pb-3">
-                <p className="mt-2 text-sm text-[var(--text-display)]">{String(template.name)}</p>
-                <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                  {String(template.description ?? "")}
+                  <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--text-secondary)]">
+                    {profile.terminal_allowed ? t("settings.terminalEnabled") : t("settings.terminalDisabled")}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                  {profile.tooling_summary}
                 </p>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="panel-frame p-6">
-          <p className="panel-label">{t("settings.integrations")}</p>
-          <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("settings.integrationCatalog")}</h2>
-          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-            {t("settings.integrationsCopy")}
-          </p>
-          <div className="mt-4 border-b border-[var(--border)] pb-4">
-            <label className="panel-button-secondary cursor-pointer">
-              {t("settings.uploadIntegrationPackage")}
-              <input
-                className="hidden"
-                type="file"
-                accept=".tar,.tar.gz,.tgz"
-                onChange={(event) => void onIntegrationPackageSelected(event.target.files?.[0] ?? null)}
-              />
-            </label>
-          </div>
-          <div className="mt-4 space-y-4">
-            {integrationCatalog.length ? (
-              integrationCatalog.map((integration) => (
-                <article key={integration.slug} className="border border-[var(--border)] bg-[var(--surface-raised)] p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="panel-label">{integration.slug}</p>
-                      <h3 className="mt-2 text-lg text-[var(--text-display)]">{integration.name}</h3>
-                    </div>
-                    <div className="text-right">
-                      <p className="panel-label">{integration.installed ? t("settings.installed") : t("settings.available")}</p>
-                      <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">{integration.source_type}</p>
-                    </div>
-                  </div>
+                {profile.phase1_full_access ? (
                   <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-                    {integration.plugin_description ?? integration.description}
+                    {t("settings.phase1FullAccess")}
                   </p>
+                ) : (
                   <div className="mt-4 flex flex-wrap gap-2">
-                    {integration.tools.map((tool) => (
+                    {profile.builtin_toolsets.map((toolset) => (
                       <span
-                        key={tool}
+                        key={toolset.slug}
+                        title={toolset.description}
                         className="rounded-full border border-[var(--border)] px-3 py-1 font-mono text-xs text-[var(--text-secondary)]"
                       >
-                        {tool}
+                        {toolset.slug}
                       </span>
                     ))}
                   </div>
-                  <div className="mt-4 space-y-1 text-sm text-[var(--text-secondary)]">
-                    <p>{t("agent.integrationSkill", { value: integration.skill_identifier ?? t("agent.none") })}</p>
-                    <p>{t("agent.integrationSecretProvider", { value: integration.secret_provider ?? t("agent.none") })}</p>
-                    <p>{t("agent.integrationProfiles", { value: integration.supported_profiles.join(", ") })}</p>
-                    <p>{t("agent.integrationFields", { value: integration.required_fields.join(", ") })}</p>
+                )}
+              </article>
+            ))}
+          </div>
+          <div className="border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+            <p className="panel-label">{t("settings.platformPlugins")}</p>
+            <div className="mt-4 space-y-4">
+              {(runtimeCapabilityOverview?.platform_plugins ?? []).map((plugin) => (
+                <article key={plugin.slug} className="border-b border-[var(--border)] pb-4 last:border-b-0 last:pb-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="panel-label">{plugin.toolset}</p>
+                      <h3 className="mt-2 text-base text-[var(--text-display)]">{plugin.name}</h3>
+                    </div>
+                    <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--text-secondary)]">
+                      {plugin.standard_compatible ? t("settings.standardCompatible") : t("settings.technicalOnly")}
+                    </span>
                   </div>
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    {integration.installed ? (
-                      <button
-                        type="button"
-                        className="panel-button-secondary"
-                        onClick={() => void uninstallIntegrationPackage.mutateAsync(integration.slug)}
-                      >
-                        {t("settings.uninstallIntegration")}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="panel-button-secondary"
-                        onClick={() => void installIntegrationPackage.mutateAsync(integration.slug)}
-                      >
-                        {t("settings.installIntegration")}
-                      </button>
-                    )}
-                  </div>
+                  <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                    {plugin.description}
+                  </p>
                 </article>
-              ))
-            ) : (
-              <p className="panel-inline-status">{t("settings.noIntegrations")}</p>
-            )}
+              ))}
+            </div>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
+  );
 
+  const renderHermesVersionsTab = () => (
+    <section className="grid gap-6">
       <section className="panel-frame p-6">
-        <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
-          <div>
-            <p className="panel-label">{t("providers.registry")}</p>
-            <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("providers.title")}</h2>
+        <p className="panel-label">Hermes Agent</p>
+        <h2 className="mt-2 text-2xl text-[var(--text-display)]">Versions</h2>
+        <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+          Install Hermes Agent releases once per instance and pin agents to a tested version.
+        </p>
+        <form className="mt-6 border border-[var(--border)] bg-[var(--surface-raised)] p-4" onSubmit={submitHermesVersionCatalog}>
+          <p className="panel-label">Catalog</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <label className="panel-field">
+              <span className="panel-label">Version</span>
+              <input value={newHermesVersion} onChange={(event) => setNewHermesVersion(event.target.value)} placeholder="0.10.0" />
+            </label>
+            <label className="panel-field">
+              <span className="panel-label">Release tag</span>
+              <input value={newHermesReleaseTag} onChange={(event) => setNewHermesReleaseTag(event.target.value)} placeholder="v2026.5.1" />
+            </label>
+            <label className="panel-field">
+              <span className="panel-label">Description</span>
+              <input value={newHermesDescription} onChange={(event) => setNewHermesDescription(event.target.value)} placeholder="Canary candidate" />
+            </label>
           </div>
-          <p className="panel-label">{t("providers.configuredCount", { count: providers?.length ?? 0 })}</p>
-        </div>
-        <div className="mt-6 grid gap-4 xl:grid-cols-2">
-          {(providers ?? []).map((provider) => {
-            const draft = providerDrafts[provider.slug];
-            if (!draft) return null;
-            return (
-              <article key={provider.slug} className="border border-[var(--border)] bg-[var(--surface-raised)] p-5">
-                <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-4">
-                  <div>
-                    <p className="panel-label">{provider.runtime_provider}</p>
-                    <h3 className="mt-2 text-xl text-[var(--text-display)]">{provider.name}</h3>
-                    <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                      {provider.description}
+          <div className="mt-4 flex items-center gap-3">
+            <button className="panel-button-primary" type="submit" disabled={createHermesVersion.isPending}>
+              {createHermesVersion.isPending ? "Adding..." : "Add to catalog"}
+            </button>
+            <p className="panel-inline-status">New versions become installable without changing backend code.</p>
+          </div>
+        </form>
+        <div className="mt-6 space-y-4">
+          {(hermesVersions ?? []).map((version) => (
+            <article key={version.version} className="border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="panel-label">{version.source}</p>
+                  <h3 className="mt-2 text-lg text-[var(--text-display)]">
+                    {version.version === "bundled" ? "Bundled runtime" : version.version}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                    {version.description ?? "Hermes Agent runtime"}
+                  </p>
+                  <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
+                    {version.release_tag ?? (version.detected_version ? `detected ${version.detected_version}` : "no release tag")}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="panel-label">{version.installed ? "installed" : "available"}</p>
+                  {version.is_default ? (
+                    <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--accent)]">default</p>
+                  ) : null}
+                  {version.in_use_by_agents ? (
+                    <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+                      pinned by {version.in_use_by_agents}
                     </p>
-                  </div>
-                  <label className="panel-field !mt-0 min-w-[7rem]">
-                    <span className="panel-label">{t("providers.enabled")}</span>
-                    <select
-                      value={draft.enabled ? "true" : "false"}
+                  ) : null}
+                </div>
+              </div>
+              {version.version !== "bundled" ? (
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <label className="panel-field">
+                    <span className="panel-label">Release tag</span>
+                    <input
+                      value={hermesVersionDrafts[version.version]?.release_tag ?? ""}
                       onChange={(event) =>
-                        setProviderDrafts((current) => ({
+                        setHermesVersionDrafts((current) => ({
                           ...current,
-                          [provider.slug]: {
-                            ...current[provider.slug],
-                            enabled: event.target.value === "true",
+                          [version.version]: {
+                            ...(current[version.version] ?? { release_tag: "", description: "" }),
+                            release_tag: event.target.value,
                           },
                         }))
                       }
-                    >
-                      <option value="true">{t("common.yes")}</option>
-                      <option value="false">{t("common.no")}</option>
-                    </select>
+                    />
+                  </label>
+                  <label className="panel-field">
+                    <span className="panel-label">Description</span>
+                    <input
+                      value={hermesVersionDrafts[version.version]?.description ?? ""}
+                      onChange={(event) =>
+                        setHermesVersionDrafts((current) => ({
+                          ...current,
+                          [version.version]: {
+                            ...(current[version.version] ?? { release_tag: "", description: "" }),
+                            description: event.target.value,
+                          },
+                        }))
+                      }
+                    />
                   </label>
                 </div>
-
-                <div className="mt-4 grid gap-4">
-                  <label className="panel-field">
-                    <span className="panel-label">{t("providers.providerName")}</span>
-                    <input
-                      value={draft.name}
-                      onChange={(event) =>
-                        setProviderDrafts((current) => ({
-                          ...current,
-                          [provider.slug]: { ...current[provider.slug], name: event.target.value },
-                        }))
-                      }
-                    />
-                  </label>
-                  <label className="panel-field">
-                    <span className="panel-label">{t("agents.baseUrl")}</span>
-                    <input
-                      value={draft.base_url}
-                      onChange={(event) =>
-                        setProviderDrafts((current) => ({
-                          ...current,
-                          [provider.slug]: { ...current[provider.slug], base_url: event.target.value },
-                        }))
-                      }
-                      disabled={!provider.supports_custom_base_url}
-                    />
-                  </label>
-                  <label className="panel-field">
-                    <span className="panel-label">{t("providers.defaultModel")}</span>
-                    <input
-                      value={draft.default_model}
-                      onChange={(event) =>
-                        setProviderDrafts((current) => ({
-                          ...current,
-                          [provider.slug]: { ...current[provider.slug], default_model: event.target.value },
-                        }))
-                      }
-                    />
-                  </label>
-                  <div className="grid gap-2 text-sm text-[var(--text-secondary)]">
-                    <p>{t("providers.authType")}: {provider.auth_type}</p>
-                    <p>{t("providers.secretUsage")}: {provider.supports_secret_ref ? t("providers.secretSupported") : t("providers.secretNotSupported")}</p>
-                    {provider.docs_url ? (
-                      <a className="text-[var(--text-display)] underline underline-offset-4" href={provider.docs_url} target="_blank" rel="noreferrer">
-                        {t("providers.openDocs")}
-                      </a>
-                    ) : null}
-                  </div>
-                  <button type="button" className="panel-button-primary w-full" onClick={() => void saveProvider(provider.slug)}>
-                    {t("providers.saveProvider")}
+              ) : null}
+              <div className="mt-4 flex flex-wrap gap-3">
+                {version.version !== "bundled" ? (
+                  <button
+                    type="button"
+                    className="panel-button-secondary"
+                    disabled={updateHermesVersion.isPending}
+                    onClick={() => void saveHermesVersion(version.version)}
+                  >
+                    {updateHermesVersion.isPending ? "Saving..." : "Save metadata"}
                   </button>
-                </div>
-              </article>
-            );
-          })}
+                ) : null}
+                {version.version !== "bundled" && !version.installed ? (
+                  <button
+                    type="button"
+                    className="panel-button-secondary"
+                    disabled={installHermesVersion.isPending}
+                    onClick={() => void installHermesVersion.mutateAsync(version.version)}
+                  >
+                    {installHermesVersion.isPending ? "Installing..." : "Install"}
+                  </button>
+                ) : null}
+                {version.version !== "bundled" && version.installed ? (
+                  <button
+                    type="button"
+                    className="panel-button-secondary"
+                    disabled={uninstallHermesVersion.isPending || version.is_default || version.in_use_by_agents > 0}
+                    onClick={() => void uninstallHermesVersion.mutateAsync(version.version)}
+                  >
+                    {uninstallHermesVersion.isPending ? "Removing..." : "Uninstall"}
+                  </button>
+                ) : null}
+                {version.version !== "bundled" && !version.installed ? (
+                  <button
+                    type="button"
+                    className="panel-button-secondary"
+                    disabled={deleteHermesVersionCatalogEntry.isPending || version.is_default || version.in_use_by_agents > 0}
+                    onClick={() => void deleteHermesVersionCatalogEntry.mutateAsync(version.version)}
+                  >
+                    {deleteHermesVersionCatalogEntry.isPending ? "Deleting..." : "Delete catalog entry"}
+                  </button>
+                ) : null}
+              </div>
+            </article>
+          ))}
         </div>
       </section>
+    </section>
+  );
+
+  const renderSecretsTab = () => (
+    <section className="grid gap-6 xl:grid-cols-2">
+      <form className="panel-frame p-6" onSubmit={submitSecret}>
+        <p className="panel-label">Secrets</p>
+        <h2 className="mt-2 text-2xl text-[var(--text-display)]">Vault</h2>
+        <div className="mt-6 space-y-4">
+          <label className="panel-field">
+            <span className="panel-label">Name</span>
+            <input value={secretName} onChange={(event) => setSecretName(event.target.value)} />
+          </label>
+          <label className="panel-field">
+            <span className="panel-label">Provider</span>
+            <select value={secretProvider} onChange={(event) => setSecretProvider(event.target.value)}>
+              <option value="">{t("providers.genericSecret")}</option>
+              {(providers ?? []).map((provider) => (
+                <option key={provider.slug} value={provider.slug}>
+                  {provider.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="panel-field">
+            <span className="panel-label">Value</span>
+            <input value={secretValue} onChange={(event) => setSecretValue(event.target.value)} />
+          </label>
+          <button className="panel-button-primary w-full" type="submit">
+            Store secret
+          </button>
+        </div>
+      </form>
+
+      <div className="panel-frame p-6">
+        <p className="panel-label">Stored secrets</p>
+        <div className="mt-4 space-y-3">
+          {(secrets ?? []).map((secret) => (
+            <div key={String(secret.id)} className="border-b border-[var(--border)] pb-3">
+              <p className="panel-label">{String(secret.provider ?? "generic")}</p>
+              <p className="mt-2 text-sm text-[var(--text-display)]">{String(secret.name)}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+
+  const renderTemplatesTab = () => (
+    <section className="grid gap-6 xl:grid-cols-2">
+      <form className="panel-frame p-6" onSubmit={submitTemplate}>
+        <p className="panel-label">Templates</p>
+        <h2 className="mt-2 text-2xl text-[var(--text-display)]">Agent presets</h2>
+        <div className="mt-6 space-y-4">
+          <label className="panel-field">
+            <span className="panel-label">Name</span>
+            <input value={templateName} onChange={(event) => setTemplateName(event.target.value)} />
+          </label>
+          <label className="panel-field">
+            <span className="panel-label">Description</span>
+            <textarea rows={4} value={templateDescription} onChange={(event) => setTemplateDescription(event.target.value)} />
+          </label>
+          <button className="panel-button-primary w-full" type="submit">
+            Save template
+          </button>
+        </div>
+      </form>
+
+      <div className="panel-frame p-6">
+        <p className="panel-label">Stored templates</p>
+        <div className="mt-4 space-y-3">
+          {(templates ?? []).map((template) => (
+            <div key={String(template.id)} className="border-b border-[var(--border)] pb-3">
+              <p className="mt-2 text-sm text-[var(--text-display)]">{String(template.name)}</p>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                {String(template.description ?? "")}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+
+  const renderIntegrationsTab = () => (
+    <section className="grid gap-6">
+      <div className="panel-frame p-6">
+        <p className="panel-label">{t("settings.integrations")}</p>
+        <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("settings.integrationCatalog")}</h2>
+        <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+          {t("settings.integrationsCopy")}
+        </p>
+        <div className="mt-4 border-b border-[var(--border)] pb-4">
+          <label className="panel-button-secondary cursor-pointer">
+            {t("settings.uploadIntegrationPackage")}
+            <input
+              className="hidden"
+              type="file"
+              accept=".tar,.tar.gz,.tgz"
+              onChange={(event) => void onIntegrationPackageSelected(event.target.files?.[0] ?? null)}
+            />
+          </label>
+        </div>
+        <div className="mt-4 space-y-4">
+          {integrationCatalog.length ? (
+            integrationCatalog.map((integration) => (
+              <article key={integration.slug} className="border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="panel-label">{integration.slug}</p>
+                    <h3 className="mt-2 text-lg text-[var(--text-display)]">{integration.name}</h3>
+                  </div>
+                  <div className="text-right">
+                    <p className="panel-label">{integration.installed ? t("settings.installed") : t("settings.available")}</p>
+                    <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">{integration.source_type}</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                  {integration.plugin_description ?? integration.description}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {integration.tools.map((tool) => (
+                    <span
+                      key={tool}
+                      className="rounded-full border border-[var(--border)] px-3 py-1 font-mono text-xs text-[var(--text-secondary)]"
+                    >
+                      {tool}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-4 space-y-1 text-sm text-[var(--text-secondary)]">
+                  <p>{t("agent.integrationSkill", { value: integration.skill_identifier ?? t("agent.none") })}</p>
+                  <p>{t("agent.integrationSecretProvider", { value: integration.secret_provider ?? t("agent.none") })}</p>
+                  <p>{t("agent.integrationProfiles", { value: integration.supported_profiles.join(", ") })}</p>
+                  <p>{t("agent.integrationFields", { value: integration.required_fields.join(", ") })}</p>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  {integration.installed ? (
+                    <button
+                      type="button"
+                      className="panel-button-secondary"
+                      onClick={() => void uninstallIntegrationPackage.mutateAsync(integration.slug)}
+                    >
+                      {t("settings.uninstallIntegration")}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="panel-button-secondary"
+                      onClick={() => void installIntegrationPackage.mutateAsync(integration.slug)}
+                    >
+                      {t("settings.installIntegration")}
+                    </button>
+                  )}
+                </div>
+              </article>
+            ))
+          ) : (
+            <p className="panel-inline-status">{t("settings.noIntegrations")}</p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+
+  const renderProvidersTab = () => (
+    <section className="panel-frame p-6">
+      <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
+        <div>
+          <p className="panel-label">{t("providers.registry")}</p>
+          <h2 className="mt-2 text-3xl text-[var(--text-display)]">{t("providers.title")}</h2>
+        </div>
+        <p className="panel-label">{t("providers.configuredCount", { count: providers?.length ?? 0 })}</p>
+      </div>
+      <div className="mt-6 grid gap-4 xl:grid-cols-2">
+        {(providers ?? []).map((provider) => {
+          const draft = providerDrafts[provider.slug];
+          if (!draft) return null;
+          return (
+            <article key={provider.slug} className="border border-[var(--border)] bg-[var(--surface-raised)] p-5">
+              <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-4">
+                <div>
+                  <p className="panel-label">{provider.runtime_provider}</p>
+                  <h3 className="mt-2 text-xl text-[var(--text-display)]">{provider.name}</h3>
+                  <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                    {provider.description}
+                  </p>
+                </div>
+                <label className="panel-field !mt-0 min-w-[7rem]">
+                  <span className="panel-label">{t("providers.enabled")}</span>
+                  <select
+                    value={draft.enabled ? "true" : "false"}
+                    onChange={(event) =>
+                      setProviderDrafts((current) => ({
+                        ...current,
+                        [provider.slug]: {
+                          ...current[provider.slug],
+                          enabled: event.target.value === "true",
+                        },
+                      }))
+                    }
+                  >
+                    <option value="true">{t("common.yes")}</option>
+                    <option value="false">{t("common.no")}</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-4 grid gap-4">
+                <label className="panel-field">
+                  <span className="panel-label">{t("providers.providerName")}</span>
+                  <input
+                    value={draft.name}
+                    onChange={(event) =>
+                      setProviderDrafts((current) => ({
+                        ...current,
+                        [provider.slug]: { ...current[provider.slug], name: event.target.value },
+                      }))
+                    }
+                  />
+                </label>
+                <label className="panel-field">
+                  <span className="panel-label">{t("agents.baseUrl")}</span>
+                  <input
+                    value={draft.base_url}
+                    onChange={(event) =>
+                      setProviderDrafts((current) => ({
+                        ...current,
+                        [provider.slug]: { ...current[provider.slug], base_url: event.target.value },
+                      }))
+                    }
+                    disabled={!provider.supports_custom_base_url}
+                  />
+                </label>
+                <label className="panel-field">
+                  <span className="panel-label">{t("providers.defaultModel")}</span>
+                  <input
+                    value={draft.default_model}
+                    onChange={(event) =>
+                      setProviderDrafts((current) => ({
+                        ...current,
+                        [provider.slug]: { ...current[provider.slug], default_model: event.target.value },
+                      }))
+                    }
+                  />
+                </label>
+                <div className="grid gap-2 text-sm text-[var(--text-secondary)]">
+                  <p>{t("providers.authType")}: {provider.auth_type}</p>
+                  <p>{t("providers.secretUsage")}: {provider.supports_secret_ref ? t("providers.secretSupported") : t("providers.secretNotSupported")}</p>
+                  {provider.docs_url ? (
+                    <a className="text-[var(--text-display)] underline underline-offset-4" href={provider.docs_url} target="_blank" rel="noreferrer">
+                      {t("providers.openDocs")}
+                    </a>
+                  ) : null}
+                </div>
+                <button type="button" className="panel-button-primary w-full" onClick={() => void saveProvider(provider.slug)}>
+                  {t("providers.saveProvider")}
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+
+  return (
+    <div className="grid gap-6">
+      <section className="panel-frame p-6">
+        <div className="flex flex-col gap-4 border-b border-[var(--border)] pb-5">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="panel-label">{t("settings.settings")}</p>
+              <h2 className="mt-2 text-3xl text-[var(--text-display)]">{activeTabMeta.label}</h2>
+            </div>
+            <p className="max-w-[34rem] text-sm leading-6 text-[var(--text-secondary)]">
+              {activeTabMeta.copy}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {settingsTabs.map((tab) => {
+              const isActive = tab.id === activeTab;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={
+                    isActive
+                      ? "rounded-full border border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] px-4 py-2 text-sm text-[var(--text-display)]"
+                      : "rounded-full border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2 text-sm text-[var(--text-secondary)] transition hover:text-[var(--text-display)]"
+                  }
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {activeTab === "general" ? renderGeneralTab() : null}
+      {activeTab === "runtime" ? renderRuntimeTab() : null}
+      {activeTab === "providers" ? renderProvidersTab() : null}
+      {activeTab === "integrations" ? renderIntegrationsTab() : null}
+      {activeTab === "hermesVersions" ? renderHermesVersionsTab() : null}
+      {activeTab === "secrets" ? renderSecretsTab() : null}
+      {activeTab === "templates" ? renderTemplatesTab() : null}
     </div>
   );
 }

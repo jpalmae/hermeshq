@@ -16,6 +16,13 @@ function statusTone(status: string) {
   return "text-[var(--text-secondary)]";
 }
 
+function statusBadgeTone(status: string) {
+  if (status === "running") return "border-[color-mix(in_srgb,var(--success)_45%,transparent)] bg-[color-mix(in_srgb,var(--success)_16%,transparent)] text-[var(--success)]";
+  if (status === "queued" || status === "starting") return "border-[color-mix(in_srgb,var(--warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] text-[var(--warning)]";
+  if (status === "error" || status === "failed") return "border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] text-[var(--accent)]";
+  return "border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_76%,transparent)] text-[var(--text-secondary)]";
+}
+
 export function DashboardPage() {
   const { data: overview } = useDashboardOverview();
   const { data: agents } = useAgents();
@@ -25,10 +32,10 @@ export function DashboardPage() {
   const liveFeed = realtime.slice(0, 5);
 
   return (
-    <div className="space-y-8">
+    <div className="dashboard-page space-y-8">
       <section className="grid gap-6 xl:grid-cols-[0.7fr_1.3fr]">
         <div className="grid gap-6">
-          <div className="panel-frame p-4 md:p-5">
+          <div className="dashboard-readout-card panel-frame p-4 md:p-5">
             <div>
               <p className="panel-label">{t("dashboard.primaryReadout")}</p>
               <div className="mt-2 flex items-end gap-3">
@@ -55,22 +62,22 @@ export function DashboardPage() {
               </div>
             </div>
             <div className="mt-4 grid gap-3 border-t border-[var(--border)] pt-3 md:grid-cols-3">
-              <div>
+              <div className="dashboard-metric-chip">
                   <p className="panel-label">{t("dashboard.fleet")}</p>
                 <p className="mt-1 text-base text-[var(--text-display)]">{overview?.stats.total_agents ?? 0}</p>
               </div>
-              <div>
+              <div className="dashboard-metric-chip">
                   <p className="panel-label">{t("dashboard.queue")}</p>
                 <p className="mt-1 text-base text-[var(--text-display)]">{overview?.stats.queued_tasks ?? 0}</p>
               </div>
-              <div>
+              <div className="dashboard-metric-chip">
                   <p className="panel-label">{t("dashboard.tasks")}</p>
                 <p className="mt-1 text-base text-[var(--text-display)]">{overview?.stats.total_tasks ?? 0}</p>
               </div>
             </div>
           </div>
 
-          <div className="panel-frame p-5">
+          <div className="dashboard-feed-card panel-frame p-5">
             <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-3">
               <div>
                 <p className="panel-label">{t("dashboard.liveFeed")}</p>
@@ -80,12 +87,12 @@ export function DashboardPage() {
             </div>
             <div className="mt-3 space-y-2">
               {liveFeed.map((event, index) => (
-                <div key={`${event.type}-${index}`} className="border-b border-[var(--border)] py-2 last:border-b-0">
+                <div key={`${event.type}-${index}`} className="dashboard-feed-row border-b border-[var(--border)] py-2 last:border-b-0">
                   <div className="flex items-center justify-between gap-3">
                     <p className="truncate text-xs uppercase tracking-[0.1em] text-[var(--text-secondary)]">
                       {event.type}
                     </p>
-                    <span className={`shrink-0 text-[10px] uppercase tracking-[0.1em] ${statusTone(event.status ?? "")}`}>
+                    <span className={`dashboard-status-badge shrink-0 rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.1em] ${statusBadgeTone(event.status ?? "")}`}>
                       {event.status ?? "stream"}
                     </span>
                   </div>
@@ -99,7 +106,7 @@ export function DashboardPage() {
           </div>
         </div>
 
-        <section className="panel-frame p-6">
+        <section className="dashboard-map-card panel-frame p-6">
           <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
             <div>
               <p className="panel-label">{t("dashboard.agentMap")}</p>
@@ -116,7 +123,7 @@ export function DashboardPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="panel-frame p-6">
+        <div className="dashboard-fleet-card panel-frame p-6">
           <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
             <div>
               <p className="panel-label">{t("dashboard.agents")}</p>
@@ -131,7 +138,7 @@ export function DashboardPage() {
               <Link
                 key={agent.id}
                 to={`/agents/${agent.id}`}
-                className="grid gap-3 border-b border-[var(--border)] py-4 md:grid-cols-[1.4fr_1fr_1fr]"
+                className="dashboard-agent-row grid gap-3 border-b border-[var(--border)] py-4 md:grid-cols-[1.4fr_1fr_1fr]"
               >
                 <div className="flex items-start gap-4">
                   <AgentAvatar agent={agent} sizeClass="h-12 w-12" className="shrink-0" />
@@ -149,7 +156,7 @@ export function DashboardPage() {
                 </div>
                 <div className="text-left md:text-right">
                   <p className="panel-label">{t("dashboard.status")}</p>
-                  <p className={`mt-2 text-sm uppercase tracking-[0.1em] ${statusTone(agent.status)}`}>
+                  <p className={`dashboard-agent-status mt-2 inline-flex rounded-full border px-2.5 py-1 text-sm uppercase tracking-[0.1em] ${statusBadgeTone(agent.status)}`}>
                     {agent.status}
                   </p>
                 </div>
@@ -158,11 +165,11 @@ export function DashboardPage() {
           </div>
         </div>
 
-        <div className="panel-frame p-6">
+        <div className="dashboard-activity-card panel-frame p-6">
           <p className="panel-label">{t("dashboard.recentActivity")}</p>
           <div className="mt-6 space-y-4">
             {overview?.activity.map((item) => (
-              <div key={item.id} className="border-b border-[var(--border)] pb-4">
+              <div key={item.id} className="dashboard-activity-row border-b border-[var(--border)] pb-4">
                 <p className="panel-label">{item.event_type}</p>
                 <p className="mt-2 text-sm text-[var(--text-primary)]">{item.message ?? t("dashboard.noMessage")}</p>
                 <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">

@@ -71,6 +71,41 @@
   --org-icon-background: rgba(23, 20, 18, 0.06);
 }
 
+:root[data-theme="enterprise"] {
+  color-scheme: dark;
+  --black: #09111c;
+  --surface: #101a27;
+  --surface-raised: #162232;
+  --border: #223246;
+  --border-visible: #31475f;
+  --text-disabled: #6a7b8f;
+  --text-secondary: #93a4b8;
+  --text-primary: #d7e1ed;
+  --text-display: #f4f8fc;
+  --accent: #4f8cff;
+  --accent-subtle: rgba(79, 140, 255, 0.16);
+  --success: #38a169;
+  --warning: #d69b2d;
+  --interactive: #63a3ff;
+  --selection: rgba(79, 140, 255, 0.2);
+  --overlay: rgba(6, 13, 22, 0.78);
+  --contrast-muted: rgba(9, 17, 28, 0.76);
+  --app-background:
+    radial-gradient(circle at top right, rgba(79, 140, 255, 0.12), transparent 22rem),
+    radial-gradient(circle at bottom left, rgba(34, 50, 70, 0.42), transparent 20rem),
+    linear-gradient(180deg, #0b1420 0%, #09111c 100%);
+  --panel-background: color-mix(in srgb, var(--surface) 96%, rgba(255, 255, 255, 0.015));
+  --terminal-background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.012), transparent),
+    #0c1622;
+  --org-grid:
+    linear-gradient(rgba(147, 164, 184, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(147, 164, 184, 0.045) 1px, transparent 1px),
+    color-mix(in srgb, var(--surface) 98%, transparent);
+  --org-card-background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent), var(--surface-raised);
+  --org-icon-background: rgba(99, 163, 255, 0.08);
+}
+
 @theme inline {
   --font-display: "Doto", "Space Mono", monospace;
   --font-sans: "Space Grotesk", "DM Sans", system-ui, sans-serif;
@@ -129,6 +164,34 @@
     border-color: var(--text-primary);
   }
 
+  :root[data-theme="enterprise"] input,
+  :root[data-theme="enterprise"] textarea,
+  :root[data-theme="enterprise"] select {
+    border: 1px solid color-mix(in srgb, var(--border-visible) 86%, transparent);
+    border-radius: 0.95rem;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.014), transparent 58%),
+      color-mix(in srgb, var(--surface-raised) 92%, transparent);
+    padding: 0.9rem 1rem 0.8rem;
+    font-family: var(--font-sans);
+    letter-spacing: 0.01em;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018);
+    transition:
+      border-color 160ms ease-out,
+      box-shadow 160ms ease-out,
+      background-color 160ms ease-out;
+    appearance: none;
+  }
+
+  :root[data-theme="enterprise"] input:focus,
+  :root[data-theme="enterprise"] textarea:focus,
+  :root[data-theme="enterprise"] select:focus {
+    border-color: color-mix(in srgb, var(--interactive) 74%, white 6%);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--interactive) 18%, transparent),
+      inset 0 1px 0 rgba(255, 255, 255, 0.022);
+  }
+
   ::selection {
     background: var(--selection);
     color: var(--text-display);
@@ -141,6 +204,14 @@
     background: var(--panel-background);
   }
 
+  :root[data-theme="enterprise"] .panel-frame {
+    border-radius: 1rem;
+    box-shadow:
+      0 14px 32px rgba(0, 0, 0, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    backdrop-filter: blur(18px);
+  }
+
   .panel-label {
     font-family: var(--font-mono);
     font-size: 0.7rem;
@@ -149,8 +220,19 @@
     color: var(--text-secondary);
   }
 
+  :root[data-theme="enterprise"] .panel-label {
+    color: color-mix(in srgb, var(--text-secondary) 92%, white 6%);
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+  }
+
   .panel-field {
     display: block;
+  }
+
+  :root[data-theme="enterprise"] .panel-field {
+    display: grid;
+    gap: 0.45rem;
   }
 
   .panel-button-primary,
@@ -174,10 +256,252 @@
     color: var(--black);
   }
 
+  :root[data-theme="enterprise"] .panel-button-primary {
+    background: linear-gradient(180deg, #6ba2ff 0%, #4f8cff 100%);
+    color: #07101a;
+    box-shadow: 0 10px 20px rgba(79, 140, 255, 0.18);
+  }
+
   .panel-button-secondary {
     border: 1px solid var(--border-visible);
     background: transparent;
     color: var(--text-primary);
+  }
+
+  :root[data-theme="enterprise"] .panel-button-secondary {
+    background: rgba(255, 255, 255, 0.015);
+  }
+
+  :root[data-theme="enterprise"] .panel-button-secondary:hover {
+    border-color: color-mix(in srgb, var(--interactive) 35%, var(--border-visible));
+    background: rgba(255, 255, 255, 0.026);
+  }
+
+  :root[data-theme="enterprise"] .panel-button-primary:hover {
+    filter: brightness(1.03);
+  }
+
+  :root[data-theme="enterprise"] .app-shell-grid {
+    max-width: 1680px;
+    gap: 1.5rem;
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+  }
+
+  :root[data-theme="enterprise"] .app-shell-sidebar {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 18%),
+      linear-gradient(180deg, rgba(79, 140, 255, 0.04), transparent 42%),
+      var(--panel-background);
+  }
+
+  :root[data-theme="enterprise"] .app-shell-brand {
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    padding-bottom: 1rem;
+  }
+
+  :root[data-theme="enterprise"] .app-shell-nav-link {
+    border-bottom-color: color-mix(in srgb, var(--border) 85%, transparent);
+    padding-inline: 0.4rem;
+    transition:
+      color 160ms ease-out,
+      border-color 160ms ease-out,
+      transform 160ms ease-out,
+      background-color 160ms ease-out;
+  }
+
+  :root[data-theme="enterprise"] .app-shell-nav-link:hover {
+    border-bottom-color: var(--border-visible);
+    color: var(--text-display);
+    transform: translateX(2px);
+  }
+
+  :root[data-theme="enterprise"] .app-shell-sidebar-toggle {
+    border-radius: 0.8rem;
+    min-width: 2.6rem;
+  }
+
+  :root[data-theme="enterprise"] .app-shell-operator {
+    border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent);
+    border-radius: 0.9rem;
+    padding: 0.7rem 0.85rem;
+  }
+
+  :root[data-theme="enterprise"] .app-shell-main {
+    padding-top: 0.15rem;
+  }
+
+  :root[data-theme="enterprise"] .app-shell-mobile {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.012), transparent 14%),
+      var(--panel-background);
+  }
+
+  :root[data-theme="enterprise"] .dashboard-page {
+    gap: 1.5rem;
+  }
+
+  :root[data-theme="enterprise"] .dashboard-readout-card,
+  :root[data-theme="enterprise"] .dashboard-feed-card,
+  :root[data-theme="enterprise"] .dashboard-map-card,
+  :root[data-theme="enterprise"] .dashboard-fleet-card,
+  :root[data-theme="enterprise"] .dashboard-activity-card {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 24%),
+      var(--panel-background);
+  }
+
+  :root[data-theme="enterprise"] .dashboard-readout-card {
+    position: relative;
+    overflow: hidden;
+  }
+
+  :root[data-theme="enterprise"] .dashboard-readout-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at top right, rgba(79, 140, 255, 0.16), transparent 34%),
+      linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.01));
+    pointer-events: none;
+  }
+
+  :root[data-theme="enterprise"] .dashboard-metric-chip {
+    border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
+    border-radius: 0.95rem;
+    background: rgba(255, 255, 255, 0.015);
+    padding: 0.9rem 1rem;
+  }
+
+  :root[data-theme="enterprise"] .dashboard-feed-row,
+  :root[data-theme="enterprise"] .dashboard-activity-row,
+  :root[data-theme="enterprise"] .dashboard-agent-row {
+    border-bottom-color: color-mix(in srgb, var(--border) 88%, transparent);
+  }
+
+  :root[data-theme="enterprise"] .dashboard-feed-row {
+    padding-inline: 0.25rem;
+  }
+
+  :root[data-theme="enterprise"] .dashboard-status-badge,
+  :root[data-theme="enterprise"] .dashboard-agent-status {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  }
+
+  :root[data-theme="enterprise"] .dashboard-agent-row {
+    border-radius: 0.9rem;
+    padding-inline: 0.35rem;
+    transition:
+      background-color 160ms ease-out,
+      border-color 160ms ease-out,
+      transform 160ms ease-out;
+  }
+
+  :root[data-theme="enterprise"] .dashboard-agent-row:hover {
+    background: rgba(255, 255, 255, 0.02);
+    transform: translateX(2px);
+  }
+
+  :root[data-theme="enterprise"] .tasks-composer,
+  :root[data-theme="enterprise"] .tasks-board {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 20%),
+      var(--panel-background);
+  }
+
+  :root[data-theme="enterprise"] .tasks-column {
+    border-color: color-mix(in srgb, var(--border) 90%, transparent);
+    border-radius: 1rem;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 18%),
+      color-mix(in srgb, var(--surface-raised) 96%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018);
+  }
+
+  :root[data-theme="enterprise"] .tasks-column-header {
+    border-bottom-color: color-mix(in srgb, var(--border) 88%, transparent);
+  }
+
+  :root[data-theme="enterprise"] .tasks-card {
+    border-color: color-mix(in srgb, var(--border) 90%, transparent);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.014), transparent 22%),
+      color-mix(in srgb, var(--surface) 94%, transparent);
+    box-shadow:
+      0 10px 22px rgba(0, 0, 0, 0.16),
+      inset 0 1px 0 rgba(255, 255, 255, 0.018);
+    transition:
+      transform 160ms ease-out,
+      border-color 160ms ease-out,
+      background-color 160ms ease-out;
+  }
+
+  :root[data-theme="enterprise"] .tasks-card:hover {
+    border-color: var(--border-visible);
+    transform: translateY(-1px);
+  }
+
+  :root[data-theme="enterprise"] .tasks-card-badge {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  }
+
+  :root[data-theme="enterprise"] .tasks-card-actions {
+    border-top: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    padding-top: 0.85rem;
+  }
+
+  :root[data-theme="enterprise"] .agent-hero,
+  :root[data-theme="enterprise"] .agent-config,
+  :root[data-theme="enterprise"] .agent-section {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 20%),
+      var(--panel-background);
+  }
+
+  :root[data-theme="enterprise"] .agent-hero {
+    position: relative;
+    overflow: hidden;
+  }
+
+  :root[data-theme="enterprise"] .agent-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at top right, rgba(79, 140, 255, 0.14), transparent 32%),
+      linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.01));
+    pointer-events: none;
+  }
+
+  :root[data-theme="enterprise"] .agent-hero-metric {
+    border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, 0.015);
+    padding: 1rem 1.1rem;
+  }
+
+  :root[data-theme="enterprise"] .agent-status-pill {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  }
+
+  :root[data-theme="enterprise"] .agent-section-toggle {
+    border-bottom-color: color-mix(in srgb, var(--border) 88%, transparent);
+  }
+
+  :root[data-theme="enterprise"] .agent-integration-card {
+    border-radius: 1rem;
+    border-color: color-mix(in srgb, var(--border) 90%, transparent);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 18%),
+      color-mix(in srgb, var(--surface-raised) 96%, transparent);
+    box-shadow:
+      0 10px 22px rgba(0, 0, 0, 0.16),
+      inset 0 1px 0 rgba(255, 255, 255, 0.018);
+  }
+
+  :root[data-theme="enterprise"] .agent-capability-badge {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   }
 
   .panel-button-secondary:hover,
@@ -193,6 +517,10 @@
     color: var(--text-secondary);
   }
 
+  :root[data-theme="enterprise"] .panel-inline-status {
+    color: color-mix(in srgb, var(--text-secondary) 88%, white 4%);
+  }
+
   .panel-stat-row {
     display: flex;
     align-items: baseline;
@@ -200,6 +528,11 @@
     gap: 1rem;
     border-bottom: 1px solid var(--border);
     padding-bottom: 1rem;
+  }
+
+  :root[data-theme="enterprise"] .panel-stat-row {
+    border-bottom-color: color-mix(in srgb, var(--border) 88%, transparent);
+    padding: 0.9rem 0;
   }
 
   .panel-stat-row span {
@@ -221,6 +554,13 @@
     background: var(--terminal-background);
   }
 
+  :root[data-theme="enterprise"] .terminal-shell {
+    border-radius: 1rem;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.018),
+      0 18px 40px rgba(0, 0, 0, 0.24);
+  }
+
   .terminal-shell .xterm {
     height: 100%;
     padding: 0.9rem;
@@ -236,6 +576,13 @@
     background: color-mix(in srgb, var(--surface) 95%, transparent);
   }
 
+  :root[data-theme="enterprise"] .org-map-shell {
+    border-radius: 1rem;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.014), transparent 12%),
+      color-mix(in srgb, var(--surface) 97%, transparent);
+  }
+
   .org-map-toolbar {
     display: flex;
     align-items: center;
@@ -243,6 +590,11 @@
     gap: 1rem;
     border-bottom: 1px solid var(--border);
     padding: 1rem 1.25rem;
+  }
+
+  :root[data-theme="enterprise"] .org-map-toolbar {
+    border-bottom-color: color-mix(in srgb, var(--border) 88%, transparent);
+    background: rgba(255, 255, 255, 0.012);
   }
 
   .org-map-viewport {
@@ -278,6 +630,13 @@
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.01);
   }
 
+  :root[data-theme="enterprise"] .org-map-card {
+    border-radius: 1rem;
+    box-shadow:
+      0 14px 26px rgba(0, 0, 0, 0.16),
+      inset 0 1px 0 rgba(255, 255, 255, 0.018);
+  }
+
   .org-map-handle {
     margin: -0.1rem -0.1rem 1rem;
     display: flex;
@@ -286,6 +645,10 @@
     border-bottom: 1px solid var(--border);
     padding: 0 0.1rem 0.9rem;
     user-select: none;
+  }
+
+  :root[data-theme="enterprise"] .org-map-handle {
+    border-bottom-color: color-mix(in srgb, var(--border) 88%, transparent);
   }
 
   .org-chart-icon {

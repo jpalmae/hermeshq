@@ -9,7 +9,7 @@ from hermeshq.schemas.common import ORMModel
 class AppSettingsUpdate(BaseModel):
     app_name: str | None = None
     app_short_name: str | None = None
-    theme_mode: Literal["dark", "light", "system"] | None = None
+    theme_mode: Literal["dark", "light", "system", "enterprise"] | None = None
     default_locale: Literal["en", "es"] | None = None
     default_provider: str | None = None
     default_model: str | None = None
@@ -23,7 +23,7 @@ class AppSettingsRead(ORMModel):
     id: str
     app_name: str | None
     app_short_name: str | None
-    theme_mode: Literal["dark", "light", "system"]
+    theme_mode: Literal["dark", "light", "system", "enterprise"]
     default_locale: Literal["en", "es"]
     default_provider: str | None
     default_model: str | None
