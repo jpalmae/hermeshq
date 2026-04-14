@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import urllib.error
-import urllib.parse
-import urllib.request
+
+import requests
 
 DEFAULT_BASE_URL = "https://public-api.gamma.app/v1.0"
+REQUEST_HEADERS = {
+    "Content-Type": "application/json",
+    "User-Agent": "HermesHQ-Gamma/1.0",
+}
 
 
 def _base_url(config: dict) -> str:
@@ -29,7 +31,7 @@ async def run_action(action_slug: str, *, agent, config: dict, resolve_secret, w
 
     endpoint = "/themes" if action_slug == "list_themes" else "/folders"
     result = _get_json(
-        f"{_base_url(config)}{endpoint}?{urllib.parse.urlencode({'limit': 25})}",
+        f"{_base_url(config)}{endpoint}",
         api_key,
     )
     if not result["success"]:
@@ -51,20 +53,16 @@ async def run_action(action_slug: str, *, agent, config: dict, resolve_secret, w
 
 
 def _get_json(url: str, api_key: str) -> dict:
-    request = urllib.request.Request(
-        url,
-        method="GET",
-        headers={
-            "Content-Type": "application/json",
-            "X-API-KEY": api_key,
-        },
-    )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            payload = json.loads(response.read().decode("utf-8") or "{}")
-            return {"success": True, "data": payload}
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        return {"success": False, "message": f"Gamma API returned {exc.code}.", "details": {"body": body[:4000]}}
+        response = requests.get(
+            url,
+            params={"limit": 25},
+            headers={**REQUEST_HEADERS, "X-API-KEY": api_key},
+            timeout=30,
+        )
+        if response.status_code >= 400:
+            return {"success": False, "message": f"Gamma API returned {response.status_code}.", "details": {"body": response.text[:4000]}}
+        payload = response.json() if response.text else {}
+        return {"success": True, "data": payload}
     except Exception as exc:
         return {"success": False, "message": f"Gamma API request failed: {exc}", "details": None}

@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 import os
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
+
+import requests
 
 DEFAULT_BASE_URL = "https://public-api.gamma.app/v1.0"
+REQUEST_HEADERS = {
+    "Content-Type": "application/json",
+    "User-Agent": "HermesHQ-Gamma/1.0",
+}
 
 SIXMANAGER_LOGOS = {
     "horizontal": "https://media.sixmanager.io/media/logos/Logo_Sixmanager_horizontal_color.png",
@@ -27,7 +30,7 @@ def _base_url() -> str:
 def _headers() -> dict[str, str]:
     api_key = os.environ.get("GAMMA_API_KEY", "").strip()
     return {
-        "Content-Type": "application/json",
+        **REQUEST_HEADERS,
         "X-API-KEY": api_key,
     }
 
@@ -37,29 +40,30 @@ def _request(method: str, path: str, payload: dict | None = None, query: dict | 
         return json.dumps({"success": False, "error": "Gamma integration is not configured. Set a Gamma API key secret first."})
 
     url = f"{_base_url()}{path}"
-    if query:
-        url = f"{url}?{urllib.parse.urlencode({k: v for k, v in query.items() if v is not None})}"
-    data = json.dumps(payload).encode("utf-8") if payload is not None else None
-    request = urllib.request.Request(url, data=data, method=method.upper(), headers=_headers())
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
-            raw = response.read().decode("utf-8")
-            parsed = json.loads(raw) if raw else {}
-            return json.dumps({"success": True, "status_code": response.status, "data": parsed})
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        try:
-            parsed = json.loads(body) if body else {}
-        except Exception:
-            parsed = {"raw": body}
-        return json.dumps(
-            {
-                "success": False,
-                "status_code": exc.code,
-                "error": parsed.get("error") or parsed.get("message") or body or str(exc),
-                "data": parsed,
-            }
+        response = requests.request(
+            method.upper(),
+            url,
+            params={k: v for k, v in (query or {}).items() if v is not None},
+            json=payload,
+            headers=_headers(),
+            timeout=120,
         )
+        raw = response.text or ""
+        try:
+            parsed = response.json() if raw else {}
+        except Exception:
+            parsed = {"raw": raw}
+        if response.status_code >= 400:
+            return json.dumps(
+                {
+                    "success": False,
+                    "status_code": response.status_code,
+                    "error": parsed.get("error") or parsed.get("message") or raw or f"HTTP {response.status_code}",
+                    "data": parsed,
+                }
+            )
+        return json.dumps({"success": True, "status_code": response.status_code, "data": parsed})
     except Exception as exc:
         return json.dumps({"success": False, "error": str(exc)})
 

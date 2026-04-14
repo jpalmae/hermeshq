@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import urllib.error
-import urllib.parse
-import urllib.request
+
+import requests
 
 DEFAULT_BASE_URL = "https://public-api.gamma.app/v1.0"
+REQUEST_HEADERS = {
+    "Content-Type": "application/json",
+    "User-Agent": "HermesHQ-Gamma/1.0",
+}
 
 
 def _base_url(config: dict) -> str:
@@ -24,22 +26,17 @@ async def test_connection(config: dict, resolve_secret):
     if not api_key:
         return False, "Configured Gamma API key secret could not be resolved.", None
 
-    url = f"{_base_url(config)}/themes?{urllib.parse.urlencode({'limit': 1})}"
-    request = urllib.request.Request(
-        url,
-        method="GET",
-        headers={
-            "Content-Type": "application/json",
-            "X-API-KEY": api_key,
-        },
-    )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            payload = json.loads(response.read().decode("utf-8") or "{}")
-            themes = payload.get("themes") or []
-            return True, "Gamma API connection succeeded.", {"theme_count_sample": len(themes), "base_url": _base_url(config)}
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        return False, f"Gamma API returned {exc.code}.", {"body": body[:4000], "base_url": _base_url(config)}
+        response = requests.get(
+            f"{_base_url(config)}/themes",
+            params={"limit": 1},
+            headers={**REQUEST_HEADERS, "X-API-KEY": api_key},
+            timeout=30,
+        )
+        if response.status_code >= 400:
+            return False, f"Gamma API returned {response.status_code}.", {"body": response.text[:4000], "base_url": _base_url(config)}
+        payload = response.json() if response.text else {}
+        themes = payload.get("data") or payload.get("themes") or []
+        return True, "Gamma API connection succeeded.", {"theme_count_sample": len(themes), "base_url": _base_url(config)}
     except Exception as exc:
         return False, f"Gamma API connection failed: {exc}", {"base_url": _base_url(config)}
