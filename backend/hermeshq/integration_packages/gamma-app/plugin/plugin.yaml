@@ -1,0 +1,12 @@
+name: hermeshq-gamma-app
+version: "1.0.0"
+description: Gamma.app content creation tools for HermesHQ managed integrations
+author: HermesHQ
+provides_tools:
+  - gamma_create_presentation
+  - gamma_create_document
+  - gamma_create_webpage
+  - gamma_create_social_post
+  - gamma_create_from_template
+  - gamma_get_generation_status
+  - gamma_wait_for_generation
