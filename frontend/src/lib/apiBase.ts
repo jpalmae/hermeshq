@@ -6,18 +6,26 @@ export function resolveApiBase(): string {
   }
 
   if (typeof window !== "undefined") {
-    const protocol = window.location.protocol;
-    const hostname = window.location.hostname;
-    return `${protocol}//${hostname}:8000/api`;
+    return "/api";
   }
 
   return "http://localhost:8000/api";
 }
 
 export function resolveApiRoot(): string {
-  return resolveApiBase().replace(/\/api$/, "");
+  const apiBase = resolveApiBase();
+  if (/^https?:\/\//.test(apiBase)) {
+    return apiBase.replace(/\/api$/, "");
+  }
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+  return "http://localhost:8000";
 }
 
 export function resolveWsRoot(): string {
-  return resolveApiRoot().replace(/^http/, "ws");
+  if (typeof window !== "undefined") {
+    return window.location.origin.replace(/^http/, "ws");
+  }
+  return "ws://localhost:8000";
 }

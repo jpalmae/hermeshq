@@ -262,9 +262,9 @@ write_env_file() {
   jwt_secret="$(random_hex)"
   db_password="${POSTGRES_PASSWORD:-$(random_password)}"
   admin_password="${ADMIN_PASSWORD:-$(random_password)}"
-  api_base="${VITE_API_BASE_URL:-http://${install_host}:${BACKEND_PORT}/api}"
+  api_base="${VITE_API_BASE_URL:-/api}"
   cors_json=$(printf '["http://%s:%s","http://localhost:%s","http://frontend"]' "$install_host" "$FRONTEND_PORT" "$FRONTEND_PORT")
-  database_url="postgresql+asyncpg://${POSTGRES_USER}:${db_password}@localhost:${POSTGRES_PORT}/${POSTGRES_DB}"
+  database_url="postgresql+asyncpg://${POSTGRES_USER}:${db_password}@postgres:5432/${POSTGRES_DB}"
 
   cat >"$INSTALL_DIR/.env" <<EOF
 POSTGRES_DB=${POSTGRES_DB}
