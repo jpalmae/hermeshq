@@ -21,6 +21,7 @@ class AppSettingsUpdate(BaseModel):
 
 class AppSettingsRead(ORMModel):
     id: str
+    app_version: str
     app_name: str | None
     app_short_name: str | None
     theme_mode: Literal["dark", "light", "system", "enterprise"]

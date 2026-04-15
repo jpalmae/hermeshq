@@ -82,6 +82,7 @@ export interface Agent {
 
 export interface AppSettings {
   id: string;
+  app_version: string;
   app_name: string | null;
   app_short_name: string | null;
   theme_mode: "dark" | "light" | "system" | "enterprise";

@@ -10,4 +10,4 @@ class ORMModel(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     timestamp: datetime
-
+    version: str

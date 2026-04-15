@@ -15,6 +15,7 @@ from hermeshq.models.agent import Agent
 from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.user import User
 from hermeshq.schemas.settings import AppSettingsRead, AppSettingsUpdate
+from hermeshq.versioning import get_app_version
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 settings = get_settings()
@@ -45,6 +46,7 @@ def _settings_to_read(item: AppSettings) -> AppSettingsRead:
     favicon_url = f"/api/settings/branding/favicon?v={version}" if item.favicon_filename else None
     return AppSettingsRead(
         id=item.id,
+        app_version=get_app_version(),
         app_name=item.app_name or settings.app_name,
         app_short_name=item.app_short_name or (item.app_name or settings.app_name),
         theme_mode=item.theme_mode or "dark",

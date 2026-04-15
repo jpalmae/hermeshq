@@ -24,6 +24,7 @@ export function AppShell() {
   const logoUrl = resolveAssetUrl(branding?.logo_url);
   const appName = branding?.app_name || "HermesHQ";
   const appShortName = branding?.app_short_name || appName;
+  const appVersion = branding?.app_version || "";
 
   useWebSocket();
 
@@ -77,6 +78,11 @@ export function AppShell() {
             {!sidebarCollapsed ? (
               <p className="mt-3 max-w-[18ch] text-sm text-[var(--text-secondary)]">
                 {t("shell.multiAgent")}
+              </p>
+            ) : null}
+            {!sidebarCollapsed && appVersion ? (
+              <p className="mt-3 text-xs uppercase tracking-[0.12em] text-[var(--text-disabled)]">
+                v{appVersion}
               </p>
             ) : null}
           </div>

@@ -27,6 +27,7 @@ from hermeshq.services.runtime_profiles import normalize_runtime_profile_slug, t
 from hermeshq.services.scheduler import SchedulerService
 from hermeshq.services.secret_vault import SecretVault
 from hermeshq.services.workspace_manager import WorkspaceManager
+from hermeshq.versioning import get_app_version
 
 settings = get_settings()
 
@@ -237,7 +238,7 @@ app.include_router(users.router, prefix=settings.api_prefix)
 
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
-    return HealthResponse(status="ok", timestamp=datetime.now(timezone.utc))
+    return HealthResponse(status="ok", timestamp=datetime.now(timezone.utc), version=get_app_version())
 
 
 @app.websocket("/ws/stream")
