@@ -4,10 +4,29 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HermesHQ</title>
+    <script>
+      (function () {
+        try {
+          var mode = window.localStorage.getItem("hermeshq.publicThemeMode");
+          var resolved = "dark";
+          if (mode === "light") {
+            resolved = "light";
+          } else if (mode === "enterprise") {
+            resolved = "enterprise";
+          } else if (mode === "system") {
+            resolved = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+          }
+          document.documentElement.dataset.theme = resolved;
+          document.documentElement.style.colorScheme = resolved === "light" ? "light" : "dark";
+        } catch (_) {
+          document.documentElement.dataset.theme = "dark";
+          document.documentElement.style.colorScheme = "dark";
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
   </html>
-

@@ -3,6 +3,22 @@ import type { AppSettings } from "../types/api";
 export type ThemeMode = AppSettings["theme_mode"];
 export type UserThemePreference = "default" | ThemeMode;
 export type ResolvedTheme = "dark" | "light" | "enterprise";
+const PUBLIC_THEME_STORAGE_KEY = "hermeshq.publicThemeMode";
+
+export function getStoredPublicThemeMode(): ThemeMode | null {
+  const value = window.localStorage.getItem(PUBLIC_THEME_STORAGE_KEY);
+  if (value === "dark" || value === "light" || value === "system" || value === "enterprise") {
+    return value;
+  }
+  return null;
+}
+
+export function cachePublicThemeMode(mode: ThemeMode | null | undefined) {
+  if (!mode) {
+    return;
+  }
+  window.localStorage.setItem(PUBLIC_THEME_STORAGE_KEY, mode);
+}
 
 export function resolveThemeMode(mode: ThemeMode | null | undefined): ResolvedTheme {
   if (mode === "light") {

@@ -5,7 +5,7 @@ import { useMe } from "./api/auth";
 import { usePublicBranding, resolveAssetUrl } from "./api/settings";
 import { AppShell } from "./components/layout/AppShell";
 import { I18nProvider, resolveEffectiveLocale } from "./lib/i18n";
-import { applyThemeToDocument, resolveEffectiveThemeMode } from "./lib/theme";
+import { applyThemeToDocument, cachePublicThemeMode, getStoredPublicThemeMode, resolveEffectiveThemeMode } from "./lib/theme";
 import { useSessionStore } from "./stores/sessionStore";
 import { AgentDetailPage } from "./pages/AgentDetailPage";
 import { AgentsPage } from "./pages/AgentsPage";
@@ -26,9 +26,10 @@ export default function App() {
   const currentUser = useSessionStore((state) => state.user);
   const { data: branding } = usePublicBranding();
   const { data: me } = useMe(Boolean(token));
+  const publicThemeMode = branding?.theme_mode ?? getStoredPublicThemeMode() ?? "dark";
   const effectiveThemeMode = token
     ? resolveEffectiveThemeMode(branding?.theme_mode, currentUser?.theme_preference)
-    : (branding?.theme_mode ?? "dark");
+    : publicThemeMode;
   const effectiveLocale = token
     ? resolveEffectiveLocale(branding?.default_locale, currentUser?.locale_preference)
     : (branding?.default_locale ?? "en");
@@ -38,6 +39,10 @@ export default function App() {
       setUser(me);
     }
   }, [me, setUser]);
+
+  useEffect(() => {
+    cachePublicThemeMode(branding?.theme_mode);
+  }, [branding?.theme_mode]);
 
   useEffect(() => {
     document.title = branding?.app_name || "HermesHQ";

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient } from "./client";
 import { resolveApiBase } from "../lib/apiBase";
+import { cachePublicThemeMode } from "../lib/theme";
 import type { AppSettings } from "../types/api";
 
 const apiBase = resolveApiBase();
@@ -33,9 +34,11 @@ export function usePublicBranding() {
     queryKey: ["branding", "public"],
     queryFn: async () => {
       const { data } = await apiClient.get<AppSettings>("/settings/public");
+      cachePublicThemeMode(data.theme_mode);
       return data;
     },
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 }
 
@@ -46,7 +49,10 @@ export function useUpdateSettings() {
       const { data } = await apiClient.put<AppSettings>("/settings", payload);
       return data;
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      cachePublicThemeMode(data.theme_mode);
+      queryClient.setQueryData(["branding", "public"], data);
+      queryClient.setQueryData(["settings"], data);
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
       await queryClient.invalidateQueries({ queryKey: ["branding", "public"] });
       await queryClient.invalidateQueries({ queryKey: ["agents"] });
