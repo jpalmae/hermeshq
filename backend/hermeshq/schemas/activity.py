@@ -15,3 +15,9 @@ class ActivityRead(ORMModel):
     created_at: datetime
     updated_at: datetime
 
+
+class ActivityPageRead(ORMModel):
+    items: list[ActivityRead]
+    has_more: bool
+    next_before_created_at: datetime | None
+    next_before_id: str | None

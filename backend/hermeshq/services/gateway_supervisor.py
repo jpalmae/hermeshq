@@ -13,7 +13,8 @@ from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
 from hermeshq.models.base import utcnow
 from hermeshq.models.messaging_channel import MessagingChannel
-from hermeshq.services.hermes_installation import HermesInstallationManager
+from hermeshq.models.secret import Secret
+from hermeshq.services.hermes_installation import HermesInstallationError, HermesInstallationManager
 
 
 @dataclass
@@ -52,7 +53,8 @@ class GatewaySupervisor:
         for channel, agent in rows:
             if channel.platform != "telegram":
                 continue
-            await self.start_channel(agent, channel.platform)
+            with contextlib.suppress(ValueError):
+                await self.start_channel(agent, channel.platform)
 
     async def shutdown(self) -> None:
         for agent_id, platform in list(self.processes):
@@ -73,6 +75,38 @@ class GatewaySupervisor:
                 "log_path": self._log_path(agent.workspace_path, platform).as_posix() if agent else None,
             }
 
+    def _channel_log_details(self, platform: str, channel: MessagingChannel, extra: dict | None = None) -> dict:
+        details = {
+            "platform": platform,
+            "secret_ref": channel.secret_ref,
+            "enabled": channel.enabled,
+        }
+        if extra:
+            details.update(extra)
+        return details
+
+    async def _log_channel_event(
+        self,
+        session: AsyncSession,
+        agent: Agent,
+        channel: MessagingChannel,
+        event_type: str,
+        message: str,
+        *,
+        severity: str = "info",
+        details: dict | None = None,
+    ) -> None:
+        session.add(
+            ActivityLog(
+                agent_id=agent.id,
+                node_id=agent.node_id,
+                event_type=event_type,
+                severity=severity,
+                message=message,
+                details=self._channel_log_details(channel.platform, channel, details),
+            )
+        )
+
     async def start_channel(self, agent: Agent | str, platform: str) -> None:
         agent_id = agent.id if isinstance(agent, Agent) else agent
         key = (agent_id, platform)
@@ -92,9 +126,49 @@ class GatewaySupervisor:
             if platform == "telegram" and not channel.secret_ref:
                 channel.status = "error"
                 channel.last_error = "Telegram bot token secret is required"
+                await self._log_channel_event(
+                    session,
+                    agent_row,
+                    channel,
+                    "channel.telegram.start_failed",
+                    f"{agent_row.name} telegram gateway failed to start",
+                    severity="warning",
+                    details={"reason": "missing_secret_ref", "error": channel.last_error},
+                )
                 await session.commit()
                 raise ValueError(channel.last_error)
-            await self.installation_manager.sync_agent_installation(agent_row)
+            if platform == "telegram":
+                secret_exists = await session.execute(select(Secret.id).where(Secret.name == channel.secret_ref))
+                if secret_exists.scalar_one_or_none() is None:
+                    channel.status = "error"
+                    channel.last_error = f"Telegram bot token secret '{channel.secret_ref}' was not found"
+                    await self._log_channel_event(
+                        session,
+                        agent_row,
+                        channel,
+                        "channel.telegram.start_failed",
+                        f"{agent_row.name} telegram gateway failed to start",
+                        severity="warning",
+                        details={"reason": "secret_not_found", "error": channel.last_error},
+                    )
+                    await session.commit()
+                    raise ValueError(channel.last_error)
+            try:
+                await self.installation_manager.sync_agent_installation(agent_row)
+            except HermesInstallationError as exc:
+                channel.status = "error"
+                channel.last_error = str(exc)
+                await self._log_channel_event(
+                    session,
+                    agent_row,
+                    channel,
+                    "channel.telegram.start_failed",
+                    f"{agent_row.name} telegram gateway failed to start",
+                    severity="warning",
+                    details={"reason": "installation_sync_failed", "error": channel.last_error},
+                )
+                await session.commit()
+                raise ValueError(channel.last_error) from exc
             env = await self.installation_manager.build_gateway_env(agent_row, platform)
             runtime_selection = await self.installation_manager.resolve_hermes_runtime(agent_row)
             workspace_path = self.installation_manager.resolve_workspace_path(agent_row.workspace_path)

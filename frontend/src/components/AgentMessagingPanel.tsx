@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { isAxiosError } from "axios";
 
 import { useMessagingChannel, useMessagingChannelAction, useMessagingChannelLogs, useMessagingChannelRuntime, useUpdateMessagingChannel } from "../api/messagingChannels";
 import { useSecrets } from "../api/secrets";
@@ -24,6 +25,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
   const updateChannel = useUpdateMessagingChannel();
   const startChannel = useMessagingChannelAction("start");
   const stopChannel = useMessagingChannelAction("stop");
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [form, setForm] = useState({
     enabled: false,
     secret_ref: "",
@@ -54,27 +56,74 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
   const secretOptions = useMemo(
     () =>
       (secrets ?? [])
+        .filter((item) => {
+          const provider = String(item.provider ?? "").trim().toLowerCase();
+          return !provider || provider === "telegram";
+        })
         .map((item) => String(item.name ?? ""))
         .filter(Boolean)
         .sort((left, right) => left.localeCompare(right)),
     [secrets],
   );
 
+  const telegramSecretOptions = useMemo(() => {
+    if (form.secret_ref && !secretOptions.includes(form.secret_ref)) {
+      return [form.secret_ref, ...secretOptions];
+    }
+    return secretOptions;
+  }, [form.secret_ref, secretOptions]);
+
+  function describeError(error: unknown, fallback: string) {
+    if (isAxiosError<{ detail?: string }>(error)) {
+      const detail = error.response?.data?.detail;
+      if (typeof detail === "string" && detail.trim()) {
+        return detail;
+      }
+    }
+    if (error instanceof Error && error.message.trim()) {
+      return error.message;
+    }
+    return fallback;
+  }
+
   async function onSave() {
-    await updateChannel.mutateAsync({
-      agentId,
-      platform: "telegram",
-      payload: {
-        enabled: form.enabled,
-        secret_ref: form.secret_ref || null,
-        allowed_user_ids: parseListInput(form.allowed_user_ids),
-        home_chat_id: form.home_chat_id || null,
-        home_chat_name: form.home_chat_name || null,
-        require_mention: form.require_mention,
-        free_response_chat_ids: parseListInput(form.free_response_chat_ids),
-        unauthorized_dm_behavior: form.unauthorized_dm_behavior,
-      },
-    });
+    setSubmitError(null);
+    try {
+      await updateChannel.mutateAsync({
+        agentId,
+        platform: "telegram",
+        payload: {
+          enabled: form.enabled,
+          secret_ref: form.secret_ref || null,
+          allowed_user_ids: parseListInput(form.allowed_user_ids),
+          home_chat_id: form.home_chat_id || null,
+          home_chat_name: form.home_chat_name || null,
+          require_mention: form.require_mention,
+          free_response_chat_ids: parseListInput(form.free_response_chat_ids),
+          unauthorized_dm_behavior: form.unauthorized_dm_behavior,
+        },
+      });
+    } catch (error) {
+      setSubmitError(describeError(error, t("agent.gatewayConfigSaveFailed")));
+    }
+  }
+
+  async function onStart() {
+    setSubmitError(null);
+    try {
+      await startChannel.mutateAsync({ agentId, platform: "telegram" });
+    } catch (error) {
+      setSubmitError(describeError(error, t("agent.gatewayStartFailed")));
+    }
+  }
+
+  async function onStop() {
+    setSubmitError(null);
+    try {
+      await stopChannel.mutateAsync({ agentId, platform: "telegram" });
+    } catch (error) {
+      setSubmitError(describeError(error, t("agent.gatewayStopFailed")));
+    }
   }
 
   return (
@@ -99,17 +148,18 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
         <div className="mt-5 space-y-4">
           <label className="panel-field">
             <span className="panel-label">{t("agent.botTokenSecretRef")}</span>
-            <input
-              list={`telegram-secrets-${agentId}`}
+            <select
               value={form.secret_ref}
               onChange={(event) => setForm((current) => ({ ...current, secret_ref: event.target.value }))}
-              placeholder="telegram_bot_secret"
-            />
-            <datalist id={`telegram-secrets-${agentId}`}>
-              {secretOptions.map((option) => (
+            >
+              <option value="">{t("agent.selectTelegramSecret")}</option>
+              {telegramSecretOptions.map((option) => (
                 <option key={option} value={option} />
               ))}
-            </datalist>
+            </select>
+            <p className="panel-inline-status">
+              {t("agent.telegramSecretHint")}
+            </p>
           </label>
 
           <label className="panel-field">
@@ -200,7 +250,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
             <button
               type="button"
               className="panel-button-secondary"
-              onClick={() => startChannel.mutate({ agentId, platform: "telegram" })}
+              onClick={() => void onStart()}
               disabled={startChannel.isPending}
             >
               {t("agent.startGateway")}
@@ -208,7 +258,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
             <button
               type="button"
               className="panel-button-secondary"
-              onClick={() => stopChannel.mutate({ agentId, platform: "telegram" })}
+              onClick={() => void onStop()}
               disabled={stopChannel.isPending}
             >
               {t("agent.stopGateway")}
@@ -216,7 +266,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
             <p className="panel-inline-status">
               {runtime?.status === "running"
                 ? `[LIVE] telegram gateway pid ${runtime.pid ?? "?"}`
-                : telegram?.last_error || t("agent.gatewayStopped")}
+                : submitError || telegram?.last_error || t("agent.gatewayStopped")}
             </p>
           </div>
         </div>

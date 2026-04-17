@@ -17,6 +17,7 @@ import { AgentTerminal } from "../components/AgentTerminal";
 import { WorkspacePanel } from "../components/WorkspacePanel";
 import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../stores/sessionStore";
+import type { ActivityLogEntry } from "../types/api";
 
 const DEFAULT_SECTION_STATE = {
   configuration: false,
@@ -28,14 +29,14 @@ const DEFAULT_SECTION_STATE = {
   workspace: false,
 };
 
-type ActivityEntry = Record<string, unknown>;
+type ActivityEntry = ActivityLogEntry & { grouped_count?: number };
 
 function asText(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
 function groupActivityEntries(entries: ActivityEntry[]) {
-  const grouped: Array<ActivityEntry & { grouped_count?: number }> = [];
+  const grouped: ActivityEntry[] = [];
   let index = 0;
 
   while (index < entries.length) {
@@ -140,7 +141,13 @@ export function AgentDetailPage() {
   const { t, formatDateTime } = useI18n();
   const { data: agent, isLoading } = useAgent(agentId);
   const { data: tasks } = useTasks();
-  const { data: logs } = useLogs(agentId);
+  const [activityQuery, setActivityQuery] = useState("");
+  const {
+    data: logs,
+    fetchNextPage: fetchOlderLogs,
+    hasNextPage: hasOlderLogs,
+    isFetchingNextPage: isFetchingOlderLogs,
+  } = useLogs(agentId, 100, activityQuery);
   const { data: runtimeLedger } = useRuntimeLedger(agentId);
   const { data: runtimeProfiles } = useRuntimeProfiles(Boolean(currentUser));
   const { data: hermesVersions } = useHermesVersions(Boolean(currentUser) && isAdmin);
@@ -175,7 +182,6 @@ export function AgentDetailPage() {
   const [nameTouched, setNameTouched] = useState(false);
   const [slugTouched, setSlugTouched] = useState(false);
   const [ledgerQuery, setLedgerQuery] = useState("");
-  const [activityQuery, setActivityQuery] = useState("");
   const agentTasks = useMemo(
     () => (tasks ?? []).filter((task) => task.agent_id === agentId),
     [tasks, agentId],
@@ -201,26 +207,15 @@ export function AgentDetailPage() {
         .some((value) => String(value).toLowerCase().includes(query)),
     );
   }, [ledgerQuery, runtimeLedger]);
-  const groupedActivityLogs = useMemo(
-    () => groupActivityEntries((logs ?? []) as ActivityEntry[]),
+  const flatLogs = useMemo(
+    () => (logs?.pages ?? []).flatMap((page) => page.items),
     [logs],
   );
-  const filteredActivityLogs = useMemo(() => {
-    const query = activityQuery.trim().toLowerCase();
-    if (!query) {
-      return groupedActivityLogs;
-    }
-    return groupedActivityLogs.filter((entry) =>
-      [
-        entry.event_type,
-        entry.message,
-        entry.created_at,
-        JSON.stringify(entry),
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(query)),
-    );
-  }, [activityQuery, groupedActivityLogs]);
+  const groupedActivityLogs = useMemo(
+    () => groupActivityEntries(flatLogs),
+    [flatLogs],
+  );
+  const filteredActivityLogs = groupedActivityLogs;
   const selectedRuntimeProfile = useMemo(
     () => (runtimeProfiles ?? []).find((profile) => profile.slug === runtimeProfileDraft) ?? null,
     [runtimeProfileDraft, runtimeProfiles],
@@ -1157,7 +1152,7 @@ export function AgentDetailPage() {
         "logs",
         t("agent.logs"),
         t("agent.activityStream"),
-        t("agent.events", { count: logs?.length ?? 0 }),
+        t("agent.events", { count: flatLogs.length }),
         <div className="mt-0">
           <label className="panel-field border-b border-[var(--border)] pb-4">
             <span className="panel-label">{t("agent.searchActivityStream")}</span>
@@ -1168,24 +1163,40 @@ export function AgentDetailPage() {
             />
           </label>
           {filteredActivityLogs.length ? (
-            filteredActivityLogs.map((entry) => (
-              <article key={String(entry.id)} className="grid gap-3 border-b border-[var(--border)] py-4 md:grid-cols-[0.45fr_1.55fr]">
-                <div>
-                  <p className="panel-label">{String(entry.event_type)}</p>
-                  <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
-                    {formatDateTime(String(entry.created_at))}
-                  </p>
-                  {typeof entry.grouped_count === "number" && entry.grouped_count > 1 ? (
+            <>
+              {filteredActivityLogs.map((entry) => (
+                <article key={String(entry.id)} className="grid gap-3 border-b border-[var(--border)] py-4 md:grid-cols-[0.45fr_1.55fr]">
+                  <div>
+                    <p className="panel-label">{String(entry.event_type)}</p>
                     <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
-                      {t("agent.groupedFragments", { count: entry.grouped_count })}
+                      {formatDateTime(String(entry.created_at))}
                     </p>
-                  ) : null}
+                    {typeof entry.grouped_count === "number" && entry.grouped_count > 1 ? (
+                      <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
+                        {t("agent.groupedFragments", { count: entry.grouped_count })}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <p className="text-sm text-[var(--text-primary)]">{String(entry.message ?? "")}</p>
+                  </div>
+                </article>
+              ))}
+              {hasOlderLogs ? (
+                <div className="pt-5">
+                  <button
+                    type="button"
+                    className="panel-button-secondary"
+                    onClick={() => void fetchOlderLogs()}
+                    disabled={isFetchingOlderLogs}
+                  >
+                    {isFetchingOlderLogs ? t("agent.loadingOlderActivity") : t("agent.loadOlderActivity")}
+                  </button>
                 </div>
-                <div>
-                  <p className="text-sm text-[var(--text-primary)]">{String(entry.message ?? "")}</p>
-                </div>
-              </article>
-            ))
+              ) : (
+                <p className="panel-inline-status pt-5">{t("agent.noOlderActivity")}</p>
+              )}
+            </>
           ) : (
             <p className="panel-inline-status pt-5">{t("agent.noActivityStreamMatches")}</p>
           )}

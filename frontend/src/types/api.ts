@@ -17,6 +17,26 @@ export interface ManagedUser extends User {
   assigned_agent_ids: string[];
 }
 
+export interface ActivityLogEntry {
+  id: string;
+  agent_id: string | null;
+  task_id: string | null;
+  node_id: string | null;
+  event_type: string;
+  severity: string;
+  message: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ActivityLogPage {
+  items: ActivityLogEntry[];
+  has_more: boolean;
+  next_before_created_at: string | null;
+  next_before_id: string | null;
+}
+
 export interface Secret {
   id: string;
   name: string;
