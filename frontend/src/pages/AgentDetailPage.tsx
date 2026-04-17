@@ -5,9 +5,9 @@ import { useAgent, useAgentAction, useDeleteAgent, useDeleteAgentAvatar, useRunA
 import { useHermesVersions } from "../api/hermesVersions";
 import { useLogs } from "../api/logs";
 import { useManagedIntegrations } from "../api/managedIntegrations";
+import { useRuntimeLedger } from "../api/runtimeLedger";
 import { useRuntimeCapabilityOverview, useRuntimeProfiles } from "../api/runtimeProfiles";
 import { useSecrets } from "../api/secrets";
-import { useTerminalSessions } from "../api/terminalSessions";
 import { useCreateTask, useTasks } from "../api/tasks";
 import { AgentAvatar } from "../components/AgentAvatar";
 import { AgentConversationPanel } from "../components/AgentConversationPanel";
@@ -25,7 +25,6 @@ const DEFAULT_SECTION_STATE = {
   skills: false,
   ledger: false,
   logs: false,
-  terminalSessions: false,
   workspace: false,
 };
 
@@ -92,6 +91,37 @@ function statusBadgeTone(status: string) {
   return "border-[color-mix(in_srgb,var(--warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] text-[var(--warning)]";
 }
 
+function ledgerChannelLabel(channel: string) {
+  return channel
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function ledgerDirectionLabel(direction: string, t: (key: string) => string) {
+  if (direction === "inbound") return t("agent.directionInbound");
+  if (direction === "outbound") return t("agent.directionOutbound");
+  return t("agent.directionSystem");
+}
+
+function ledgerChannelTone(channel: string) {
+  if (channel === "talk_to_agent") {
+    return "border-[color-mix(in_srgb,var(--primary)_42%,transparent)] bg-[color-mix(in_srgb,var(--primary)_16%,transparent)] text-[var(--primary)]";
+  }
+  if (channel === "telegram") {
+    return "border-[color-mix(in_srgb,var(--warning)_42%,transparent)] bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] text-[var(--warning)]";
+  }
+  if (channel === "tui") {
+    return "border-[color-mix(in_srgb,var(--success)_42%,transparent)] bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-[var(--success)]";
+  }
+  if (channel === "schedule") {
+    return "border-[color-mix(in_srgb,var(--text-secondary)_55%,transparent)] bg-[color-mix(in_srgb,var(--surface)_76%,transparent)] text-[var(--text-secondary)]";
+  }
+  if (channel === "agent_to_agent") {
+    return "border-[color-mix(in_srgb,var(--accent)_42%,transparent)] bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent)]";
+  }
+  return "border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)]";
+}
+
 function slugify(value: string) {
   return value
     .normalize("NFKD")
@@ -111,7 +141,7 @@ export function AgentDetailPage() {
   const { data: agent, isLoading } = useAgent(agentId);
   const { data: tasks } = useTasks();
   const { data: logs } = useLogs(agentId);
-  const { data: terminalSessions } = useTerminalSessions(agentId);
+  const { data: runtimeLedger } = useRuntimeLedger(agentId);
   const { data: runtimeProfiles } = useRuntimeProfiles(Boolean(currentUser));
   const { data: hermesVersions } = useHermesVersions(Boolean(currentUser) && isAdmin);
   const { data: runtimeCapabilityOverview } = useRuntimeCapabilityOverview(Boolean(currentUser));
@@ -146,36 +176,31 @@ export function AgentDetailPage() {
   const [slugTouched, setSlugTouched] = useState(false);
   const [ledgerQuery, setLedgerQuery] = useState("");
   const [activityQuery, setActivityQuery] = useState("");
-  const [selectedTerminalSessionId, setSelectedTerminalSessionId] = useState<string | null>(null);
   const agentTasks = useMemo(
     () => (tasks ?? []).filter((task) => task.agent_id === agentId),
     [tasks, agentId],
   );
-  const ledgerTasks = useMemo(
-    () =>
-      [...agentTasks].sort(
-        (left, right) => new Date(right.queued_at).getTime() - new Date(left.queued_at).getTime(),
-      ),
-    [agentTasks],
-  );
-  const filteredLedgerTasks = useMemo(() => {
+  const filteredLedgerEntries = useMemo(() => {
     const query = ledgerQuery.trim().toLowerCase();
     if (!query) {
-      return ledgerTasks;
+      return runtimeLedger ?? [];
     }
-    return ledgerTasks.filter((task) =>
+    return (runtimeLedger ?? []).filter((entry) =>
       [
-        task.title,
-        task.prompt,
-        task.response,
-        task.error_message,
-        task.status,
-        task.metadata ? JSON.stringify(task.metadata) : "",
+        entry.channel,
+        entry.direction,
+        entry.entry_type,
+        entry.title,
+        entry.content,
+        entry.status,
+        entry.counterpart_label,
+        entry.counterpart_agent_id,
+        entry.details ? JSON.stringify(entry.details) : "",
       ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query)),
     );
-  }, [ledgerQuery, ledgerTasks]);
+  }, [ledgerQuery, runtimeLedger]);
   const groupedActivityLogs = useMemo(
     () => groupActivityEntries((logs ?? []) as ActivityEntry[]),
     [logs],
@@ -196,20 +221,6 @@ export function AgentDetailPage() {
         .some((value) => String(value).toLowerCase().includes(query)),
     );
   }, [activityQuery, groupedActivityLogs]);
-  const orderedTerminalSessions = useMemo(
-    () =>
-      [...(terminalSessions ?? [])].sort(
-        (left, right) => new Date(right.started_at).getTime() - new Date(left.started_at).getTime(),
-      ),
-    [terminalSessions],
-  );
-  const selectedTerminalSession = useMemo(
-    () =>
-      orderedTerminalSessions.find((session) => session.id === selectedTerminalSessionId)
-      ?? orderedTerminalSessions[0]
-      ?? null,
-    [orderedTerminalSessions, selectedTerminalSessionId],
-  );
   const selectedRuntimeProfile = useMemo(
     () => (runtimeProfiles ?? []).find((profile) => profile.slug === runtimeProfileDraft) ?? null,
     [runtimeProfileDraft, runtimeProfiles],
@@ -285,16 +296,6 @@ export function AgentDetailPage() {
       setSectionState(DEFAULT_SECTION_STATE);
     }
   }, [agentId]);
-
-  useEffect(() => {
-    if (!orderedTerminalSessions.length) {
-      setSelectedTerminalSessionId(null);
-      return;
-    }
-    if (!selectedTerminalSessionId || !orderedTerminalSessions.some((session) => session.id === selectedTerminalSessionId)) {
-      setSelectedTerminalSessionId(orderedTerminalSessions[0]?.id ?? null);
-    }
-  }, [orderedTerminalSessions, selectedTerminalSessionId]);
 
   function toggleSection(section: keyof typeof DEFAULT_SECTION_STATE) {
     setSectionState((current) => {
@@ -815,7 +816,7 @@ export function AgentDetailPage() {
         "ledger",
         t("agent.taskHistory"),
         t("agent.runtimeLedger"),
-        t("agent.records", { count: agentTasks.length }),
+        t("agent.records", { count: runtimeLedger?.length ?? 0 }),
         <div className="mt-0">
           <label className="panel-field border-b border-[var(--border)] pb-4">
             <span className="panel-label">{t("agent.searchRuntimeLedger")}</span>
@@ -825,30 +826,33 @@ export function AgentDetailPage() {
               placeholder={t("agent.searchRuntimeLedgerPlaceholder")}
             />
           </label>
-          {filteredLedgerTasks.length ? (
-            filteredLedgerTasks.map((task) => (
-              <article key={task.id} className="grid gap-4 border-b border-[var(--border)] py-5 md:grid-cols-[0.7fr_1.3fr]">
+          {filteredLedgerEntries.length ? (
+            filteredLedgerEntries.map((entry) => (
+              <article key={entry.id} className="grid gap-4 border-b border-[var(--border)] py-5 md:grid-cols-[0.7fr_1.3fr]">
                 <div>
-                  <p className="panel-label">{task.status}</p>
-                  <p className="mt-2 text-sm text-[var(--text-primary)]">
-                    {task.title ?? t("tasks.operatorTask")}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full border px-2 py-1 font-mono text-[11px] uppercase tracking-[0.08em] ${ledgerChannelTone(entry.channel)}`}>
+                      {ledgerChannelLabel(entry.channel)}
+                    </span>
+                    <span className="rounded-full border border-[var(--border)] px-2 py-1 font-mono text-[11px] uppercase tracking-[0.08em] text-[var(--text-secondary)]">
+                      {ledgerDirectionLabel(entry.direction, t)}
+                    </span>
+                    {entry.status ? (
+                      <span className="panel-label">{entry.status}</span>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-sm text-[var(--text-primary)]">{entry.title ?? entry.entry_type}</p>
+                  {entry.counterpart_label ? (
+                    <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
+                      {t("agent.ledgerCounterpart")}: {entry.counterpart_label}
+                    </p>
+                  ) : null}
                   <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
-                    {formatDateTime(task.queued_at)}
+                    {formatDateTime(entry.created_at)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm leading-6 text-[var(--text-secondary)]">{task.prompt}</p>
-                  {task.response ? (
-                    <pre className="mt-3 overflow-x-auto whitespace-pre-wrap border-t border-[var(--border)] pt-3 text-sm leading-6 text-[var(--text-primary)]">
-                      {task.response}
-                    </pre>
-                  ) : null}
-                  {task.error_message ? (
-                    <p className="mt-3 border-t border-[var(--border)] pt-3 text-sm leading-6 text-[var(--danger)]">
-                      {task.error_message}
-                    </p>
-                  ) : null}
+                  <p className="text-sm leading-6 text-[var(--text-secondary)]">{entry.content || t("common.unknown")}</p>
                 </div>
               </article>
             ))
@@ -1186,74 +1190,6 @@ export function AgentDetailPage() {
             <p className="panel-inline-status pt-5">{t("agent.noActivityStreamMatches")}</p>
           )}
         </div>,
-      )}
-
-      {renderSectionShell(
-        "terminalSessions",
-        t("agent.terminalSessions"),
-        t("agent.terminalTranscripts"),
-        t("agent.sessions", { count: orderedTerminalSessions.length }),
-        orderedTerminalSessions.length ? (
-          <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-            <div className="space-y-3">
-              {orderedTerminalSessions.map((session) => {
-                const selected = session.id === selectedTerminalSession?.id;
-                return (
-                  <button
-                    key={session.id}
-                    type="button"
-                    onClick={() => setSelectedTerminalSessionId(session.id)}
-                    className={`w-full rounded-[1.15rem] border px-4 py-3 text-left transition ${
-                      selected
-                        ? "border-[color-mix(in_srgb,var(--accent)_36%,transparent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]"
-                        : "border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_76%,transparent)] hover:border-[color-mix(in_srgb,var(--accent)_26%,transparent)]"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="panel-label">{formatDateTime(session.started_at)}</p>
-                        <p className="mt-2 text-sm text-[var(--text-primary)]">{session.mode}</p>
-                      </div>
-                      <p className="panel-label">{session.status}</p>
-                    </div>
-                    <p className="mt-3 line-clamp-2 text-xs text-[var(--text-secondary)]">{session.cwd || t("agent.none")}</p>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="rounded-[1.15rem] border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_82%,transparent)] p-4">
-              {selectedTerminalSession ? (
-                <>
-                  <div className="grid gap-3 border-b border-[var(--border)] pb-4 md:grid-cols-3">
-                    <div>
-                      <p className="panel-label">{t("agent.startedAt")}</p>
-                      <p className="mt-2 text-sm text-[var(--text-primary)]">{formatDateTime(selectedTerminalSession.started_at)}</p>
-                    </div>
-                    <div>
-                      <p className="panel-label">{t("agent.endedAt")}</p>
-                      <p className="mt-2 text-sm text-[var(--text-primary)]">
-                        {selectedTerminalSession.ended_at ? formatDateTime(selectedTerminalSession.ended_at) : t("agent.live")}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="panel-label">{t("agent.exitCode")}</p>
-                      <p className="mt-2 text-sm text-[var(--text-primary)]">
-                        {selectedTerminalSession.exit_code ?? t("common.unknown")}
-                      </p>
-                    </div>
-                  </div>
-                  <pre className="mt-4 max-h-[30rem] overflow-auto whitespace-pre-wrap rounded-[1rem] border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface-strong)_86%,transparent)] p-4 font-mono text-xs leading-6 text-[var(--text-primary)]">
-                    {selectedTerminalSession.transcript_text || t("agent.noTerminalTranscript")}
-                  </pre>
-                </>
-              ) : (
-                <p className="panel-inline-status">{t("agent.noTerminalSessions")}</p>
-              )}
-            </div>
-          </div>
-        ) : (
-          <p className="panel-inline-status">{t("agent.noTerminalSessions")}</p>
-        ),
       )}
 
       {renderSectionShell(

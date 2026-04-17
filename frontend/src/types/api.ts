@@ -236,6 +236,23 @@ export interface Task {
   metadata: Record<string, unknown>;
 }
 
+export interface RuntimeLedgerEntry {
+  id: string;
+  agent_id: string;
+  channel: string;
+  direction: string;
+  entry_type: string;
+  title: string | null;
+  content: string | null;
+  status: string | null;
+  task_id: string | null;
+  message_id: string | null;
+  counterpart_agent_id: string | null;
+  counterpart_label: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface TaskBoardUpdate {
   board_column: string;
   board_order?: number | null;
