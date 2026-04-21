@@ -16,6 +16,17 @@ function formatList(values: string[]) {
   return values.join("\n");
 }
 
+function formatBootstrapTimestamp(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString();
+}
+
 export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isAdmin: boolean }) {
   const { t } = useI18n();
   const { data: telegram } = useMessagingChannel(agentId, "telegram");
@@ -72,6 +83,8 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
     }
     return secretOptions;
   }, [form.secret_ref, secretOptions]);
+  const lastBootstrapAt = formatBootstrapTimestamp(runtime?.last_bootstrap_at);
+  const lastBootstrapSuccessAt = formatBootstrapTimestamp(runtime?.last_bootstrap_success_at);
 
   function describeError(error: unknown, fallback: string) {
     if (isAxiosError<{ detail?: string }>(error)) {
@@ -141,6 +154,11 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
           <p className="mt-2 text-sm uppercase tracking-[0.1em] text-[var(--text-display)]">
             {runtime?.status ?? telegram?.status ?? "stopped"}
           </p>
+          {runtime?.last_bootstrap_status ? (
+            <p className="mt-2 text-xs text-[var(--text-secondary)]">
+              {t("agent.bootstrapStatus")}: {runtime.last_bootstrap_status}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -269,6 +287,39 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
                 : submitError || telegram?.last_error || t("agent.gatewayStopped")}
             </p>
           </div>
+          {runtime?.last_bootstrap_at || runtime?.last_bootstrap_error ? (
+            <div className="grid gap-2 border border-[var(--border)] bg-[var(--surface-raised)] p-4 text-sm text-[var(--text-secondary)] md:grid-cols-2">
+              <p>
+                <span className="panel-label">{t("agent.lastBootstrapAttempt")}</span>
+                <br />
+                {lastBootstrapAt ?? t("agent.none")}
+              </p>
+              <p>
+                <span className="panel-label">{t("agent.lastBootstrapSuccess")}</span>
+                <br />
+                {lastBootstrapSuccessAt ?? t("agent.none")}
+              </p>
+              <p>
+                <span className="panel-label">{t("agent.bootstrapAttempts")}</span>
+                <br />
+                {runtime?.last_bootstrap_attempts ?? 0}
+              </p>
+              <p>
+                <span className="panel-label">{t("agent.bootstrapDuration")}</span>
+                <br />
+                {runtime?.last_bootstrap_duration_ms != null
+                  ? `${runtime.last_bootstrap_duration_ms} ms`
+                  : t("agent.none")}
+              </p>
+              {runtime?.last_bootstrap_error ? (
+                <p className="md:col-span-2">
+                  <span className="panel-label">{t("agent.lastBootstrapError")}</span>
+                  <br />
+                  {runtime.last_bootstrap_error}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="mt-5 space-y-3 text-sm leading-6 text-[var(--text-secondary)]">

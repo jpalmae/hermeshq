@@ -4,6 +4,7 @@ import json
 import logging
 import subprocess
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import desc, select
@@ -20,6 +21,8 @@ from hermeshq.services.hermes_installation import HermesInstallationError, Herme
 logger = logging.getLogger(__name__)
 BOOTSTRAP_CONCURRENCY = 3
 BOOTSTRAP_CHANNEL_TIMEOUT_SECONDS = 120
+BOOTSTRAP_RETRY_ATTEMPTS = 3
+BOOTSTRAP_RETRY_DELAYS_SECONDS = (2, 5)
 
 
 @dataclass
@@ -56,6 +59,49 @@ class GatewaySupervisor:
             self._channel_locks[key] = lock
         return lock
 
+    def _mark_bootstrap_state(
+        self,
+        channel: MessagingChannel,
+        *,
+        status: str,
+        attempted_at: datetime,
+        duration_ms: int | None = None,
+        error: str | None = None,
+        attempts: int | None = None,
+    ) -> None:
+        metadata = dict(channel.metadata_json or {})
+        metadata["bootstrap"] = {
+            "last_attempt_at": attempted_at.isoformat(),
+            "last_status": status,
+            "last_error": error,
+            "last_duration_ms": duration_ms,
+            "last_attempts": attempts,
+            "last_source": "startup",
+            "last_success_at": (
+                attempted_at.isoformat()
+                if status == "success"
+                else (
+                    str((metadata.get("bootstrap") or {}).get("last_success_at") or "").strip() or None
+                )
+            ),
+        }
+        channel.metadata_json = metadata
+
+    def _is_transient_bootstrap_error(self, error_message: str) -> bool:
+        message = (error_message or "").strip().lower()
+        if not message:
+            return False
+        transient_markers = (
+            "pid file race",
+            "race lost",
+            "timeout",
+            "timed out",
+            "temporarily unavailable",
+            "resource busy",
+            "already running",
+        )
+        return any(marker in message for marker in transient_markers)
+
     async def bootstrap_gateways(self) -> None:
         async with self.session_factory() as session:
             result = await session.execute(
@@ -70,77 +116,93 @@ class GatewaySupervisor:
             if channel.platform != "telegram":
                 return
             async with semaphore:
-                try:
-                    await asyncio.wait_for(
-                        self.start_channel(agent, channel.platform),
-                        timeout=BOOTSTRAP_CHANNEL_TIMEOUT_SECONDS,
-                    )
-                except asyncio.TimeoutError:
+                attempt = 0
+                while attempt < BOOTSTRAP_RETRY_ATTEMPTS:
+                    attempt += 1
+                    started_at = datetime.now(timezone.utc)
+                    try:
+                        await asyncio.wait_for(
+                            self.start_channel(agent, channel.platform),
+                            timeout=BOOTSTRAP_CHANNEL_TIMEOUT_SECONDS,
+                        )
+                        async with self.session_factory() as session:
+                            session_channel = await self._get_channel(session, agent.id, channel.platform)
+                            if session_channel:
+                                duration_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
+                                self._mark_bootstrap_state(
+                                    session_channel,
+                                    status="success",
+                                    attempted_at=started_at,
+                                    duration_ms=duration_ms,
+                                    attempts=attempt,
+                                )
+                                await session.commit()
+                        return
+                    except asyncio.TimeoutError:
+                        error_text = (
+                            f"{channel.platform} gateway bootstrap timed out after "
+                            f"{BOOTSTRAP_CHANNEL_TIMEOUT_SECONDS} seconds"
+                        )
+                        transient = True
+                        log_event = f"channel.{channel.platform}.bootstrap_timeout"
+                        log_message = f"{agent.name} {channel.platform} gateway bootstrap timed out"
+                    except ValueError as exc:
+                        error_text = str(exc)
+                        transient = self._is_transient_bootstrap_error(error_text)
+                        log_event = f"channel.{channel.platform}.bootstrap_failed"
+                        log_message = f"{agent.name} {channel.platform} gateway bootstrap failed"
+                    except Exception:
+                        logger.exception(
+                            "Unexpected gateway bootstrap failure for agent %s (%s)",
+                            agent.id,
+                            agent.name,
+                        )
+                        error_text = "unexpected_error"
+                        transient = False
+                        log_event = f"channel.{channel.platform}.bootstrap_failed"
+                        log_message = f"{agent.name} {channel.platform} gateway bootstrap failed"
+
                     logger.warning(
-                        "Telegram gateway bootstrap timed out for agent %s (%s)",
+                        "Telegram gateway bootstrap failed for agent %s (%s), attempt %s/%s: %s",
                         agent.id,
                         agent.name,
+                        attempt,
+                        BOOTSTRAP_RETRY_ATTEMPTS,
+                        error_text,
                     )
                     async with self.session_factory() as session:
                         session_agent = await session.get(Agent, agent.id)
                         session_channel = await self._get_channel(session, agent.id, channel.platform)
                         if session_agent and session_channel:
                             session_channel.status = "error"
-                            session_channel.last_error = (
-                                f"{channel.platform} gateway bootstrap timed out after "
-                                f"{BOOTSTRAP_CHANNEL_TIMEOUT_SECONDS} seconds"
+                            session_channel.last_error = error_text
+                            duration_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
+                            self._mark_bootstrap_state(
+                                session_channel,
+                                status="retrying" if transient and attempt < BOOTSTRAP_RETRY_ATTEMPTS else "failed",
+                                attempted_at=started_at,
+                                duration_ms=duration_ms,
+                                error=error_text,
+                                attempts=attempt,
                             )
                             await self._log_channel_event(
                                 session,
                                 session_agent,
                                 session_channel,
-                                f"channel.{channel.platform}.bootstrap_timeout",
-                                f"{session_agent.name} {channel.platform} gateway bootstrap timed out",
+                                log_event,
+                                log_message,
                                 severity="warning",
-                                details={"timeout_seconds": BOOTSTRAP_CHANNEL_TIMEOUT_SECONDS},
+                                details={
+                                    "error": error_text,
+                                    "attempt": attempt,
+                                    "max_attempts": BOOTSTRAP_RETRY_ATTEMPTS,
+                                    "will_retry": bool(transient and attempt < BOOTSTRAP_RETRY_ATTEMPTS),
+                                },
                             )
                             await session.commit()
-                except ValueError as exc:
-                    logger.warning(
-                        "Telegram gateway bootstrap failed for agent %s (%s): %s",
-                        agent.id,
-                        agent.name,
-                        exc,
-                    )
-                    async with self.session_factory() as session:
-                        session_agent = await session.get(Agent, agent.id)
-                        session_channel = await self._get_channel(session, agent.id, channel.platform)
-                        if session_agent and session_channel:
-                            await self._log_channel_event(
-                                session,
-                                session_agent,
-                                session_channel,
-                                f"channel.{channel.platform}.bootstrap_failed",
-                                f"{session_agent.name} {channel.platform} gateway bootstrap failed",
-                                severity="warning",
-                                details={"error": str(exc)},
-                            )
-                            await session.commit()
-                except Exception:
-                    logger.exception(
-                        "Unexpected gateway bootstrap failure for agent %s (%s)",
-                        agent.id,
-                        agent.name,
-                    )
-                    async with self.session_factory() as session:
-                        session_agent = await session.get(Agent, agent.id)
-                        session_channel = await self._get_channel(session, agent.id, channel.platform)
-                        if session_agent and session_channel:
-                            await self._log_channel_event(
-                                session,
-                                session_agent,
-                                session_channel,
-                                f"channel.{channel.platform}.bootstrap_failed",
-                                f"{session_agent.name} {channel.platform} gateway bootstrap failed",
-                                severity="warning",
-                                details={"error": "unexpected_error"},
-                            )
-                            await session.commit()
+                    if not transient or attempt >= BOOTSTRAP_RETRY_ATTEMPTS:
+                        return
+                    await asyncio.sleep(BOOTSTRAP_RETRY_DELAYS_SECONDS[min(attempt - 1, len(BOOTSTRAP_RETRY_DELAYS_SECONDS) - 1)])
 
         await asyncio.gather(*(_bootstrap_one(channel, agent) for channel, agent in rows))
 
@@ -151,16 +213,36 @@ class GatewaySupervisor:
     async def get_runtime_status(self, agent_id: str, platform: str) -> dict:
         handle = self.processes.get((agent_id, platform))
         if handle and handle.process.poll() is None:
-            return {"status": "running", "pid": handle.process.pid, "log_path": handle.log_path}
+            async with self.session_factory() as session:
+                channel = await self._get_channel(session, agent_id, platform)
+                bootstrap = dict((channel.metadata_json or {}).get("bootstrap") or {}) if channel else {}
+            return {
+                "status": "running",
+                "pid": handle.process.pid,
+                "log_path": handle.log_path,
+                "last_bootstrap_at": bootstrap.get("last_attempt_at"),
+                "last_bootstrap_success_at": bootstrap.get("last_success_at"),
+                "last_bootstrap_status": bootstrap.get("last_status"),
+                "last_bootstrap_error": bootstrap.get("last_error"),
+                "last_bootstrap_duration_ms": bootstrap.get("last_duration_ms"),
+                "last_bootstrap_attempts": bootstrap.get("last_attempts"),
+            }
         async with self.session_factory() as session:
             agent = await session.get(Agent, agent_id)
             channel = await self._get_channel(session, agent_id, platform)
             if not channel:
                 return {"status": "missing", "pid": None, "log_path": None}
+            bootstrap = dict((channel.metadata_json or {}).get("bootstrap") or {})
             return {
                 "status": channel.status,
                 "pid": None,
                 "log_path": self._log_path(agent.workspace_path, platform).as_posix() if agent else None,
+                "last_bootstrap_at": bootstrap.get("last_attempt_at"),
+                "last_bootstrap_success_at": bootstrap.get("last_success_at"),
+                "last_bootstrap_status": bootstrap.get("last_status"),
+                "last_bootstrap_error": bootstrap.get("last_error"),
+                "last_bootstrap_duration_ms": bootstrap.get("last_duration_ms"),
+                "last_bootstrap_attempts": bootstrap.get("last_attempts"),
             }
 
     def _channel_log_details(self, platform: str, channel: MessagingChannel, extra: dict | None = None) -> dict:

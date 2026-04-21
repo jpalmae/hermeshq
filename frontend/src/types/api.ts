@@ -100,6 +100,20 @@ export interface Agent {
   node?: Node | null;
 }
 
+export interface BulkSkippedAgent {
+  agent_id: string;
+  reason: string;
+}
+
+export interface BulkAgentOperationResult {
+  batch_id: string | null;
+  submitted: number;
+  skipped: number;
+  submitted_agent_ids: string[];
+  skipped_agents: BulkSkippedAgent[];
+  task_ids: string[];
+}
+
 export interface AppSettings {
   id: string;
   app_version: string;
@@ -393,4 +407,10 @@ export interface MessagingChannelRuntime {
   status: string;
   pid: number | null;
   log_path: string | null;
+  last_bootstrap_at: string | null;
+  last_bootstrap_success_at: string | null;
+  last_bootstrap_status: string | null;
+  last_bootstrap_error: string | null;
+  last_bootstrap_duration_ms: number | null;
+  last_bootstrap_attempts: number | null;
 }

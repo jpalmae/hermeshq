@@ -41,3 +41,9 @@ class MessagingChannelRuntimeRead(BaseModel):
     status: str
     pid: int | None = None
     log_path: str | None = None
+    last_bootstrap_at: datetime | None = None
+    last_bootstrap_success_at: datetime | None = None
+    last_bootstrap_status: str | None = None
+    last_bootstrap_error: str | None = None
+    last_bootstrap_duration_ms: int | None = None
+    last_bootstrap_attempts: int | None = None
