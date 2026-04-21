@@ -1,4 +1,6 @@
+import asyncio
 import base64
+import contextlib
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -196,9 +198,14 @@ async def lifespan(app: FastAPI):
     app.state.supervisor.pty_manager = app.state.pty_manager
     app.state.scheduler = SchedulerService(AsyncSessionLocal, app.state.supervisor.submit_task)
     await app.state.supervisor.bootstrap_runtime()
-    await app.state.gateway_supervisor.bootstrap_gateways()
     await app.state.scheduler.start()
+    app.state.gateway_bootstrap_task = asyncio.create_task(app.state.gateway_supervisor.bootstrap_gateways())
     yield
+    gateway_bootstrap_task = getattr(app.state, "gateway_bootstrap_task", None)
+    if gateway_bootstrap_task:
+        gateway_bootstrap_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await gateway_bootstrap_task
     await app.state.scheduler.stop()
     await app.state.gateway_supervisor.shutdown()
 

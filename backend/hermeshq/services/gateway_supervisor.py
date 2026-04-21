@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+import logging
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +16,10 @@ from hermeshq.models.base import utcnow
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.secret import Secret
 from hermeshq.services.hermes_installation import HermesInstallationError, HermesInstallationManager
+
+logger = logging.getLogger(__name__)
+BOOTSTRAP_CONCURRENCY = 3
+BOOTSTRAP_CHANNEL_TIMEOUT_SECONDS = 120
 
 
 @dataclass
@@ -41,6 +46,15 @@ class GatewaySupervisor:
         self.event_broker = event_broker
         self.installation_manager = installation_manager
         self.processes: dict[tuple[str, str], GatewayProcessHandle] = {}
+        self._channel_locks: dict[tuple[str, str], asyncio.Lock] = {}
+
+    def _get_channel_lock(self, agent_id: str, platform: str) -> asyncio.Lock:
+        key = (agent_id, platform)
+        lock = self._channel_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._channel_locks[key] = lock
+        return lock
 
     async def bootstrap_gateways(self) -> None:
         async with self.session_factory() as session:
@@ -50,11 +64,85 @@ class GatewaySupervisor:
                 .where(MessagingChannel.enabled.is_(True))
             )
             rows = result.all()
-        for channel, agent in rows:
+        semaphore = asyncio.Semaphore(BOOTSTRAP_CONCURRENCY)
+
+        async def _bootstrap_one(channel: MessagingChannel, agent: Agent) -> None:
             if channel.platform != "telegram":
-                continue
-            with contextlib.suppress(ValueError):
-                await self.start_channel(agent, channel.platform)
+                return
+            async with semaphore:
+                try:
+                    await asyncio.wait_for(
+                        self.start_channel(agent, channel.platform),
+                        timeout=BOOTSTRAP_CHANNEL_TIMEOUT_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "Telegram gateway bootstrap timed out for agent %s (%s)",
+                        agent.id,
+                        agent.name,
+                    )
+                    async with self.session_factory() as session:
+                        session_agent = await session.get(Agent, agent.id)
+                        session_channel = await self._get_channel(session, agent.id, channel.platform)
+                        if session_agent and session_channel:
+                            session_channel.status = "error"
+                            session_channel.last_error = (
+                                f"{channel.platform} gateway bootstrap timed out after "
+                                f"{BOOTSTRAP_CHANNEL_TIMEOUT_SECONDS} seconds"
+                            )
+                            await self._log_channel_event(
+                                session,
+                                session_agent,
+                                session_channel,
+                                f"channel.{channel.platform}.bootstrap_timeout",
+                                f"{session_agent.name} {channel.platform} gateway bootstrap timed out",
+                                severity="warning",
+                                details={"timeout_seconds": BOOTSTRAP_CHANNEL_TIMEOUT_SECONDS},
+                            )
+                            await session.commit()
+                except ValueError as exc:
+                    logger.warning(
+                        "Telegram gateway bootstrap failed for agent %s (%s): %s",
+                        agent.id,
+                        agent.name,
+                        exc,
+                    )
+                    async with self.session_factory() as session:
+                        session_agent = await session.get(Agent, agent.id)
+                        session_channel = await self._get_channel(session, agent.id, channel.platform)
+                        if session_agent and session_channel:
+                            await self._log_channel_event(
+                                session,
+                                session_agent,
+                                session_channel,
+                                f"channel.{channel.platform}.bootstrap_failed",
+                                f"{session_agent.name} {channel.platform} gateway bootstrap failed",
+                                severity="warning",
+                                details={"error": str(exc)},
+                            )
+                            await session.commit()
+                except Exception:
+                    logger.exception(
+                        "Unexpected gateway bootstrap failure for agent %s (%s)",
+                        agent.id,
+                        agent.name,
+                    )
+                    async with self.session_factory() as session:
+                        session_agent = await session.get(Agent, agent.id)
+                        session_channel = await self._get_channel(session, agent.id, channel.platform)
+                        if session_agent and session_channel:
+                            await self._log_channel_event(
+                                session,
+                                session_agent,
+                                session_channel,
+                                f"channel.{channel.platform}.bootstrap_failed",
+                                f"{session_agent.name} {channel.platform} gateway bootstrap failed",
+                                severity="warning",
+                                details={"error": "unexpected_error"},
+                            )
+                            await session.commit()
+
+        await asyncio.gather(*(_bootstrap_one(channel, agent) for channel, agent in rows))
 
     async def shutdown(self) -> None:
         for agent_id, platform in list(self.processes):
@@ -110,38 +198,23 @@ class GatewaySupervisor:
     async def start_channel(self, agent: Agent | str, platform: str) -> None:
         agent_id = agent.id if isinstance(agent, Agent) else agent
         key = (agent_id, platform)
-        handle = self.processes.get(key)
-        if handle and handle.process.poll() is None:
-            return
-
-        async with self.session_factory() as session:
-            agent_row = await session.get(Agent, agent_id)
-            channel = await self._get_channel(session, agent_id, platform)
-            if not agent_row or not channel:
-                raise ValueError("Messaging channel not found")
-            if not channel.enabled:
-                channel.status = "stopped"
-                await session.commit()
+        async with self._get_channel_lock(agent_id, platform):
+            handle = self.processes.get(key)
+            if handle and handle.process.poll() is None:
                 return
-            if platform == "telegram" and not channel.secret_ref:
-                channel.status = "error"
-                channel.last_error = "Telegram bot token secret is required"
-                await self._log_channel_event(
-                    session,
-                    agent_row,
-                    channel,
-                    "channel.telegram.start_failed",
-                    f"{agent_row.name} telegram gateway failed to start",
-                    severity="warning",
-                    details={"reason": "missing_secret_ref", "error": channel.last_error},
-                )
-                await session.commit()
-                raise ValueError(channel.last_error)
-            if platform == "telegram":
-                secret_exists = await session.execute(select(Secret.id).where(Secret.name == channel.secret_ref))
-                if secret_exists.scalar_one_or_none() is None:
+
+            async with self.session_factory() as session:
+                agent_row = await session.get(Agent, agent_id)
+                channel = await self._get_channel(session, agent_id, platform)
+                if not agent_row or not channel:
+                    raise ValueError("Messaging channel not found")
+                if not channel.enabled:
+                    channel.status = "stopped"
+                    await session.commit()
+                    return
+                if platform == "telegram" and not channel.secret_ref:
                     channel.status = "error"
-                    channel.last_error = f"Telegram bot token secret '{channel.secret_ref}' was not found"
+                    channel.last_error = "Telegram bot token secret is required"
                     await self._log_channel_event(
                         session,
                         agent_row,
@@ -149,121 +222,138 @@ class GatewaySupervisor:
                         "channel.telegram.start_failed",
                         f"{agent_row.name} telegram gateway failed to start",
                         severity="warning",
-                        details={"reason": "secret_not_found", "error": channel.last_error},
+                        details={"reason": "missing_secret_ref", "error": channel.last_error},
                     )
                     await session.commit()
                     raise ValueError(channel.last_error)
-            try:
-                await self.installation_manager.sync_agent_installation(agent_row)
-            except HermesInstallationError as exc:
-                channel.status = "error"
-                channel.last_error = str(exc)
-                await self._log_channel_event(
-                    session,
-                    agent_row,
-                    channel,
-                    "channel.telegram.start_failed",
-                    f"{agent_row.name} telegram gateway failed to start",
-                    severity="warning",
-                    details={"reason": "installation_sync_failed", "error": channel.last_error},
+                if platform == "telegram":
+                    secret_exists = await session.execute(select(Secret.id).where(Secret.name == channel.secret_ref))
+                    if secret_exists.scalar_one_or_none() is None:
+                        channel.status = "error"
+                        channel.last_error = f"Telegram bot token secret '{channel.secret_ref}' was not found"
+                        await self._log_channel_event(
+                            session,
+                            agent_row,
+                            channel,
+                            "channel.telegram.start_failed",
+                            f"{agent_row.name} telegram gateway failed to start",
+                            severity="warning",
+                            details={"reason": "secret_not_found", "error": channel.last_error},
+                        )
+                        await session.commit()
+                        raise ValueError(channel.last_error)
+                try:
+                    await self.installation_manager.sync_agent_installation(agent_row)
+                except HermesInstallationError as exc:
+                    channel.status = "error"
+                    channel.last_error = str(exc)
+                    await self._log_channel_event(
+                        session,
+                        agent_row,
+                        channel,
+                        "channel.telegram.start_failed",
+                        f"{agent_row.name} telegram gateway failed to start",
+                        severity="warning",
+                        details={"reason": "installation_sync_failed", "error": channel.last_error},
+                    )
+                    await session.commit()
+                    raise ValueError(channel.last_error) from exc
+                env = await self.installation_manager.build_gateway_env(agent_row, platform)
+                runtime_selection = await self.installation_manager.resolve_hermes_runtime(agent_row)
+                workspace_path = self.installation_manager.resolve_workspace_path(agent_row.workspace_path)
+                log_path = self._log_path(agent_row.workspace_path, platform)
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                log_handle = log_path.open("a", encoding="utf-8")
+                process = subprocess.Popen(
+                    [runtime_selection.hermes_bin, "gateway", "run"],
+                    cwd=str(workspace_path),
+                    env=env,
+                    stdin=subprocess.DEVNULL,
+                    stdout=log_handle,
+                    stderr=subprocess.STDOUT,
+                    close_fds=True,
+                )
+                channel.status = "running"
+                channel.last_error = None
+                channel.updated_at = utcnow()
+                session.add(
+                    ActivityLog(
+                        agent_id=agent_row.id,
+                        node_id=agent_row.node_id,
+                        event_type=f"channel.{platform}.started",
+                        message=f"{agent_row.name} {platform} gateway started",
+                        details={"platform": platform, "pid": process.pid},
+                    )
                 )
                 await session.commit()
-                raise ValueError(channel.last_error) from exc
-            env = await self.installation_manager.build_gateway_env(agent_row, platform)
-            runtime_selection = await self.installation_manager.resolve_hermes_runtime(agent_row)
-            workspace_path = self.installation_manager.resolve_workspace_path(agent_row.workspace_path)
-            log_path = self._log_path(agent_row.workspace_path, platform)
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            log_handle = log_path.open("a", encoding="utf-8")
-            process = subprocess.Popen(
-                [runtime_selection.hermes_bin, "gateway", "run"],
-                cwd=str(workspace_path),
-                env=env,
-                stdin=subprocess.DEVNULL,
-                stdout=log_handle,
-                stderr=subprocess.STDOUT,
-                close_fds=True,
-            )
-            channel.status = "running"
-            channel.last_error = None
-            channel.updated_at = utcnow()
-            session.add(
-                ActivityLog(
-                    agent_id=agent_row.id,
-                    node_id=agent_row.node_id,
-                    event_type=f"channel.{platform}.started",
-                    message=f"{agent_row.name} {platform} gateway started",
-                    details={"platform": platform, "pid": process.pid},
+
+            sessions_dir = self._sessions_dir(agent_row.workspace_path)
+            known_activity_keys, session_file_state = await asyncio.to_thread(self._snapshot_session_activity, sessions_dir)
+            monitor = asyncio.create_task(self._monitor_process(agent_id, platform, process, log_path.as_posix(), log_handle))
+            activity_task = asyncio.create_task(
+                self._activity_sync_loop(
+                    agent_row.id,
+                    agent_row.node_id,
+                    str(workspace_path),
+                    platform,
+                    known_activity_keys,
+                    session_file_state,
                 )
             )
-            await session.commit()
-
-        sessions_dir = self._sessions_dir(agent_row.workspace_path)
-        known_activity_keys, session_file_state = await asyncio.to_thread(self._snapshot_session_activity, sessions_dir)
-        monitor = asyncio.create_task(self._monitor_process(agent_id, platform, process, log_path.as_posix(), log_handle))
-        activity_task = asyncio.create_task(
-            self._activity_sync_loop(
-                agent_row.id,
-                agent_row.node_id,
-                str(workspace_path),
-                platform,
-                known_activity_keys,
-                session_file_state,
+            self.processes[key] = GatewayProcessHandle(
+                agent_id=agent_id,
+                platform=platform,
+                process=process,
+                log_path=log_path.as_posix(),
+                log_handle=log_handle,
+                monitor_task=monitor,
+                activity_task=activity_task,
+                known_activity_keys=known_activity_keys,
+                session_file_state=session_file_state,
             )
-        )
-        self.processes[key] = GatewayProcessHandle(
-            agent_id=agent_id,
-            platform=platform,
-            process=process,
-            log_path=log_path.as_posix(),
-            log_handle=log_handle,
-            monitor_task=monitor,
-            activity_task=activity_task,
-            known_activity_keys=known_activity_keys,
-            session_file_state=session_file_state,
-        )
-        await self.event_broker.publish(
-            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "running", "message": platform}
-        )
+            await self.event_broker.publish(
+                {"type": "messaging.status_changed", "agent_id": agent_id, "status": "running", "message": platform}
+            )
 
     async def stop_channel(self, agent_id: str, platform: str) -> None:
         key = (agent_id, platform)
-        handle = self.processes.pop(key, None)
-        if handle:
-            if handle.monitor_task:
-                handle.monitor_task.cancel()
-            if handle.activity_task:
-                handle.activity_task.cancel()
-            if handle.process.poll() is None:
-                handle.process.terminate()
-                try:
-                    await asyncio.wait_for(asyncio.to_thread(handle.process.wait), timeout=5)
-                except asyncio.TimeoutError:
-                    handle.process.kill()
-                    await asyncio.to_thread(handle.process.wait)
-            with contextlib.suppress(Exception):
-                handle.log_handle.close()
+        async with self._get_channel_lock(agent_id, platform):
+            handle = self.processes.pop(key, None)
+            if handle:
+                if handle.monitor_task:
+                    handle.monitor_task.cancel()
+                if handle.activity_task:
+                    handle.activity_task.cancel()
+                if handle.process.poll() is None:
+                    handle.process.terminate()
+                    try:
+                        await asyncio.wait_for(asyncio.to_thread(handle.process.wait), timeout=5)
+                    except asyncio.TimeoutError:
+                        handle.process.kill()
+                        await asyncio.to_thread(handle.process.wait)
+                with contextlib.suppress(Exception):
+                    handle.log_handle.close()
 
-        async with self.session_factory() as session:
-            agent = await session.get(Agent, agent_id)
-            channel = await self._get_channel(session, agent_id, platform)
-            if channel:
-                channel.status = "stopped"
-                channel.last_error = None
-            if agent:
-                session.add(
-                    ActivityLog(
-                        agent_id=agent.id,
-                        node_id=agent.node_id,
-                        event_type=f"channel.{platform}.stopped",
-                        message=f"{agent.name} {platform} gateway stopped",
-                        details={"platform": platform},
+            async with self.session_factory() as session:
+                agent = await session.get(Agent, agent_id)
+                channel = await self._get_channel(session, agent_id, platform)
+                if channel:
+                    channel.status = "stopped"
+                    channel.last_error = None
+                if agent:
+                    session.add(
+                        ActivityLog(
+                            agent_id=agent.id,
+                            node_id=agent.node_id,
+                            event_type=f"channel.{platform}.stopped",
+                            message=f"{agent.name} {platform} gateway stopped",
+                            details={"platform": platform},
+                        )
                     )
-                )
-            await session.commit()
-        await self.event_broker.publish(
-            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "stopped", "message": platform}
-        )
+                await session.commit()
+            await self.event_broker.publish(
+                {"type": "messaging.status_changed", "agent_id": agent_id, "status": "stopped", "message": platform}
+            )
 
     async def restart_channel(self, agent_id: str, platform: str) -> None:
         await self.stop_channel(agent_id, platform)
