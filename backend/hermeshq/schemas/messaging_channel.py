@@ -15,6 +15,7 @@ class MessagingChannelUpdate(BaseModel):
     require_mention: bool = False
     free_response_chat_ids: list[str] = Field(default_factory=list)
     unauthorized_dm_behavior: str = "pair"
+    metadata_json: dict = Field(default_factory=dict)
 
 
 class MessagingChannelRead(ORMModel):
@@ -47,3 +48,8 @@ class MessagingChannelRuntimeRead(BaseModel):
     last_bootstrap_error: str | None = None
     last_bootstrap_duration_ms: int | None = None
     last_bootstrap_attempts: int | None = None
+    paired: bool | None = None
+    pairing_status: str | None = None
+    session_path: str | None = None
+    bridge_log_path: str | None = None
+    pairing_qr_text: str | None = None

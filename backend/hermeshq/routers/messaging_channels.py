@@ -17,7 +17,7 @@ from hermeshq.services.hermes_installation import HermesInstallationError
 from hermeshq.models.activity import ActivityLog
 
 router = APIRouter(prefix="/agents/{agent_id}/channels", tags=["messaging-channels"])
-SUPPORTED_PLATFORMS = {"telegram"}
+SUPPORTED_PLATFORMS = {"telegram", "whatsapp"}
 
 
 async def _get_or_create_channel(
@@ -128,14 +128,15 @@ async def upsert_channel(
     previous_secret_ref = channel.secret_ref
     normalized_secret_ref = payload.secret_ref.strip() if payload.secret_ref else None
     secret_exists = await _secret_exists(db, normalized_secret_ref)
+    event_prefix = f"channel.{platform}"
 
     if platform == "telegram":
         if payload.enabled and not normalized_secret_ref:
             await _log_channel_event(
                 db,
                 agent,
-                "channel.telegram.config_rejected",
-                f"{agent.name} telegram configuration rejected",
+                f"{event_prefix}.config_rejected",
+                f"{agent.name} {platform} configuration rejected",
                 severity="warning",
                 details=_channel_details(platform, normalized_secret_ref, {"reason": "missing_secret_ref"}),
             )
@@ -149,8 +150,8 @@ async def upsert_channel(
             await _log_channel_event(
                 db,
                 agent,
-                "channel.telegram.config_rejected",
-                f"{agent.name} telegram configuration rejected",
+                f"{event_prefix}.config_rejected",
+                f"{agent.name} {platform} configuration rejected",
                 severity="warning",
                 details=_channel_details(platform, normalized_secret_ref, {"reason": "secret_not_found"}),
             )
@@ -169,6 +170,11 @@ async def upsert_channel(
     channel.require_mention = bool(payload.require_mention)
     channel.free_response_chat_ids = _normalize_string_list(payload.free_response_chat_ids)
     channel.unauthorized_dm_behavior = payload.unauthorized_dm_behavior or "pair"
+    metadata = dict(channel.metadata_json or {})
+    incoming_metadata = payload.metadata_json if isinstance(payload.metadata_json, dict) else {}
+    for key, value in incoming_metadata.items():
+        metadata[key] = value
+    channel.metadata_json = metadata
 
     await db.commit()
     await db.refresh(channel)
@@ -184,8 +190,8 @@ async def upsert_channel(
         await _log_channel_event(
             db,
             agent,
-            "channel.telegram.config_updated",
-            f"{agent.name} telegram configuration updated",
+            f"{event_prefix}.config_updated",
+            f"{agent.name} {platform} configuration updated",
             severity="warning",
             details=_channel_details(
                 platform,
@@ -198,8 +204,8 @@ async def upsert_channel(
     await _log_channel_event(
         db,
         agent,
-        "channel.telegram.config_updated",
-        f"{agent.name} telegram configuration updated",
+        f"{event_prefix}.config_updated",
+        f"{agent.name} {platform} configuration updated",
         details=_channel_details(platform, channel.secret_ref, {"enabled": channel.enabled}),
     )
     await db.commit()

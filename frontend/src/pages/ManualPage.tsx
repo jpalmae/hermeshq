@@ -42,7 +42,7 @@ const manualContent: Record<"en" | "es", ManualContent> = {
       },
       {
         label: "3. Ejecutar",
-        body: "Conversa con el agente, usa la TUI, programa tareas o vincula canales externos como Telegram según el caso.",
+        body: "Conversa con el agente, usa la TUI, programa tareas o vincula canales externos como Telegram o WhatsApp según el caso.",
       },
     ],
     adminBadge: "Admin",
@@ -207,6 +207,22 @@ const manualContent: Record<"en" | "es", ManualContent> = {
         ],
       },
       {
+        id: "whatsapp",
+        eyebrow: "Canales",
+        title: "WhatsApp persistente por agente",
+        summary:
+          "HermesHQ también puede vincular un agente a WhatsApp usando el gateway nativo de Hermes y dejar el runtime supervisado desde la plataforma.",
+        bullets: [
+          "La configuración vive por agente igual que Telegram, así que cada agente conserva su propia sesión, allowlist y modo de operación.",
+          "El canal WhatsApp usa pairing por QR. Desde el panel del agente puedes guardar la configuración, iniciar el canal y revisar el estado de pairing, pero el primer emparejamiento real se completa escaneando el QR generado por el bridge.",
+          "Cuando el bridge está en `waiting_scan`, HermesHQ renderiza ese QR directamente en la tarjeta del canal para que el teléfono pueda escanearlo sin depender del bloque ASCII crudo del log.",
+          "HermesHQ sincroniza automáticamente los assets del bridge WhatsApp dentro del `HERMES_HOME` del agente para no depender de archivos faltantes en la instalación global de Hermes Agent.",
+          "El estado del runtime expone `paired`, `pairing_status`, `session_path` y `bridge_log_path` para diagnosticar rápidamente si el bridge quedó esperando scan, emparejado o con error.",
+          "Los mensajes entrantes y salientes de WhatsApp quedan trazados en el `Activity stream` del agente como `channel.whatsapp.inbound` y `channel.whatsapp.outbound` cuando existe tráfico real.",
+          "Si reinicias o detienes el canal desde HermesHQ, la plataforma vuelve a levantar el gateway compartido del agente con la configuración vigente sin mezclarlo con el runtime ledger.",
+        ],
+      },
+      {
         id: "users",
         eyebrow: "Administracion",
         title: "Usuarios, roles y asignaciones",
@@ -338,7 +354,7 @@ const manualContent: Record<"en" | "es", ManualContent> = {
       },
       {
         label: "3. Execute",
-        body: "Talk to the agent, use the TUI, schedule tasks, or connect external channels such as Telegram depending on the job.",
+        body: "Talk to the agent, use the TUI, schedule tasks, or connect external channels such as Telegram or WhatsApp depending on the job.",
       },
     ],
     adminBadge: "Admin",
@@ -501,6 +517,22 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "Each new Telegram message in or out is traced in the agent `Activity stream` as a `channel.telegram.inbound` or `channel.telegram.outbound` event, which gives auditability without mixing it into the runtime ledger.",
           "If a delegation starts from Telegram, HermesHQ preserves the origin chat context. When the subordinate agent finishes, the result can return automatically to that same Telegram chat.",
           "Do not connect the same bot to two active HermesHQ instances at the same time. Telegram only allows one active polling consumer per token, and conflicts break both delivery and traceability.",
+        ],
+      },
+      {
+        id: "whatsapp",
+        eyebrow: "Channels",
+        title: "Persistent WhatsApp per agent",
+        summary:
+          "HermesHQ can also bind an agent to WhatsApp through the native Hermes gateway and keep that runtime supervised from the platform.",
+        bullets: [
+          "The configuration is stored per agent just like Telegram, so each agent keeps its own session, allowlist, and operating mode.",
+          "The WhatsApp channel uses QR pairing. From the agent panel you can save the configuration, start the channel, and inspect pairing state, but the first real pairing is completed by scanning the QR code exposed by the bridge.",
+          "When the bridge is in `waiting_scan`, HermesHQ renders that QR directly in the channel card so the phone can scan it without depending on the raw ASCII block in the log.",
+          "HermesHQ automatically syncs the WhatsApp bridge assets into the agent `HERMES_HOME`, so the channel does not depend on missing bridge files in the global Hermes Agent wheel.",
+          "Runtime status exposes `paired`, `pairing_status`, `session_path`, and `bridge_log_path` so you can quickly see whether the bridge is waiting for scan, paired, or in error.",
+          "Real inbound and outbound WhatsApp traffic is traced into the agent `Activity stream` as `channel.whatsapp.inbound` and `channel.whatsapp.outbound` events.",
+          "If you restart or stop the channel from HermesHQ, the platform brings the shared agent gateway back with the current messaging configuration instead of mixing that state into the runtime ledger.",
         ],
       },
       {

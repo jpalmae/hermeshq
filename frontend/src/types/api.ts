@@ -4,13 +4,29 @@ export type TaskStatus = "queued" | "running" | "completed" | "failed" | "cancel
 export interface User {
   id: string;
   username: string;
+  email: string | null;
   display_name: string;
+  auth_source: "local" | "oidc" | string;
   role: "admin" | "user";
   is_active: boolean;
   theme_preference: "default" | "dark" | "light" | "system" | "enterprise";
   locale_preference: "default" | "en" | "es";
   avatar_url: string | null;
   has_avatar: boolean;
+}
+
+export interface AuthProvider {
+  slug: string;
+  name: string;
+  kind: string;
+  enabled: boolean;
+}
+
+export interface AuthProvidersResponse {
+  auth_mode: "local" | "hybrid" | "oidc" | string;
+  local_login_enabled: boolean;
+  oidc_enabled: boolean;
+  providers: AuthProvider[];
 }
 
 export interface ManagedUser extends User {
@@ -413,4 +429,9 @@ export interface MessagingChannelRuntime {
   last_bootstrap_error: string | null;
   last_bootstrap_duration_ms: number | null;
   last_bootstrap_attempts: number | null;
+  paired: boolean | null;
+  pairing_status: string | null;
+  session_path: string | null;
+  bridge_log_path: string | null;
+  pairing_qr_text: string | null;
 }

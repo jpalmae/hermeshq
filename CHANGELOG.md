@@ -23,6 +23,7 @@
 - a first-run `install.sh` so HermesHQ can be installed with a single `curl | bash` command from GitHub
 - GitHub Pages landing content, dark demo assets, refreshed screenshots, and README video/demo support for project presentation
 - Telegram chat traceability into agent `Activity stream` by persisting inbound and outbound gateway messages as `channel.telegram.*` events
+- native per-agent WhatsApp channels using the Hermes gateway, including bridge asset sync, QR-based pairing, runtime visibility, and shared gateway supervision compatible with multi-platform agent messaging
 
 ### Changed
 
@@ -35,6 +36,7 @@
 - managed integrations documentation now includes package requirements and the Gamma.app upload flow for converting older skill bundles into HermesHQ-native integration packages
 - `Activity stream` now groups streamed `agent.output` fragments into readable consolidated blocks instead of showing token-like fragments line by line
 - `Runtime ledger` and `Activity stream` now include client-side search
+- gateway supervision now treats Hermes messaging as one shared gateway process per agent, which avoids WhatsApp/Telegram PID races and keeps multi-platform channels under the same `HERMES_HOME`
 - the dependency canvas now varies agent identity shapes by runtime profile instead of rendering every agent the same way
 - the installer now auto-installs Docker on Linux hosts when missing, attempts Docker-without-root setup, preserves existing instance env files, shows admin credentials at the end, and performs rollback/cleanup on failed first installs
 - the frontend API/WebSocket base resolution no longer depends on `localhost` for remote installs
@@ -46,6 +48,8 @@
 - fixed installer temp directory cleanup so the one-line install flow no longer ends with `tmp_dir: unbound variable`
 - fixed the admin password reset flow so it no longer depends on the backend image already containing a new helper file
 - documented that a Telegram bot token must be active in only one HermesHQ instance at a time to avoid polling conflicts
+- fixed HermesHQ WhatsApp startup so the bundled bridge assets, bridge port, and runtime config no longer depend on missing files inside the upstream `hermes-agent` wheel
+- fixed WhatsApp QR pairing in HermesHQ so the UI now renders a real visual QR from the bridge output instead of depending only on ASCII text rendering in the browser
 
 ## 2026-04-03
 

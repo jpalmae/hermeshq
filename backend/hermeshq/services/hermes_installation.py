@@ -35,6 +35,7 @@ class HermesInstallationError(RuntimeError):
 
 class HermesInstallationManager:
     _DESC_RE = re.compile(r"^\s*description:\s*(.+?)\s*$", re.MULTILINE)
+    _WHATSAPP_BRIDGE_SOURCE = Path(__file__).resolve().parents[1] / "assets" / "whatsapp-bridge"
 
     def __init__(
         self,
@@ -67,13 +68,14 @@ class HermesInstallationManager:
         installed_skills = await self._sync_managed_skills(agent, hermes_home, enabled_integrations)
         system_prompt = await self._build_system_prompt(agent, installed_skills, app_name)
         messaging_channels = await self._load_messaging_channels(agent.id)
+        self._sync_whatsapp_bridge_assets(hermes_home)
         self._write_config(agent, hermes_home, system_prompt, messaging_channels, active_skin, runtime_selection)
         self._write_soul(agent, hermes_home, app_name)
         await self._sync_auth_store(agent, hermes_home)
         await self._sync_dotenv(agent, hermes_home, messaging_channels)
         return installed_skills
 
-    async def build_process_env(self, agent: Agent) -> dict[str, str]:
+    async def build_process_env(self, agent: Agent, *, include_channels: bool = True) -> dict[str, str]:
         hermes_home = self.build_hermes_home(agent.workspace_path)
         profile = get_runtime_profile(agent.runtime_profile)
         env = {**os.environ, "HERMES_HOME": str(hermes_home), "TERM": "xterm-256color"}
@@ -96,12 +98,13 @@ class HermesInstallationManager:
             if provider_base_url_env:
                 env[provider_base_url_env] = agent.base_url
             env["OPENAI_BASE_URL"] = agent.base_url
-        for key, value in (await self._build_managed_env_map(agent)).items():
+        managed_env = await self._build_managed_env_map(agent) if include_channels else {}
+        for key, value in managed_env.items():
             env[key] = value
         return env
 
-    async def build_gateway_env(self, agent: Agent, platform: str) -> dict[str, str]:
-        env = await self.build_process_env(agent)
+    async def build_gateway_env(self, agent: Agent, platform: str | None = None) -> dict[str, str]:
+        env = await self.build_process_env(agent, include_channels=False)
         for key, value in (await self._build_managed_env_map(agent, platform)).items():
             env[key] = value
         return env
@@ -199,6 +202,10 @@ class HermesInstallationManager:
         for subdir in ("cron", "sessions", "logs", "memories", "skills", "plugins"):
             (hermes_home / subdir).mkdir(parents=True, exist_ok=True)
 
+    def _channel_runtime_enabled(self, channel: MessagingChannel) -> bool:
+        metadata = channel.metadata_json if isinstance(channel.metadata_json, dict) else {}
+        return bool(channel.enabled) and not bool(metadata.get("runtime_disabled"))
+
     def _sync_managed_plugins(self, agent: Agent, hermes_home: Path, enabled_integration_slugs: list[str]) -> None:
         plugins_root = hermes_home / "plugins"
         plugins_root.mkdir(parents=True, exist_ok=True)
@@ -255,6 +262,7 @@ class HermesInstallationManager:
     ) -> None:
         profile = get_runtime_profile(agent.runtime_profile)
         telegram_channel = next((item for item in messaging_channels if item.platform == "telegram"), None)
+        whatsapp_channel = next((item for item in messaging_channels if item.platform == "whatsapp"), None)
         config = {
             "model": {
                 "default": agent.model,
@@ -281,7 +289,7 @@ class HermesInstallationManager:
         }
         if active_skin:
             config["display"] = {"skin": active_skin}
-        if telegram_channel:
+        if telegram_channel and self._channel_runtime_enabled(telegram_channel):
             platforms = config.setdefault("platforms", {})
             telegram_platform = {
                 "enabled": bool(telegram_channel.enabled),
@@ -298,8 +306,49 @@ class HermesInstallationManager:
                 "free_response_chats": list(telegram_channel.free_response_chat_ids or []),
                 "unauthorized_dm_behavior": telegram_channel.unauthorized_dm_behavior or "pair",
             }
+        if whatsapp_channel and self._channel_runtime_enabled(whatsapp_channel):
+            platforms = config.setdefault("platforms", {})
+            whatsapp_platform = {
+                "enabled": bool(whatsapp_channel.enabled),
+                "extra": {
+                    "bridge_script": str(self._whatsapp_bridge_target(hermes_home) / "bridge.js"),
+                    "bridge_port": self._whatsapp_bridge_port(agent),
+                    "session_path": str(self._whatsapp_session_dir(hermes_home)),
+                    "require_mention": bool(whatsapp_channel.require_mention),
+                    "free_response_chats": list(whatsapp_channel.free_response_chat_ids or []),
+                },
+            }
+            if whatsapp_channel.home_chat_id:
+                whatsapp_platform["home_channel"] = {
+                    "platform": "whatsapp",
+                    "chat_id": whatsapp_channel.home_chat_id,
+                    "name": whatsapp_channel.home_chat_name or "Home",
+                }
+            platforms["whatsapp"] = whatsapp_platform
         config_path = hermes_home / "config.yaml"
         config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    def _whatsapp_bridge_target(self, hermes_home: Path) -> Path:
+        return hermes_home / "platforms" / "whatsapp-bridge"
+
+    def _whatsapp_session_dir(self, hermes_home: Path) -> Path:
+        return hermes_home / "whatsapp" / "session"
+
+    def _whatsapp_bridge_port(self, agent: Agent) -> int:
+        raw = (agent.id or "").replace("-", "")
+        seed = int(raw[:8] or "0", 16)
+        return 32000 + (seed % 2000)
+
+    def _sync_whatsapp_bridge_assets(self, hermes_home: Path) -> None:
+        source_root = self._WHATSAPP_BRIDGE_SOURCE
+        if not source_root.exists():
+            return
+        target_root = self._whatsapp_bridge_target(hermes_home)
+        target_root.mkdir(parents=True, exist_ok=True)
+        for source_path in source_root.iterdir():
+            if not source_path.is_file():
+                continue
+            shutil.copy2(source_path, target_root / source_path.name)
 
     async def resolve_hermes_runtime(self, agent: Agent) -> HermesRuntimeSelection:
         async with self.session_factory() as session:
@@ -630,8 +679,11 @@ class HermesInstallationManager:
             managed["OPENAI_BASE_URL"] = agent.base_url
 
         channels = await self._load_messaging_channels(agent.id)
+        managed["WHATSAPP_ENABLED"] = "false"
         for channel in channels:
             if platform and channel.platform != platform:
+                continue
+            if not self._channel_runtime_enabled(channel):
                 continue
             if channel.platform == "telegram":
                 token = await self._resolve_api_key(channel.secret_ref)
@@ -646,7 +698,17 @@ class HermesInstallationManager:
                 if channel.free_response_chat_ids:
                     managed["TELEGRAM_FREE_RESPONSE_CHATS"] = ",".join(channel.free_response_chat_ids)
                 managed["TELEGRAM_REQUIRE_MENTION"] = "true" if channel.require_mention else "false"
-                managed["WHATSAPP_ENABLED"] = "false"
+                continue
+            if channel.platform == "whatsapp":
+                whatsapp_mode = str((channel.metadata_json or {}).get("whatsapp_mode") or "self-chat").strip() or "self-chat"
+                managed["WHATSAPP_ENABLED"] = "true" if channel.enabled else "false"
+                managed["WHATSAPP_MODE"] = whatsapp_mode
+                if channel.allowed_user_ids:
+                    managed["WHATSAPP_ALLOWED_USERS"] = ",".join(channel.allowed_user_ids)
+                if channel.require_mention:
+                    managed["WHATSAPP_REQUIRE_MENTION"] = "true"
+                if channel.free_response_chat_ids:
+                    managed["WHATSAPP_FREE_RESPONSE_CHATS"] = ",".join(channel.free_response_chat_ids)
 
         for slug, config in (agent.integration_configs or {}).items():
             enabled_integrations = await self._load_enabled_integration_slugs()
@@ -677,6 +739,10 @@ class HermesInstallationManager:
             "TELEGRAM_FREE_RESPONSE_CHATS",
             "TELEGRAM_REQUIRE_MENTION",
             "WHATSAPP_ENABLED",
+            "WHATSAPP_MODE",
+            "WHATSAPP_ALLOWED_USERS",
+            "WHATSAPP_REQUIRE_MENTION",
+            "WHATSAPP_FREE_RESPONSE_CHATS",
             *self._provider_env_names("zai"),
             *self._provider_env_names("openrouter"),
             *self._provider_env_names("anthropic"),

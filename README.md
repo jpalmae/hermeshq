@@ -13,7 +13,7 @@ It keeps Hermes as the real execution engine, then adds the operational layer ar
 - web UI, RBAC, users, and assigned-agent scope
 - task dispatch, schedules, runtime ledger, and activity stream
 - hierarchy-aware inter-agent delegation
-- per-agent Telegram channels
+- per-agent Telegram and WhatsApp channels
 - provider presets, secrets vault, runtime profiles, and managed integrations
 
 Project landing page: [jpalmae.github.io/hermeshq](https://jpalmae.github.io/hermeshq/)  
@@ -42,7 +42,7 @@ HermesHQ uses that same Hermes runtime underneath, but wraps it in a control pla
 - web UI, RBAC, users, and assigned-agent scope
 - task dispatch, schedules, and runtime ledger
 - inter-agent comms and hierarchy-aware delegation
-- per-agent Telegram channels
+- per-agent Telegram and WhatsApp channels
 - provider presets, secrets vault, and managed integrations
 - runtime profiles and capability visibility
 
@@ -106,7 +106,7 @@ Hermes works well as a local runtime. HermesHQ adds the things teams usually nee
 - agent CRUD and local node bootstrap
 - inter-agent comms with hierarchy-aware delegation rules
 - delegate result callbacks back to the parent agent
-- per-agent Telegram channels with activity traceability
+- per-agent Telegram and WhatsApp channels with activity traceability
 - assigned-agent scope for non-admin users
 
 ### Configuration and Governance
@@ -349,8 +349,8 @@ If `.cloudflared.env` is present and contains `TUNNEL_TOKEN`, the restore script
 - workspace editor
 - PTY terminal pane
 - per-agent integrations section with declarative config forms
-- per-agent Telegram channel management
-- Telegram message traceability in agent activity logs
+- per-agent Telegram and WhatsApp channel management
+- Telegram and WhatsApp message traceability in agent activity logs
 - per-user operator avatar
 - instance-wide Hermes TUI skin upload for admins
 
