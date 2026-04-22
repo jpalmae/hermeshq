@@ -346,9 +346,11 @@ class HermesInstallationManager:
         target_root = self._whatsapp_bridge_target(hermes_home)
         target_root.mkdir(parents=True, exist_ok=True)
         for source_path in source_root.iterdir():
-            if not source_path.is_file():
+            target_path = target_root / source_path.name
+            if source_path.is_dir():
+                shutil.copytree(source_path, target_path, dirs_exist_ok=True)
                 continue
-            shutil.copy2(source_path, target_root / source_path.name)
+            shutil.copy2(source_path, target_path)
 
     async def resolve_hermes_runtime(self, agent: Agent) -> HermesRuntimeSelection:
         async with self.session_factory() as session:

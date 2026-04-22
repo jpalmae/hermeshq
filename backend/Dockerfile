@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt \
 
 COPY VERSION /app/VERSION
 COPY backend/hermeshq /app/hermeshq
+RUN cd /app/hermeshq/assets/whatsapp-bridge && npm ci
 
 RUN mkdir -p /app/workspaces
 
