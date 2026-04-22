@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { useAgentAction, useAgents, useCreateAgent, useDeleteAgent } from "../api/agents";
+import { useAgentAction, useAgents, useBulkAgentMessage, useBulkAgentTask, useCreateAgent, useDeleteAgent } from "../api/agents";
 import { AgentAvatar } from "../components/AgentAvatar";
 import { useHermesVersions } from "../api/hermesVersions";
 import { useNodes } from "../api/nodes";
@@ -28,6 +28,8 @@ const emptyForm = {
   base_url: "",
   system_prompt: "",
 };
+
+type BulkDialogMode = "task" | "message" | null;
 
 function slugify(value: string) {
   return value
@@ -62,11 +64,21 @@ export function AgentsPage() {
   const startAgent = useAgentAction("start");
   const stopAgent = useAgentAction("stop");
   const restartAgent = useAgentAction("restart");
+  const bulkTask = useBulkAgentTask();
+  const bulkMessage = useBulkAgentMessage();
 
   const [form, setForm] = useState(emptyForm);
   const [nameTouched, setNameTouched] = useState(false);
   const [slugTouched, setSlugTouched] = useState(false);
   const [selectedProviderSlug, setSelectedProviderSlug] = useState("");
+  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
+  const [bulkDialogMode, setBulkDialogMode] = useState<BulkDialogMode>(null);
+  const [bulkTaskTitle, setBulkTaskTitle] = useState("");
+  const [bulkTaskPrompt, setBulkTaskPrompt] = useState("");
+  const [bulkTaskPriority, setBulkTaskPriority] = useState("5");
+  const [bulkTaskAutoStart, setBulkTaskAutoStart] = useState(true);
+  const [bulkMessageText, setBulkMessageText] = useState("");
+  const [bulkMessageAutoStart, setBulkMessageAutoStart] = useState(true);
 
   const activeNodeId = useMemo(() => nodes?.[0]?.id ?? "", [nodes]);
   const enabledProviders = useMemo(
@@ -81,6 +93,20 @@ export function AgentsPage() {
     () => (runtimeProfiles ?? []).find((profile) => profile.slug === form.runtime_profile) ?? null,
     [form.runtime_profile, runtimeProfiles],
   );
+  const selectableAgents = useMemo(
+    () => (agents ?? []).filter((agent) => !agent.is_archived),
+    [agents],
+  );
+  const selectedAgents = useMemo(() => {
+    const selectedSet = new Set(selectedAgentIds);
+    return selectableAgents.filter((agent) => selectedSet.has(agent.id));
+  }, [selectableAgents, selectedAgentIds]);
+  const selectableVisibleIds = useMemo(
+    () => selectableAgents.map((agent) => agent.id),
+    [selectableAgents],
+  );
+  const allVisibleSelected = selectableVisibleIds.length > 0 && selectableVisibleIds.every((agentId) => selectedAgentIds.includes(agentId));
+  const hasAnySelection = selectedAgents.length > 0;
 
   useEffect(() => {
     setForm((current) => {
@@ -104,6 +130,11 @@ export function AgentsPage() {
     const match = findMatchingProvider(enabledProviders, form.provider || settings?.default_provider, form.base_url || settings?.default_base_url);
     setSelectedProviderSlug(match?.slug ?? "");
   }, [enabledProviders, form.provider, form.base_url, settings?.default_provider, settings?.default_base_url]);
+
+  useEffect(() => {
+    const validIds = new Set(selectableVisibleIds);
+    setSelectedAgentIds((current) => current.filter((agentId) => validIds.has(agentId)));
+  }, [selectableVisibleIds]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -142,6 +173,77 @@ export function AgentsPage() {
       const message =
         error instanceof Error ? error.message : t("agents.deleteFailed");
       window.alert(message);
+    }
+  }
+
+  function toggleAgentSelection(agentId: string) {
+    setSelectedAgentIds((current) =>
+      current.includes(agentId) ? current.filter((value) => value !== agentId) : [...current, agentId],
+    );
+  }
+
+  function toggleAllVisible() {
+    setSelectedAgentIds((current) => {
+      if (allVisibleSelected) {
+        return current.filter((agentId) => !selectableVisibleIds.includes(agentId));
+      }
+      const next = new Set(current);
+      selectableVisibleIds.forEach((agentId) => next.add(agentId));
+      return Array.from(next);
+    });
+  }
+
+  function closeBulkDialog() {
+    setBulkDialogMode(null);
+  }
+
+  async function submitBulkTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      const result = await bulkTask.mutateAsync({
+        agent_ids: selectedAgents.map((agent) => agent.id),
+        title: bulkTaskTitle.trim(),
+        prompt: bulkTaskPrompt.trim(),
+        priority: Number.parseInt(bulkTaskPriority, 10) || 5,
+        auto_start_stopped: bulkTaskAutoStart,
+      });
+      window.alert(
+        t("agents.bulkTaskSubmitted", {
+          submitted: result.submitted,
+          skipped: result.skipped,
+        }),
+      );
+      setSelectedAgentIds([]);
+      setBulkDialogMode(null);
+      setBulkTaskTitle("");
+      setBulkTaskPrompt("");
+      setBulkTaskPriority("5");
+      setBulkTaskAutoStart(true);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : t("agents.bulkTaskFailed"));
+    }
+  }
+
+  async function submitBulkMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      const result = await bulkMessage.mutateAsync({
+        agent_ids: selectedAgents.map((agent) => agent.id),
+        message: bulkMessageText.trim(),
+        auto_start_stopped: bulkMessageAutoStart,
+      });
+      window.alert(
+        t("agents.bulkMessageSubmitted", {
+          submitted: result.submitted,
+          skipped: result.skipped,
+        }),
+      );
+      setSelectedAgentIds([]);
+      setBulkDialogMode(null);
+      setBulkMessageText("");
+      setBulkMessageAutoStart(true);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : t("agents.bulkMessageFailed"));
     }
   }
 
@@ -391,11 +493,56 @@ export function AgentsPage() {
             <p className="panel-label">{t("agents.registered", { count: agents?.length ?? 0 })}</p>
           </div>
         </div>
+        {hasAnySelection ? (
+          <div className="agents-bulk-bar mt-4 flex flex-wrap items-center gap-3 border border-[var(--border)] bg-[var(--surface-raised)] p-3">
+            <span className="panel-label">{t("agents.selectedCount", { count: selectedAgents.length })}</span>
+            <button type="button" className="panel-button-secondary" onClick={() => setSelectedAgentIds([])}>
+              {t("agents.clearSelection")}
+            </button>
+            <button
+              type="button"
+              className="panel-button-secondary"
+              onClick={() => setBulkDialogMode("message")}
+            >
+              {t("agents.sendMessage")}
+            </button>
+            <button
+              type="button"
+              className="panel-button-primary"
+              onClick={() => setBulkDialogMode("task")}
+            >
+              {t("agents.dispatchTask")}
+            </button>
+          </div>
+        ) : null}
         <div className="mt-2">
+          {(agents ?? []).length ? (
+            <div className="flex items-center gap-3 border-b border-[var(--border)] py-3 text-sm text-[var(--text-secondary)]">
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                onChange={toggleAllVisible}
+                disabled={!selectableVisibleIds.length}
+              />
+              <span>{t("agents.selectVisible")}</span>
+            </div>
+          ) : null}
           {(agents ?? []).map((agent) => (
-            <article key={agent.id} className="grid gap-5 border-b border-[var(--border)] py-5 xl:grid-cols-[1fr_auto]">
+            <article
+              key={agent.id}
+              className={`agents-row grid gap-5 border-b border-[var(--border)] py-5 xl:grid-cols-[1fr_auto] ${
+                selectedAgentIds.includes(agent.id) ? "is-selected" : ""
+              }`}
+            >
               <div className="grid gap-5 md:grid-cols-[1.1fr_0.8fr_0.8fr]">
                 <div className="flex items-start gap-4">
+                  <input
+                    type="checkbox"
+                    className="agents-select-box mt-3"
+                    checked={selectedAgentIds.includes(agent.id)}
+                    onChange={() => toggleAgentSelection(agent.id)}
+                    disabled={agent.is_archived}
+                  />
                   <AgentAvatar agent={agent} sizeClass="h-14 w-14" className="shrink-0" />
                   <div>
                     <p className="panel-label">{agent.slug}</p>
@@ -460,6 +607,103 @@ export function AgentsPage() {
         </div>
       </section>
       </div>
+      {bulkDialogMode ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[var(--overlay)] p-4">
+          <div className="panel-frame w-full max-w-2xl p-6">
+            {bulkDialogMode === "task" ? (
+              <form className="space-y-5" onSubmit={submitBulkTask}>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="panel-label">{t("agents.bulkTaskLabel")}</p>
+                    <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("agents.dispatchTask")}</h2>
+                  </div>
+                  <button type="button" className="panel-button-secondary" onClick={closeBulkDialog}>
+                    {t("common.no")}
+                  </button>
+                </div>
+                <label className="panel-field">
+                  <span className="panel-label">{t("agents.bulkTaskTitle")}</span>
+                  <input value={bulkTaskTitle} onChange={(event) => setBulkTaskTitle(event.target.value)} required />
+                </label>
+                <label className="panel-field">
+                  <span className="panel-label">{t("agents.bulkTaskPrompt")}</span>
+                  <textarea rows={6} value={bulkTaskPrompt} onChange={(event) => setBulkTaskPrompt(event.target.value)} required />
+                </label>
+                <label className="panel-field">
+                  <span className="panel-label">{t("agents.bulkTaskPriority")}</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={bulkTaskPriority}
+                    onChange={(event) => setBulkTaskPriority(event.target.value)}
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                  <input
+                    type="checkbox"
+                    checked={bulkTaskAutoStart}
+                    onChange={(event) => setBulkTaskAutoStart(event.target.checked)}
+                  />
+                  <span>{t("agents.autoStartStopped")}</span>
+                </label>
+                <div className="border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                  <p className="panel-label">{t("agents.bulkTargets")}</p>
+                  <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                    {selectedAgents.map((agent) => agent.friendly_name || agent.name).join(", ")}
+                  </p>
+                </div>
+                <div className="flex justify-end gap-3">
+                  <button type="button" className="panel-button-secondary" onClick={closeBulkDialog}>
+                    {t("agents.cancelBulk")}
+                  </button>
+                  <button type="submit" className="panel-button-primary" disabled={bulkTask.isPending}>
+                    {bulkTask.isPending ? t("common.loading") : t("agents.dispatchTask")}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form className="space-y-5" onSubmit={submitBulkMessage}>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="panel-label">{t("agents.bulkMessageLabel")}</p>
+                    <h2 className="mt-2 text-2xl text-[var(--text-display)]">{t("agents.sendMessage")}</h2>
+                  </div>
+                  <button type="button" className="panel-button-secondary" onClick={closeBulkDialog}>
+                    {t("common.no")}
+                  </button>
+                </div>
+                <label className="panel-field">
+                  <span className="panel-label">{t("agents.bulkMessageBody")}</span>
+                  <textarea rows={6} value={bulkMessageText} onChange={(event) => setBulkMessageText(event.target.value)} required />
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                  <input
+                    type="checkbox"
+                    checked={bulkMessageAutoStart}
+                    onChange={(event) => setBulkMessageAutoStart(event.target.checked)}
+                  />
+                  <span>{t("agents.autoStartStopped")}</span>
+                </label>
+                <div className="border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                  <p className="panel-label">{t("agents.bulkTargets")}</p>
+                  <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                    {selectedAgents.map((agent) => agent.friendly_name || agent.name).join(", ")}
+                  </p>
+                </div>
+                <div className="flex justify-end gap-3">
+                  <button type="button" className="panel-button-secondary" onClick={closeBulkDialog}>
+                    {t("agents.cancelBulk")}
+                  </button>
+                  <button type="submit" className="panel-button-primary" disabled={bulkMessage.isPending}>
+                    {bulkMessage.isPending ? t("common.loading") : t("agents.sendMessage")}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from hermeshq.schemas.common import ORMModel
 from hermeshq.schemas.node import NodeRead
@@ -90,3 +90,31 @@ class AgentRead(ORMModel):
     created_at: datetime
     updated_at: datetime
     node: NodeRead | None = None
+
+
+class AgentBulkTaskCreate(BaseModel):
+    agent_ids: list[str] = Field(default_factory=list)
+    title: str
+    prompt: str
+    priority: int = 5
+    auto_start_stopped: bool = False
+
+
+class AgentBulkMessageCreate(BaseModel):
+    agent_ids: list[str] = Field(default_factory=list)
+    message: str
+    auto_start_stopped: bool = False
+
+
+class AgentBulkOperationSkipped(BaseModel):
+    agent_id: str
+    reason: str
+
+
+class AgentBulkOperationResult(ORMModel):
+    batch_id: str | None = None
+    submitted: int
+    skipped: int
+    submitted_agent_ids: list[str]
+    skipped_agents: list[AgentBulkOperationSkipped]
+    task_ids: list[str] = Field(default_factory=list)

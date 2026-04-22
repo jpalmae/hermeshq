@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 
 import { apiClient } from "./client";
-import type { Agent } from "../types/api";
+import type { Agent, BulkAgentOperationResult } from "../types/api";
 
 export function useAgents(includeArchived = false) {
   return useQuery({
@@ -138,6 +138,48 @@ export function useAgentAction(path: "start" | "stop" | "restart") {
       await queryClient.invalidateQueries({ queryKey: ["agents", agentId] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+}
+
+export function useBulkAgentTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      agent_ids: string[];
+      title: string;
+      prompt: string;
+      priority: number;
+      auto_start_stopped: boolean;
+    }) => {
+      const { data } = await apiClient.post<BulkAgentOperationResult>("/agents/bulk/task", payload);
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["agents"] });
+      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["logs"] });
+    },
+  });
+}
+
+export function useBulkAgentMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      agent_ids: string[];
+      message: string;
+      auto_start_stopped: boolean;
+    }) => {
+      const { data } = await apiClient.post<BulkAgentOperationResult>("/agents/bulk/message", payload);
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["agents"] });
+      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["logs"] });
     },
   });
 }

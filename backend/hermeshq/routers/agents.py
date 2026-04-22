@@ -1,6 +1,7 @@
 import contextlib
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
@@ -14,6 +15,7 @@ from hermeshq.database import get_db_session
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
 from hermeshq.models.app_settings import AppSettings
+from hermeshq.models.conversation_thread import ConversationThread
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.node import Node
 from hermeshq.models.provider import ProviderDefinition
@@ -22,7 +24,15 @@ from hermeshq.models.secret import Secret
 from hermeshq.models.task import Task
 from hermeshq.models.template import AgentTemplate
 from hermeshq.models.user import User
-from hermeshq.schemas.agent import AgentCreate, AgentRead, AgentUpdate
+from hermeshq.schemas.agent import (
+    AgentBulkMessageCreate,
+    AgentBulkOperationResult,
+    AgentBulkOperationSkipped,
+    AgentBulkTaskCreate,
+    AgentCreate,
+    AgentRead,
+    AgentUpdate,
+)
 from hermeshq.schemas.managed_integration import (
     ManagedIntegrationActionRequest,
     ManagedIntegrationActionResult,
@@ -34,6 +44,7 @@ from hermeshq.services.managed_capabilities import get_managed_integration, list
 from hermeshq.services.managed_integration_actions import ManagedIntegrationActionError, run_managed_integration_action
 from hermeshq.services.managed_integration_health import ManagedIntegrationTestError, test_managed_integration
 from hermeshq.services.runtime_profiles import get_runtime_profile, normalize_runtime_profile_slug
+from hermeshq.services.task_board import next_board_order, runtime_status_to_board_column
 from hermeshq.services.workspace_manager import WorkspaceManager
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -54,6 +65,7 @@ ALLOWED_AVATAR_TYPES = {
     "image/webp": ".webp",
 }
 MAX_AVATAR_BYTES = 2 * 1024 * 1024
+MAX_BULK_AGENT_TARGETS = 25
 
 
 def _active_agent_clause():
@@ -110,6 +122,95 @@ def _serialize_agent(request: Request, agent: Agent) -> AgentRead:
         version = int(agent.updated_at.timestamp()) if agent.updated_at else 0
         avatar_url = f"{get_settings().api_prefix}/agents/{agent.id}/avatar?v={version}"
     return payload.model_copy(update={"avatar_url": avatar_url, "has_avatar": bool(agent.avatar_filename)})
+
+
+async def _load_bulk_agents(
+    db: AsyncSession,
+    current_user: User,
+    agent_ids: list[str],
+) -> list[Agent]:
+    ordered_ids = list(dict.fromkeys(str(agent_id).strip() for agent_id in agent_ids if str(agent_id).strip()))
+    if not ordered_ids:
+        raise HTTPException(status_code=400, detail="Select at least one agent")
+    if len(ordered_ids) > MAX_BULK_AGENT_TARGETS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bulk operations are limited to {MAX_BULK_AGENT_TARGETS} agents per request",
+        )
+
+    statement = select(Agent).where(Agent.id.in_(ordered_ids))
+    if not is_admin(current_user):
+        accessible_ids = await get_accessible_agent_ids(db, current_user)
+        statement = statement.where(Agent.id.in_(accessible_ids)) if accessible_ids else statement.where(false())
+    result = await db.execute(statement)
+    agents = result.scalars().all()
+    agent_map = {agent.id: agent for agent in agents}
+    if len(agent_map) != len(ordered_ids):
+        raise HTTPException(status_code=404, detail="One or more agents were not found or are not accessible")
+    return [agent_map[agent_id] for agent_id in ordered_ids]
+
+
+async def _auto_start_agent_if_needed(
+    db: AsyncSession,
+    request: Request,
+    agent: Agent,
+    *,
+    auto_start_stopped: bool,
+) -> str | None:
+    if not auto_start_stopped or agent.status == "running":
+        return None
+    try:
+        await request.app.state.supervisor.start_agent(agent.id)
+    except ValueError as exc:
+        return str(exc)
+    await db.refresh(agent)
+    return None
+
+
+async def _create_conversation_task(
+    db: AsyncSession,
+    *,
+    agent: Agent,
+    current_user: User,
+    prompt: str,
+    metadata: dict,
+) -> Task:
+    result = await db.execute(
+        select(ConversationThread).where(
+            ConversationThread.agent_id == agent.id,
+            ConversationThread.user_id == current_user.id,
+        )
+    )
+    thread = result.scalar_one_or_none()
+    if not thread:
+        thread = ConversationThread(
+            agent_id=agent.id,
+            user_id=current_user.id,
+            title=(prompt[:80]).strip() or "Conversation",
+        )
+        db.add(thread)
+        await db.flush()
+
+    task_metadata = {
+        **metadata,
+        "conversation": True,
+        "thread_id": thread.id,
+        "thread_user_id": current_user.id,
+    }
+    task = Task(
+        agent_id=agent.id,
+        title="Chat message",
+        prompt=prompt,
+        priority=5,
+        metadata_json=task_metadata,
+    )
+    task.board_column = runtime_status_to_board_column(task.status)
+    task.board_order = next_board_order()
+    task.board_manual = False
+    db.add(task)
+    await db.flush()
+    thread.last_task_id = task.id
+    return task
 
 
 async def _validate_supervisor(
@@ -409,6 +510,151 @@ async def bootstrap_system_operator(
     )
     await db.commit()
     return _serialize_agent(request, created)
+
+
+@router.post("/bulk/task", response_model=AgentBulkOperationResult, status_code=status.HTTP_201_CREATED)
+async def bulk_dispatch_task(
+    payload: AgentBulkTaskCreate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> AgentBulkOperationResult:
+    agents = await _load_bulk_agents(db, current_user, payload.agent_ids)
+    batch_id = str(uuid4())
+    batch_label = payload.title.strip()
+    submitted_agent_ids: list[str] = []
+    skipped_agents: list[AgentBulkOperationSkipped] = []
+    tasks_to_submit: list[str] = []
+    task_ids: list[str] = []
+
+    for agent in agents:
+        if agent.is_archived:
+            skipped_agents.append(AgentBulkOperationSkipped(agent_id=agent.id, reason="archived"))
+            continue
+        start_error = await _auto_start_agent_if_needed(
+            db,
+            request,
+            agent,
+            auto_start_stopped=payload.auto_start_stopped,
+        )
+        if start_error:
+            skipped_agents.append(AgentBulkOperationSkipped(agent_id=agent.id, reason=start_error))
+            continue
+
+        task = Task(
+            agent_id=agent.id,
+            title=batch_label,
+            prompt=payload.prompt,
+            priority=payload.priority,
+            metadata_json={
+                "batch_id": batch_id,
+                "batch_label": batch_label,
+                "batch_origin": "agents_bulk_dispatch",
+                "batch_size": len(agents) - len(skipped_agents),
+            },
+        )
+        task.board_column = runtime_status_to_board_column(task.status)
+        task.board_order = next_board_order()
+        task.board_manual = False
+        db.add(task)
+        await db.flush()
+        task_ids.append(task.id)
+        submitted_agent_ids.append(agent.id)
+        if agent.status == "running":
+            tasks_to_submit.append(task.id)
+
+    if not submitted_agent_ids:
+        raise HTTPException(status_code=400, detail="No valid agents were available for this bulk task")
+
+    for task_id in task_ids:
+        task = await db.get(Task, task_id)
+        if task:
+            metadata = dict(task.metadata_json or {})
+            metadata["batch_size"] = len(submitted_agent_ids)
+            task.metadata_json = metadata
+
+    await db.commit()
+
+    for task_id in tasks_to_submit:
+        await request.app.state.supervisor.submit_task(task_id)
+
+    return AgentBulkOperationResult(
+        batch_id=batch_id,
+        submitted=len(submitted_agent_ids),
+        skipped=len(skipped_agents),
+        submitted_agent_ids=submitted_agent_ids,
+        skipped_agents=skipped_agents,
+        task_ids=task_ids,
+    )
+
+
+@router.post("/bulk/message", response_model=AgentBulkOperationResult, status_code=status.HTTP_201_CREATED)
+async def bulk_send_message(
+    payload: AgentBulkMessageCreate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> AgentBulkOperationResult:
+    agents = await _load_bulk_agents(db, current_user, payload.agent_ids)
+    campaign_id = str(uuid4())
+    submitted_agent_ids: list[str] = []
+    skipped_agents: list[AgentBulkOperationSkipped] = []
+    tasks_to_submit: list[str] = []
+    task_ids: list[str] = []
+
+    for agent in agents:
+        if agent.is_archived:
+            skipped_agents.append(AgentBulkOperationSkipped(agent_id=agent.id, reason="archived"))
+            continue
+        start_error = await _auto_start_agent_if_needed(
+            db,
+            request,
+            agent,
+            auto_start_stopped=payload.auto_start_stopped,
+        )
+        if start_error:
+            skipped_agents.append(AgentBulkOperationSkipped(agent_id=agent.id, reason=start_error))
+            continue
+
+        task = await _create_conversation_task(
+            db,
+            agent=agent,
+            current_user=current_user,
+            prompt=payload.message,
+            metadata={
+                "source": "agents_bulk_message",
+                "campaign_id": campaign_id,
+                "batch_size": len(agents) - len(skipped_agents),
+            },
+        )
+        submitted_agent_ids.append(agent.id)
+        task_ids.append(task.id)
+        if agent.status == "running":
+            tasks_to_submit.append(task.id)
+
+    if not submitted_agent_ids:
+        raise HTTPException(status_code=400, detail="No valid agents were available for this bulk message")
+
+    for task_id in task_ids:
+        task = await db.get(Task, task_id)
+        if task:
+            metadata = dict(task.metadata_json or {})
+            metadata["batch_size"] = len(submitted_agent_ids)
+            task.metadata_json = metadata
+
+    await db.commit()
+
+    for task_id in tasks_to_submit:
+        await request.app.state.supervisor.submit_task(task_id)
+
+    return AgentBulkOperationResult(
+        batch_id=campaign_id,
+        submitted=len(submitted_agent_ids),
+        skipped=len(skipped_agents),
+        submitted_agent_ids=submitted_agent_ids,
+        skipped_agents=skipped_agents,
+        task_ids=task_ids,
+    )
 
 
 @router.get("/{agent_id}", response_model=AgentRead)
