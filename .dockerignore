@@ -7,5 +7,5 @@ __pycache__
 backend/.venv
 frontend/node_modules
 frontend/dist
+backend/hermeshq/assets/whatsapp-bridge/node_modules
 workspaces
-

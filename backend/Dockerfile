@@ -22,9 +22,13 @@ COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt \
     && pip install --no-cache-dir git+https://github.com/NousResearch/hermes-agent.git
 
+RUN mkdir -p /app/hermeshq/assets/whatsapp-bridge
+COPY backend/hermeshq/assets/whatsapp-bridge/package.json /app/hermeshq/assets/whatsapp-bridge/package.json
+COPY backend/hermeshq/assets/whatsapp-bridge/package-lock.json /app/hermeshq/assets/whatsapp-bridge/package-lock.json
+RUN cd /app/hermeshq/assets/whatsapp-bridge && npm ci --no-audit --no-fund
+
 COPY VERSION /app/VERSION
 COPY backend/hermeshq /app/hermeshq
-RUN cd /app/hermeshq/assets/whatsapp-bridge && npm ci
 
 RUN mkdir -p /app/workspaces
 
