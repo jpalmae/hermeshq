@@ -133,6 +133,13 @@ function slugify(value: string) {
     || "agent";
 }
 
+function formatHermesVersionLabel(version: string | null | undefined, detectedVersion: string | null | undefined) {
+  if (!version || version === "bundled") {
+    return detectedVersion ? `Bundled runtime (${detectedVersion})` : "Bundled runtime";
+  }
+  return detectedVersion ? `${version} (${detectedVersion})` : version;
+}
+
 export function AgentDetailPage() {
   const { agentId } = useParams();
   const navigate = useNavigate();
@@ -220,6 +227,32 @@ export function AgentDetailPage() {
     () => (runtimeProfiles ?? []).find((profile) => profile.slug === runtimeProfileDraft) ?? null,
     [runtimeProfileDraft, runtimeProfiles],
   );
+  const effectiveHermesVersionEntry = useMemo(() => {
+    if (!hermesVersions?.length) {
+      return null;
+    }
+    if (agent?.hermes_version) {
+      return hermesVersions.find((item) => item.version === agent.hermes_version) ?? null;
+    }
+    return (
+      hermesVersions.find((item) => item.is_effective_default)
+      ?? hermesVersions.find((item) => item.version === "bundled")
+      ?? null
+    );
+  }, [agent?.hermes_version, hermesVersions]);
+  const selectedHermesVersionEntry = useMemo(() => {
+    if (!hermesVersions?.length) {
+      return null;
+    }
+    if (hermesVersionDraft === "bundled") {
+      return (
+        hermesVersions.find((item) => item.is_effective_default)
+        ?? hermesVersions.find((item) => item.version === "bundled")
+        ?? null
+      );
+    }
+    return hermesVersions.find((item) => item.version === hermesVersionDraft) ?? null;
+  }, [hermesVersionDraft, hermesVersions]);
   const currentRuntimeCapabilityProfile = useMemo(
     () => (runtimeCapabilityOverview?.profiles ?? []).find((profile) => profile.slug === (agent?.runtime_profile || "standard")) ?? null,
     [agent?.runtime_profile, runtimeCapabilityOverview],
@@ -672,7 +705,7 @@ export function AgentDetailPage() {
                   <p className="panel-inline-status">{t("agent.identityHint")}</p>
                 </div>
               </div>
-              <div className="mt-6 space-y-4">
+              <div className="mt-6 space-y-6">
                 <div className="border-b border-[var(--border)] pb-5">
                   <label className="panel-field">
                     <span className="panel-label">{t("agents.systemPrompt")}</span>
@@ -695,92 +728,170 @@ export function AgentDetailPage() {
                     <p className="panel-inline-status">{t("agent.systemPromptHint")}</p>
                   </div>
                 </div>
-                <div className="panel-stat-row">
-                  <span>{t("agents.model")}</span>
-                  <strong>{agent.model}</strong>
-                </div>
-                <div className="panel-stat-row">
-                  <span>{t("agents.provider")}</span>
-                  <strong>{agent.provider}</strong>
-                </div>
-                <div className="panel-stat-row">
-                  <span>Hermes Agent</span>
-                  <strong>{agent.hermes_version ?? "Bundled runtime"}</strong>
-                </div>
-                <div className="border-b border-[var(--border)] pb-5">
-                  <label className="panel-field">
-                    <span className="panel-label">{t("agents.runtimeProfile")}</span>
-                    {isAdmin ? (
-                      <select
-                        value={runtimeProfileDraft}
-                        onChange={(event) => setRuntimeProfileDraft(event.target.value)}
-                      >
-                        {(runtimeProfiles ?? []).map((profile) => (
-                          <option key={profile.slug} value={profile.slug}>
-                            {profile.name}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input value={selectedRuntimeProfile?.name ?? agent.runtime_profile} readOnly />
-                    )}
-                  </label>
-                  {selectedRuntimeProfile ? (
-                    <div className="mt-4 space-y-2 text-sm leading-6 text-[var(--text-secondary)]">
-                      <p>{selectedRuntimeProfile.description}</p>
-                      <p>{selectedRuntimeProfile.tooling_summary}</p>
-                      <p className="text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
-                        {t("agents.profileFutureImage", { value: selectedRuntimeProfile.container_intent })}
+                <div className="space-y-4">
+                  <section className="rounded-[1.25rem] border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] p-5">
+                    <div className="flex flex-col gap-3 border-b border-[var(--border)] pb-4 lg:flex-row lg:items-end lg:justify-between">
+                      <div>
+                        <p className="panel-label">{t("agent.runtimeSnapshot")}</p>
+                        <h4 className="mt-2 text-lg text-[var(--text-display)]">{t("agent.runtimeSummary")}</h4>
+                      </div>
+                      <p className="max-w-2xl text-sm leading-6 text-[var(--text-secondary)] lg:text-right">
+                        {t("agent.runtimeSnapshotCopy")}
                       </p>
                     </div>
-                  ) : null}
-                  {isAdmin ? (
-                    <div className="mt-4 flex items-center gap-3">
-                      <button
-                        type="button"
-                        className="panel-button-secondary"
-                        disabled={updateAgent.isPending}
-                        onClick={onSaveRuntimeProfile}
-                      >
-                        {updateAgent.isPending ? t("common.loading") : t("agent.saveRuntimeProfile")}
-                      </button>
-                      <p className="panel-inline-status">{t("agent.runtimeProfileHint")}</p>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                      {[
+                        { label: t("agents.provider"), value: agent.provider },
+                        { label: t("agents.model"), value: agent.model },
+                        { label: t("agents.runtimeProfile"), value: currentRuntimeCapabilityProfile?.name ?? agent.runtime_profile },
+                        {
+                          label: t("agent.effectiveHermesVersion"),
+                          value: formatHermesVersionLabel(
+                            effectiveHermesVersionEntry?.version ?? agent.hermes_version,
+                            effectiveHermesVersionEntry?.detected_version ?? null,
+                          ),
+                        },
+                        { label: t("agents.secretRef"), value: agent.api_key_ref ?? t("agent.none") },
+                        { label: t("agents.node"), value: agent.node?.name ?? t("agent.localRuntime") },
+                      ].map((item) => (
+                        <div
+                          key={item.label}
+                          className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
+                        >
+                          <p className="panel-label">{item.label}</p>
+                          <p className="mt-2 break-words text-sm leading-6 text-[var(--text-display)]">{item.value}</p>
+                        </div>
+                      ))}
+                      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 sm:col-span-2 2xl:col-span-3">
+                        <p className="panel-label">{t("agent.workspacePath")}</p>
+                        <p className="mt-2 break-all text-sm leading-6 text-[var(--text-display)]">{agent.workspace_path}</p>
+                      </div>
                     </div>
-                  ) : null}
-                  <label className="panel-field mt-4">
-                    <span className="panel-label">Hermes Agent version</span>
+                  </section>
+
+                  <section className="rounded-[1.25rem] border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] p-5">
+                    <div className="flex flex-col gap-3 border-b border-[var(--border)] pb-4 lg:flex-row lg:items-end lg:justify-between">
+                      <div>
+                        <p className="panel-label">{t("agent.runtimeControls")}</p>
+                        <h4 className="mt-2 text-lg text-[var(--text-display)]">{t("agent.runtimeSettings")}</h4>
+                      </div>
+                      <p className="max-w-2xl text-sm leading-6 text-[var(--text-secondary)] lg:text-right">
+                        {t("agent.runtimeControlsCopy")}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+                      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                        <div>
+                          <p className="panel-label">{t("agents.runtimeProfile")}</p>
+                          <h5 className="mt-2 text-base text-[var(--text-display)]">
+                            {selectedRuntimeProfile?.name ?? agent.runtime_profile}
+                          </h5>
+                        </div>
+                        <div className="mt-4">
+                          <label className="panel-field">
+                            <span className="panel-label">{t("agents.runtimeProfile")}</span>
+                            {isAdmin ? (
+                              <select
+                                value={runtimeProfileDraft}
+                                onChange={(event) => setRuntimeProfileDraft(event.target.value)}
+                              >
+                                {(runtimeProfiles ?? []).map((profile) => (
+                                  <option key={profile.slug} value={profile.slug}>
+                                    {profile.name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <div className="rounded-2xl border border-[var(--border-visible)] bg-[color-mix(in_srgb,var(--surface)_86%,transparent)] px-4 py-3 text-sm text-[var(--text-display)]">
+                                {selectedRuntimeProfile?.name ?? agent.runtime_profile}
+                              </div>
+                            )}
+                          </label>
+                        </div>
+                        {selectedRuntimeProfile ? (
+                          <div className="mt-4 space-y-3 text-sm leading-6 text-[var(--text-secondary)]">
+                            <p>{selectedRuntimeProfile.description}</p>
+                            <p>{selectedRuntimeProfile.tooling_summary}</p>
+                            <p className="rounded-xl border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_84%,transparent)] px-3 py-2 text-xs uppercase tracking-[0.1em] text-[var(--text-disabled)]">
+                              {t("agents.profileFutureImage", { value: selectedRuntimeProfile.container_intent })}
+                            </p>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                        <div>
+                          <p className="panel-label">{t("agent.effectiveHermesVersion")}</p>
+                          <h5 className="mt-2 text-base text-[var(--text-display)]">
+                            {formatHermesVersionLabel(
+                              selectedHermesVersionEntry?.version ?? effectiveHermesVersionEntry?.version ?? agent.hermes_version,
+                              selectedHermesVersionEntry?.detected_version ?? effectiveHermesVersionEntry?.detected_version ?? null,
+                            )}
+                          </h5>
+                        </div>
+                        <div className="mt-4">
+                          <label className="panel-field">
+                            <span className="panel-label">Hermes Agent</span>
+                            {isAdmin ? (
+                              <select
+                                value={hermesVersionDraft}
+                                onChange={(event) => setHermesVersionDraft(event.target.value)}
+                              >
+                                <option value="bundled">Inherit instance default / bundled</option>
+                                {(hermesVersions ?? [])
+                                  .filter((item) => item.version !== "bundled" && item.installed)
+                                  .map((item) => (
+                                    <option key={item.version} value={item.version}>
+                                      {formatHermesVersionLabel(item.version, item.detected_version)}
+                                    </option>
+                                  ))}
+                              </select>
+                            ) : (
+                              <div className="rounded-2xl border border-[var(--border-visible)] bg-[color-mix(in_srgb,var(--surface)_86%,transparent)] px-4 py-3 text-sm text-[var(--text-display)]">
+                                {formatHermesVersionLabel(
+                                  effectiveHermesVersionEntry?.version ?? agent.hermes_version,
+                                  effectiveHermesVersionEntry?.detected_version ?? null,
+                                )}
+                              </div>
+                            )}
+                          </label>
+                        </div>
+                        <div className="mt-4 space-y-3 text-sm leading-6 text-[var(--text-secondary)]">
+                          <p>{t("agent.runtimeVersionHint")}</p>
+                          <p className="rounded-xl border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_84%,transparent)] px-3 py-2">
+                            {hermesVersionDraft === "bundled"
+                              ? t("agent.runtimeVersionInherited", {
+                                value: formatHermesVersionLabel(
+                                  selectedHermesVersionEntry?.version ?? "bundled",
+                                  selectedHermesVersionEntry?.detected_version ?? null,
+                                ),
+                              })
+                              : t("agent.runtimeVersionPinned")}
+                          </p>
+                          {selectedHermesVersionEntry?.detected_version_warning ? (
+                            <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                              {selectedHermesVersionEntry.detected_version_warning}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
                     {isAdmin ? (
-                      <select
-                        value={hermesVersionDraft}
-                        onChange={(event) => setHermesVersionDraft(event.target.value)}
-                      >
-                        <option value="bundled">Inherit default / bundled</option>
-                        {(hermesVersions ?? [])
-                          .filter((item) => item.version !== "bundled" && item.installed)
-                          .map((item) => (
-                            <option key={item.version} value={item.version}>
-                              {item.version === "bundled"
-                                ? `Bundled runtime${item.detected_version ? ` (${item.detected_version})` : ""}`
-                                : `${item.version}${item.detected_version ? ` (${item.detected_version})` : ""}`}
-                            </option>
-                          ))}
-                      </select>
-                    ) : (
-                      <input value={agent.hermes_version ?? "Bundled runtime"} readOnly />
-                    )}
-                  </label>
-                </div>
-                <div className="panel-stat-row">
-                  <span>{t("agents.secretRef")}</span>
-                  <strong>{agent.api_key_ref ?? t("agent.none")}</strong>
-                </div>
-                <div className="panel-stat-row">
-                  <span>{t("agents.node")}</span>
-                  <strong>{agent.node?.name ?? t("agent.localRuntime")}</strong>
-                </div>
-                <div className="panel-stat-row">
-                  <span>Workspace</span>
-                  <strong className="truncate text-right">{agent.workspace_path}</strong>
+                      <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 lg:flex-row lg:items-center lg:justify-between">
+                        <p className="max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">{t("agent.runtimeProfileHint")}</p>
+                        <button
+                          type="button"
+                          className="panel-button-secondary"
+                          disabled={updateAgent.isPending}
+                          onClick={onSaveRuntimeProfile}
+                        >
+                          {updateAgent.isPending ? t("common.loading") : t("agent.saveRuntimeSettings")}
+                        </button>
+                      </div>
+                    ) : null}
+                  </section>
                 </div>
 
                 <AgentMessagingPanel agentId={agent.id} isAdmin={isAdmin} />

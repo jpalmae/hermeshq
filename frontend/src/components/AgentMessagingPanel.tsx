@@ -150,6 +150,25 @@ function RuntimeSummary({
   );
 }
 
+function ChannelStat({
+  label,
+  value,
+  subtle = false,
+}: {
+  label: string;
+  value: string;
+  subtle?: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-3">
+      <p className="panel-label">{label}</p>
+      <p className={`mt-2 break-words text-sm leading-6 ${subtle ? "text-[var(--text-secondary)]" : "text-[var(--text-display)]"}`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
 export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isAdmin: boolean }) {
   const { t } = useI18n();
   const { data: telegram } = useMessagingChannel(agentId, "telegram");
@@ -165,6 +184,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
   const [submitErrors, setSubmitErrors] = useState<Record<string, string | null>>({});
   const [telegramForm, setTelegramForm] = useState<ChannelFormState>(defaultFormState);
   const [whatsappForm, setWhatsappForm] = useState<ChannelFormState>(defaultFormState);
+  const [selectedPlatform, setSelectedPlatform] = useState<"telegram" | "whatsapp">("telegram");
   const whatsappQrSvg = useMemo(
     () => buildWhatsappQrSvg(whatsappRuntime?.pairing_qr_text),
     [whatsappRuntime?.pairing_qr_text],
@@ -331,7 +351,35 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
         <p className="panel-label">{t("agent.messagingChannels")}</p>
       </div>
 
-      <div className="mt-5 grid gap-6 xl:grid-cols-2">
+      <div className="mt-5">
+        <div className="flex flex-wrap gap-2 rounded-[1.25rem] border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] p-2">
+          {[
+            { platform: "telegram" as const, label: "Telegram", status: telegramStatus },
+            { platform: "whatsapp" as const, label: "WhatsApp", status: whatsappStatus },
+          ].map((item) => {
+            const active = selectedPlatform === item.platform;
+            return (
+              <button
+                key={item.platform}
+                type="button"
+                className={`rounded-full px-4 py-3 text-left transition ${
+                  active
+                    ? "border border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] text-[var(--text-display)] shadow-[0_0_0_1px_color-mix(in_srgb,var(--accent)_28%,transparent)]"
+                    : "border border-transparent bg-[var(--surface)] text-[var(--text-secondary)] hover:border-[var(--border-visible)] hover:text-[var(--text-display)]"
+                }`}
+                onClick={() => setSelectedPlatform(item.platform)}
+              >
+                <span className="block text-sm font-medium">{item.label}</span>
+                <span className="mt-1 block font-mono text-[11px] uppercase tracking-[0.12em] opacity-80">
+                  {item.status}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-5">
+          {selectedPlatform === "telegram" ? (
         <section className="panel-frame border border-[var(--border)] p-5">
           <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] pb-4">
             <div>
@@ -349,139 +397,174 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
             </div>
           </div>
 
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <ChannelStat label={t("agent.runtime")} value={telegramStatus} />
+            <ChannelStat
+              label={t("agent.bootstrapStatus")}
+              value={telegramRuntime?.last_bootstrap_status ?? t("agent.none")}
+              subtle={!telegramRuntime?.last_bootstrap_status}
+            />
+            <ChannelStat
+              label={t("agent.allowedUsers")}
+              value={telegram?.allowed_user_ids?.length ? String(telegram.allowed_user_ids.length) : t("agent.none")}
+              subtle={!telegram?.allowed_user_ids?.length}
+            />
+            <ChannelStat
+              label={t("agent.homeChat")}
+              value={telegram?.home_chat_name || telegram?.home_chat_id || t("agent.none")}
+              subtle={!telegram?.home_chat_name && !telegram?.home_chat_id}
+            />
+          </div>
+
           {isAdmin ? (
             <div className="mt-5 space-y-4">
-              <label className="panel-field">
-                <span className="panel-label">{t("agent.botTokenSecretRef")}</span>
-                <select
-                  value={telegramForm.secret_ref}
-                  onChange={(event) => setTelegramForm((current) => ({ ...current, secret_ref: event.target.value }))}
-                >
-                  <option value="">{t("agent.selectTelegramSecret")}</option>
-                  {telegramSecretOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <p className="panel-inline-status">{t("agent.telegramSecretHint")}</p>
-              </label>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                  <p className="panel-label">{t("agent.botTokenSecretRef")}</p>
+                  <label className="panel-field mt-3">
+                    <span className="panel-label">{t("agent.botTokenSecretRef")}</span>
+                    <select
+                      value={telegramForm.secret_ref}
+                      onChange={(event) => setTelegramForm((current) => ({ ...current, secret_ref: event.target.value }))}
+                    >
+                      <option value="">{t("agent.selectTelegramSecret")}</option>
+                      {telegramSecretOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{t("agent.telegramSecretHint")}</p>
+                </div>
 
-              <label className="panel-field">
-                <span className="panel-label">{t("agent.allowedTelegramUsers")}</span>
-                <textarea
-                  rows={3}
-                  value={telegramForm.allowed_user_ids}
-                  onChange={(event) =>
-                    setTelegramForm((current) => ({ ...current, allowed_user_ids: event.target.value }))
-                  }
-                  placeholder={"123456789\n987654321"}
-                />
-              </label>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="panel-field">
-                  <span className="panel-label">{t("agent.homeChatId")}</span>
-                  <input
-                    value={telegramForm.home_chat_id}
-                    onChange={(event) =>
-                      setTelegramForm((current) => ({ ...current, home_chat_id: event.target.value }))
-                    }
-                    placeholder="-1001234567890"
-                  />
-                </label>
-                <label className="panel-field">
-                  <span className="panel-label">{t("agent.homeChatName")}</span>
-                  <input
-                    value={telegramForm.home_chat_name}
-                    onChange={(event) =>
-                      setTelegramForm((current) => ({ ...current, home_chat_name: event.target.value }))
-                    }
-                    placeholder="Newsroom"
-                  />
-                </label>
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                  <p className="panel-label">{t("agent.allowedTelegramUsers")}</p>
+                  <label className="panel-field mt-3">
+                    <span className="panel-label">{t("agent.allowedTelegramUsers")}</span>
+                    <textarea
+                      rows={4}
+                      value={telegramForm.allowed_user_ids}
+                      onChange={(event) =>
+                        setTelegramForm((current) => ({ ...current, allowed_user_ids: event.target.value }))
+                      }
+                      placeholder={"123456789\n987654321"}
+                    />
+                  </label>
+                </div>
               </div>
 
-              <label className="panel-field">
-                <span className="panel-label">{t("agent.freeResponseChatIds")}</span>
-                <textarea
-                  rows={2}
-                  value={telegramForm.free_response_chat_ids}
-                  onChange={(event) =>
-                    setTelegramForm((current) => ({ ...current, free_response_chat_ids: event.target.value }))
-                  }
-                  placeholder="-1001234567890"
-                />
-              </label>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="panel-field">
-                  <span className="panel-label">{t("agent.unauthorizedDmBehavior")}</span>
-                  <select
-                    value={telegramForm.unauthorized_dm_behavior}
-                    onChange={(event) =>
-                      setTelegramForm((current) => ({ ...current, unauthorized_dm_behavior: event.target.value }))
-                    }
-                  >
-                    <option value="pair">pair</option>
-                    <option value="ignore">ignore</option>
-                  </select>
-                </label>
-                <label className="panel-field justify-end">
-                  <span className="panel-label">{t("agent.mentionGating")}</span>
-                  <label className="mt-3 flex items-center gap-3 text-sm text-[var(--text-primary)]">
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                <p className="panel-label">{t("agent.homeChat")}</p>
+                <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                  <label className="panel-field">
+                    <span className="panel-label">{t("agent.homeChatId")}</span>
                     <input
-                      checked={telegramForm.require_mention}
+                      value={telegramForm.home_chat_id}
                       onChange={(event) =>
-                        setTelegramForm((current) => ({ ...current, require_mention: event.target.checked }))
+                        setTelegramForm((current) => ({ ...current, home_chat_id: event.target.value }))
                       }
+                      placeholder="-1001234567890"
+                    />
+                  </label>
+                  <label className="panel-field">
+                    <span className="panel-label">{t("agent.homeChatName")}</span>
+                    <input
+                      value={telegramForm.home_chat_name}
+                      onChange={(event) =>
+                        setTelegramForm((current) => ({ ...current, home_chat_name: event.target.value }))
+                      }
+                      placeholder="Newsroom"
+                    />
+                  </label>
+                  <label className="panel-field lg:col-span-2">
+                    <span className="panel-label">{t("agent.freeResponseChatIds")}</span>
+                    <textarea
+                      rows={2}
+                      value={telegramForm.free_response_chat_ids}
+                      onChange={(event) =>
+                        setTelegramForm((current) => ({ ...current, free_response_chat_ids: event.target.value }))
+                      }
+                      placeholder="-1001234567890"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <label className="panel-field">
+                    <span className="panel-label">{t("agent.unauthorizedDmBehavior")}</span>
+                    <select
+                      value={telegramForm.unauthorized_dm_behavior}
+                      onChange={(event) =>
+                        setTelegramForm((current) => ({ ...current, unauthorized_dm_behavior: event.target.value }))
+                      }
+                    >
+                      <option value="pair">pair</option>
+                      <option value="ignore">ignore</option>
+                    </select>
+                  </label>
+                  <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+                    <p className="panel-label">{t("agent.mentionGating")}</p>
+                    <label className="mt-3 flex items-center gap-3 text-sm text-[var(--text-primary)]">
+                      <input
+                        checked={telegramForm.require_mention}
+                        onChange={(event) =>
+                          setTelegramForm((current) => ({ ...current, require_mention: event.target.checked }))
+                        }
+                        type="checkbox"
+                      />
+                      {t("agent.requireMention")}
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <label className="flex items-center gap-3 text-sm text-[var(--text-primary)]">
+                    <input
+                      checked={telegramForm.enabled}
+                      onChange={(event) => setTelegramForm((current) => ({ ...current, enabled: event.target.checked }))}
                       type="checkbox"
                     />
-                    {t("agent.requireMention")}
+                    {t("agent.enableTelegram")}
                   </label>
-                </label>
+                  <p className="panel-inline-status min-w-[14rem] flex-1 lg:text-right">
+                    {telegramRuntime?.status === "running"
+                      ? `[LIVE] telegram gateway pid ${telegramRuntime.pid ?? "?"}`
+                      : submitErrors.telegram || telegram?.last_error || t("agent.gatewayStopped")}
+                  </p>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    className="panel-button-secondary"
+                    onClick={() => void saveTelegram()}
+                    disabled={updateChannel.isPending}
+                  >
+                    {updateChannel.isPending ? t("common.loading") : t("agent.saveTelegram")}
+                  </button>
+                  <button
+                    type="button"
+                    className="panel-button-secondary"
+                    onClick={() => void startPlatform("telegram")}
+                    disabled={startChannel.isPending}
+                  >
+                    {t("agent.startGateway")}
+                  </button>
+                  <button
+                    type="button"
+                    className="panel-button-secondary"
+                    onClick={() => void stopPlatform("telegram")}
+                    disabled={stopChannel.isPending}
+                  >
+                    {t("agent.stopGateway")}
+                  </button>
+                </div>
               </div>
 
-              <label className="mt-2 flex items-center gap-3 text-sm text-[var(--text-primary)]">
-                <input
-                  checked={telegramForm.enabled}
-                  onChange={(event) => setTelegramForm((current) => ({ ...current, enabled: event.target.checked }))}
-                  type="checkbox"
-                />
-                {t("agent.enableTelegram")}
-              </label>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  className="panel-button-secondary"
-                  onClick={() => void saveTelegram()}
-                  disabled={updateChannel.isPending}
-                >
-                  {updateChannel.isPending ? t("common.loading") : t("agent.saveTelegram")}
-                </button>
-                <button
-                  type="button"
-                  className="panel-button-secondary"
-                  onClick={() => void startPlatform("telegram")}
-                  disabled={startChannel.isPending}
-                >
-                  {t("agent.startGateway")}
-                </button>
-                <button
-                  type="button"
-                  className="panel-button-secondary"
-                  onClick={() => void stopPlatform("telegram")}
-                  disabled={stopChannel.isPending}
-                >
-                  {t("agent.stopGateway")}
-                </button>
-                <p className="panel-inline-status">
-                  {telegramRuntime?.status === "running"
-                    ? `[LIVE] telegram gateway pid ${telegramRuntime.pid ?? "?"}`
-                    : submitErrors.telegram || telegram?.last_error || t("agent.gatewayStopped")}
-                </p>
-              </div>
               <RuntimeSummary t={t} runtime={telegramRuntime} />
             </div>
           ) : (
@@ -506,7 +589,9 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
             </pre>
           </div>
         </section>
+          ) : null}
 
+          {selectedPlatform === "whatsapp" ? (
         <section className="panel-frame border border-[var(--border)] p-5">
           <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] pb-4">
             <div>
@@ -524,140 +609,144 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
             </div>
           </div>
 
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <ChannelStat label={t("agent.runtime")} value={whatsappStatus} />
+            <ChannelStat
+              label={t("agent.whatsappPairingStatus")}
+              value={whatsappRuntime?.pairing_status ?? t("agent.none")}
+              subtle={!whatsappRuntime?.pairing_status}
+            />
+            <ChannelStat
+              label={t("agent.allowedUsers")}
+              value={whatsapp?.allowed_user_ids?.length ? String(whatsapp.allowed_user_ids.length) : t("agent.none")}
+              subtle={!whatsapp?.allowed_user_ids?.length}
+            />
+            <ChannelStat
+              label={t("agent.homeChat")}
+              value={whatsapp?.home_chat_name || whatsapp?.home_chat_id || t("agent.none")}
+              subtle={!whatsapp?.home_chat_name && !whatsapp?.home_chat_id}
+            />
+          </div>
+
           {isAdmin ? (
             <div className="mt-5 space-y-4">
-              <label className="panel-field">
-                <span className="panel-label">{t("agent.whatsappMode")}</span>
-                <select
-                  value={whatsappForm.whatsapp_mode}
-                  onChange={(event) =>
-                    setWhatsappForm((current) => ({ ...current, whatsapp_mode: event.target.value }))
-                  }
-                >
-                  <option value="self-chat">{t("agent.whatsappModeSelfChat")}</option>
-                  <option value="bot">{t("agent.whatsappModeBot")}</option>
-                </select>
-              </label>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                  <p className="panel-label">{t("agent.whatsappMode")}</p>
+                  <label className="panel-field mt-3">
+                    <span className="panel-label">{t("agent.whatsappMode")}</span>
+                    <select
+                      value={whatsappForm.whatsapp_mode}
+                      onChange={(event) =>
+                        setWhatsappForm((current) => ({ ...current, whatsapp_mode: event.target.value }))
+                      }
+                    >
+                      <option value="self-chat">{t("agent.whatsappModeSelfChat")}</option>
+                      <option value="bot">{t("agent.whatsappModeBot")}</option>
+                    </select>
+                  </label>
+                </div>
 
-              <label className="panel-field">
-                <span className="panel-label">{t("agent.allowedWhatsappUsers")}</span>
-                <textarea
-                  rows={3}
-                  value={whatsappForm.allowed_user_ids}
-                  onChange={(event) =>
-                    setWhatsappForm((current) => ({ ...current, allowed_user_ids: event.target.value }))
-                  }
-                  placeholder={"56912345678\n*"}
-                />
-              </label>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="panel-field">
-                  <span className="panel-label">{t("agent.homeChatId")}</span>
-                  <input
-                    value={whatsappForm.home_chat_id}
-                    onChange={(event) =>
-                      setWhatsappForm((current) => ({ ...current, home_chat_id: event.target.value }))
-                    }
-                    placeholder="56912345678@s.whatsapp.net"
-                  />
-                </label>
-                <label className="panel-field">
-                  <span className="panel-label">{t("agent.homeChatName")}</span>
-                  <input
-                    value={whatsappForm.home_chat_name}
-                    onChange={(event) =>
-                      setWhatsappForm((current) => ({ ...current, home_chat_name: event.target.value }))
-                    }
-                    placeholder="Primary number"
-                  />
-                </label>
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                  <p className="panel-label">{t("agent.allowedWhatsappUsers")}</p>
+                  <label className="panel-field mt-3">
+                    <span className="panel-label">{t("agent.allowedWhatsappUsers")}</span>
+                    <textarea
+                      rows={4}
+                      value={whatsappForm.allowed_user_ids}
+                      onChange={(event) =>
+                        setWhatsappForm((current) => ({ ...current, allowed_user_ids: event.target.value }))
+                      }
+                      placeholder={"56912345678\n*"}
+                    />
+                  </label>
+                </div>
               </div>
 
-              <label className="panel-field">
-                <span className="panel-label">{t("agent.freeResponseChatIds")}</span>
-                <textarea
-                  rows={2}
-                  value={whatsappForm.free_response_chat_ids}
-                  onChange={(event) =>
-                    setWhatsappForm((current) => ({ ...current, free_response_chat_ids: event.target.value }))
-                  }
-                  placeholder="120363000000000000@g.us"
-                />
-              </label>
-
-              <label className="panel-field justify-end">
-                <span className="panel-label">{t("agent.mentionGating")}</span>
-                <label className="mt-3 flex items-center gap-3 text-sm text-[var(--text-primary)]">
-                  <input
-                    checked={whatsappForm.require_mention}
-                    onChange={(event) =>
-                      setWhatsappForm((current) => ({ ...current, require_mention: event.target.checked }))
-                    }
-                    type="checkbox"
-                  />
-                  {t("agent.requireMention")}
-                </label>
-              </label>
-
-              <label className="mt-2 flex items-center gap-3 text-sm text-[var(--text-primary)]">
-                <input
-                  checked={whatsappForm.enabled}
-                  onChange={(event) => setWhatsappForm((current) => ({ ...current, enabled: event.target.checked }))}
-                  type="checkbox"
-                />
-                {t("agent.enableWhatsapp")}
-              </label>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  className="panel-button-secondary"
-                  onClick={() => void saveWhatsapp()}
-                  disabled={updateChannel.isPending}
-                >
-                  {updateChannel.isPending ? t("common.loading") : t("agent.saveWhatsapp")}
-                </button>
-                <button
-                  type="button"
-                  className="panel-button-secondary"
-                  onClick={() => void startPlatform("whatsapp")}
-                  disabled={startChannel.isPending}
-                >
-                  {t("agent.startGateway")}
-                </button>
-                <button
-                  type="button"
-                  className="panel-button-secondary"
-                  onClick={() => void stopPlatform("whatsapp")}
-                  disabled={stopChannel.isPending}
-                >
-                  {t("agent.stopGateway")}
-                </button>
-                <p className="panel-inline-status">
-                  {whatsappRuntime?.status === "running"
-                    ? `[LIVE] whatsapp gateway pid ${whatsappRuntime.pid ?? "?"}`
-                    : submitErrors.whatsapp || whatsapp?.last_error || t("agent.gatewayStopped")}
-                </p>
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                <p className="panel-label">{t("agent.homeChat")}</p>
+                <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                  <label className="panel-field">
+                    <span className="panel-label">{t("agent.homeChatId")}</span>
+                    <input
+                      value={whatsappForm.home_chat_id}
+                      onChange={(event) =>
+                        setWhatsappForm((current) => ({ ...current, home_chat_id: event.target.value }))
+                      }
+                      placeholder="56912345678@s.whatsapp.net"
+                    />
+                  </label>
+                  <label className="panel-field">
+                    <span className="panel-label">{t("agent.homeChatName")}</span>
+                    <input
+                      value={whatsappForm.home_chat_name}
+                      onChange={(event) =>
+                        setWhatsappForm((current) => ({ ...current, home_chat_name: event.target.value }))
+                      }
+                      placeholder="Primary number"
+                    />
+                  </label>
+                  <label className="panel-field lg:col-span-2">
+                    <span className="panel-label">{t("agent.freeResponseChatIds")}</span>
+                    <textarea
+                      rows={2}
+                      value={whatsappForm.free_response_chat_ids}
+                      onChange={(event) =>
+                        setWhatsappForm((current) => ({ ...current, free_response_chat_ids: event.target.value }))
+                      }
+                      placeholder="120363000000000000@g.us"
+                    />
+                  </label>
+                </div>
               </div>
 
-              <RuntimeSummary t={t} runtime={whatsappRuntime} />
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+                  <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+                    <p className="panel-label">{t("agent.mentionGating")}</p>
+                    <label className="mt-3 flex items-center gap-3 text-sm text-[var(--text-primary)]">
+                      <input
+                        checked={whatsappForm.require_mention}
+                        onChange={(event) =>
+                          setWhatsappForm((current) => ({ ...current, require_mention: event.target.checked }))
+                        }
+                        type="checkbox"
+                      />
+                      {t("agent.requireMention")}
+                    </label>
+                  </div>
+                  <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+                    <p className="panel-label">{t("agent.whatsappPairingStatus")}</p>
+                    <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                      {whatsappRuntime?.pairing_status ?? t("agent.none")}
+                    </p>
+                  </div>
+                </div>
 
-              <div className="grid gap-2 border border-[var(--border)] bg-[var(--surface-raised)] p-4 text-sm text-[var(--text-secondary)]">
-                <p>
-                  <span className="panel-label">{t("agent.whatsappPairingStatus")}</span>
-                  <br />
-                  {whatsappRuntime?.pairing_status ?? t("agent.none")}
-                </p>
+                <div className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">
+                  {t("agent.whatsappPairingHint")}
+                </div>
+
+                {(whatsappRuntime?.session_path || whatsappRuntime?.bridge_log_path) ? (
+                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                    {whatsappRuntime?.session_path ? (
+                      <ChannelStat label={t("agent.whatsappSessionPath")} value={whatsappRuntime.session_path} subtle />
+                    ) : null}
+                    {whatsappRuntime?.bridge_log_path ? (
+                      <ChannelStat label={t("agent.whatsappBridgeLogPath")} value={whatsappRuntime.bridge_log_path} subtle />
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {whatsappRuntime?.pairing_qr_text ? (
-                  <div className="md:col-span-2">
+                  <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
                     <p className="panel-label">{t("agent.whatsappQr")}</p>
                     {whatsappQrSvg ? (
-                      <div className="mt-3 flex justify-center border border-[var(--border)] bg-white p-4">
+                      <div className="mt-3 flex justify-center rounded-2xl border border-[var(--border)] bg-white p-4">
                         <img
                           src={whatsappQrSvg}
                           alt="WhatsApp QR"
-                          className="block w-full max-w-[22rem]"
+                          className="block w-full max-w-[20rem]"
                           style={{ imageRendering: "pixelated" }}
                         />
                       </div>
@@ -666,28 +755,59 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
                       <summary className="cursor-pointer text-xs text-[var(--text-secondary)]">
                         {t("agent.whatsappQrAscii")}
                       </summary>
-                      <pre className="mt-3 overflow-auto border border-[var(--border)] bg-[var(--surface)] p-4 font-mono text-[10px] leading-[1.05rem] text-[var(--text-primary)]">
+                      <pre className="mt-3 overflow-auto rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4 font-mono text-[10px] leading-[1.05rem] text-[var(--text-primary)]">
                         {whatsappRuntime.pairing_qr_text}
                       </pre>
                     </details>
                   </div>
                 ) : null}
-                {whatsappRuntime?.session_path ? (
-                  <p>
-                    <span className="panel-label">{t("agent.whatsappSessionPath")}</span>
-                    <br />
-                    {whatsappRuntime.session_path}
-                  </p>
-                ) : null}
-                {whatsappRuntime?.bridge_log_path ? (
-                  <p>
-                    <span className="panel-label">{t("agent.whatsappBridgeLogPath")}</span>
-                    <br />
-                    {whatsappRuntime.bridge_log_path}
-                  </p>
-                ) : null}
-                <p>{t("agent.whatsappPairingHint")}</p>
               </div>
+
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <label className="flex items-center gap-3 text-sm text-[var(--text-primary)]">
+                    <input
+                      checked={whatsappForm.enabled}
+                      onChange={(event) => setWhatsappForm((current) => ({ ...current, enabled: event.target.checked }))}
+                      type="checkbox"
+                    />
+                    {t("agent.enableWhatsapp")}
+                  </label>
+                  <p className="panel-inline-status min-w-[14rem] flex-1 lg:text-right">
+                    {whatsappRuntime?.status === "running"
+                      ? `[LIVE] whatsapp gateway pid ${whatsappRuntime.pid ?? "?"}`
+                      : submitErrors.whatsapp || whatsapp?.last_error || t("agent.gatewayStopped")}
+                  </p>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    className="panel-button-secondary"
+                    onClick={() => void saveWhatsapp()}
+                    disabled={updateChannel.isPending}
+                  >
+                    {updateChannel.isPending ? t("common.loading") : t("agent.saveWhatsapp")}
+                  </button>
+                  <button
+                    type="button"
+                    className="panel-button-secondary"
+                    onClick={() => void startPlatform("whatsapp")}
+                    disabled={startChannel.isPending}
+                  >
+                    {t("agent.startGateway")}
+                  </button>
+                  <button
+                    type="button"
+                    className="panel-button-secondary"
+                    onClick={() => void stopPlatform("whatsapp")}
+                    disabled={stopChannel.isPending}
+                  >
+                    {t("agent.stopGateway")}
+                  </button>
+                </div>
+              </div>
+
+              <RuntimeSummary t={t} runtime={whatsappRuntime} />
             </div>
           ) : (
             <div className="mt-5 space-y-3 text-sm leading-6 text-[var(--text-secondary)]">
@@ -711,6 +831,8 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
             </pre>
           </div>
         </section>
+          ) : null}
+        </div>
       </div>
     </div>
   );
