@@ -106,6 +106,42 @@
   --org-icon-background: rgba(99, 163, 255, 0.08);
 }
 
+:root[data-theme="enterprise"][data-brand-theme="sixmanager"] {
+  --black: #0b1020;
+  --surface: #111935;
+  --surface-raised: #162246;
+  --border: #28345f;
+  --border-visible: #42528c;
+  --text-disabled: #7f8cbe;
+  --text-secondary: #a4add7;
+  --text-primary: #edf0ff;
+  --text-display: #ffffff;
+  --accent: #8c63ff;
+  --accent-subtle: rgba(140, 99, 255, 0.18);
+  --success: #45b887;
+  --warning: #e0a63e;
+  --interactive: #5f8dff;
+  --selection: rgba(140, 99, 255, 0.24);
+  --overlay: rgba(8, 12, 24, 0.8);
+  --contrast-muted: rgba(11, 16, 32, 0.78);
+  --app-background:
+    radial-gradient(circle at top right, rgba(140, 99, 255, 0.22), transparent 24rem),
+    radial-gradient(circle at bottom left, rgba(70, 137, 200, 0.18), transparent 22rem),
+    linear-gradient(180deg, #0d1328 0%, #0b1020 100%);
+  --panel-background: color-mix(in srgb, var(--surface) 95%, rgba(255, 255, 255, 0.018));
+  --terminal-background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.016), transparent),
+    #10172f;
+  --org-grid:
+    linear-gradient(rgba(164, 173, 215, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(164, 173, 215, 0.05) 1px, transparent 1px),
+    color-mix(in srgb, var(--surface) 98%, transparent);
+  --org-card-background: linear-gradient(180deg, rgba(255, 255, 255, 0.022), transparent), var(--surface-raised);
+  --org-icon-background: rgba(140, 99, 255, 0.1);
+  --font-display: "Space Grotesk", "DM Sans", system-ui, sans-serif;
+  --font-sans: "Space Grotesk", "DM Sans", system-ui, sans-serif;
+}
+
 @theme inline {
   --font-display: "Doto", "Space Mono", monospace;
   --font-sans: "Space Grotesk", "DM Sans", system-ui, sans-serif;
@@ -190,6 +226,24 @@
     box-shadow:
       0 0 0 3px color-mix(in srgb, var(--interactive) 18%, transparent),
       inset 0 1px 0 rgba(255, 255, 255, 0.022);
+  }
+
+  :root[data-theme="enterprise"] select {
+    padding-right: 2.9rem;
+    background-image:
+      linear-gradient(45deg, transparent 50%, color-mix(in srgb, var(--text-secondary) 88%, transparent) 50%),
+      linear-gradient(135deg, color-mix(in srgb, var(--text-secondary) 88%, transparent) 50%, transparent 50%);
+    background-position:
+      calc(100% - 1.35rem) calc(50% + 0.02rem),
+      calc(100% - 0.95rem) calc(50% + 0.02rem);
+    background-size: 0.42rem 0.42rem, 0.42rem 0.42rem;
+    background-repeat: no-repeat;
+  }
+
+  :root[data-theme="enterprise"] select option,
+  :root[data-theme="enterprise"] select optgroup {
+    background: var(--surface-raised);
+    color: var(--text-primary);
   }
 
   ::selection {
@@ -367,6 +421,12 @@
     pointer-events: none;
   }
 
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .dashboard-readout-card::after {
+    background:
+      radial-gradient(circle at top right, rgba(140, 99, 255, 0.22), transparent 34%),
+      linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.012));
+  }
+
   :root[data-theme="enterprise"] .dashboard-metric-chip {
     border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
     border-radius: 0.95rem;
@@ -485,6 +545,12 @@
     pointer-events: none;
   }
 
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .agent-hero::after {
+    background:
+      radial-gradient(circle at top right, rgba(140, 99, 255, 0.22), transparent 32%),
+      linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.012));
+  }
+
   :root[data-theme="enterprise"] .agent-hero-metric {
     border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
     border-radius: 1rem;
@@ -598,15 +664,19 @@
       inset 3px 0 0 color-mix(in srgb, var(--interactive) 84%, white 6%);
   }
 
-  :root[data-theme="enterprise"] .agents-select-box {
+  :root[data-theme="enterprise"] input[type="checkbox"] {
     width: 1.15rem;
     height: 1.15rem;
     min-width: 1.15rem;
+    position: relative;
+    display: inline-grid;
+    place-content: center;
     border-radius: 0.3rem;
     border: 1px solid color-mix(in srgb, var(--border-visible) 88%, transparent);
     background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
     appearance: none;
+    -webkit-appearance: none;
     cursor: pointer;
     transition:
       border-color 160ms ease-out,
@@ -615,11 +685,18 @@
       transform 160ms ease-out;
   }
 
-  :root[data-theme="enterprise"] .agents-select-box:hover {
+  :root[data-theme="enterprise"] input[type="checkbox"]:hover {
     border-color: color-mix(in srgb, var(--interactive) 44%, var(--border-visible));
   }
 
-  :root[data-theme="enterprise"] .agents-select-box:checked {
+  :root[data-theme="enterprise"] input[type="checkbox"]:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--interactive) 18%, transparent),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  :root[data-theme="enterprise"] input[type="checkbox"]:checked {
     border-color: color-mix(in srgb, var(--interactive) 78%, white 8%);
     background:
       linear-gradient(180deg, #6ba2ff 0%, #4f8cff 100%);
@@ -628,18 +705,23 @@
       inset 0 1px 0 rgba(255, 255, 255, 0.14);
   }
 
-  :root[data-theme="enterprise"] .agents-select-box:checked::after {
+  :root[data-theme="enterprise"] input[type="checkbox"]::after {
     content: "";
     display: block;
     width: 0.32rem;
     height: 0.58rem;
-    margin: 0.18rem auto 0;
     border-right: 2px solid #08111a;
     border-bottom: 2px solid #08111a;
-    transform: rotate(45deg);
+    transform: rotate(45deg) scale(0);
+    transform-origin: center;
+    transition: transform 140ms ease-out;
   }
 
-  :root[data-theme="enterprise"] .agents-select-box:disabled {
+  :root[data-theme="enterprise"] input[type="checkbox"]:checked::after {
+    transform: rotate(45deg) scale(1);
+  }
+
+  :root[data-theme="enterprise"] input[type="checkbox"]:disabled {
     opacity: 0.45;
     cursor: not-allowed;
   }
@@ -759,6 +841,13 @@
       linear-gradient(180deg, #09111c 0%, #07101a 100%);
   }
 
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .login-page {
+    background:
+      radial-gradient(circle at top right, rgba(140, 99, 255, 0.24), transparent 22rem),
+      radial-gradient(circle at bottom left, rgba(70, 137, 200, 0.16), transparent 18rem),
+      linear-gradient(180deg, #0d1328 0%, #0b1020 100%);
+  }
+
   :root[data-theme="enterprise"] .login-hero {
     position: relative;
     overflow: hidden;
@@ -772,6 +861,17 @@
       inset 0 1px 0 rgba(255, 255, 255, 0.022);
   }
 
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .login-hero,
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .login-access-card,
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .app-shell-sidebar,
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .settings-shell,
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .manual-sidebar {
+    border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+    box-shadow:
+      0 18px 38px rgba(4, 8, 18, 0.34),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+
   :root[data-theme="enterprise"] .login-hero::after {
     content: "";
     position: absolute;
@@ -780,6 +880,25 @@
       radial-gradient(circle at top right, rgba(99, 163, 255, 0.1), transparent 30%),
       linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.01));
     pointer-events: none;
+  }
+
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .login-hero::after,
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .settings-shell::after {
+    background:
+      radial-gradient(circle at top right, rgba(140, 99, 255, 0.24), transparent 30%),
+      linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.012));
+  }
+
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .panel-button-primary,
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] input[type="checkbox"]:checked {
+    background: linear-gradient(135deg, #6e59ff 0%, #8c63ff 52%, #4c8fd7 100%);
+  }
+
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .app-shell-nav-link:hover,
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .settings-tab-button.is-active,
+  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .manual-sidebar-link:hover {
+    border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
 
   .panel-button-secondary:hover,

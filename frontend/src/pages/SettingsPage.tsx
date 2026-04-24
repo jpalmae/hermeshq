@@ -70,7 +70,7 @@ export function SettingsPage() {
 
   const [appName, setAppName] = useState("");
   const [appShortName, setAppShortName] = useState("");
-  const [themeMode, setThemeMode] = useState<"dark" | "light" | "system" | "enterprise">("dark");
+  const [themeMode, setThemeMode] = useState<"dark" | "light" | "system" | "enterprise" | "sixmanager">("dark");
   const [defaultLocale, setDefaultLocale] = useState<"en" | "es">("en");
   const [secretName, setSecretName] = useState("");
   const [secretProvider, setSecretProvider] = useState("");
@@ -366,11 +366,12 @@ export function SettingsPage() {
           </label>
           <label className="panel-field">
             <span className="panel-label">{t("settings.theme")}</span>
-            <select value={themeMode} onChange={(event) => setThemeMode(event.target.value as "dark" | "light" | "system" | "enterprise")}>
+            <select value={themeMode} onChange={(event) => setThemeMode(event.target.value as "dark" | "light" | "system" | "enterprise" | "sixmanager")}>
               <option value="dark">{t("common.dark")}</option>
               <option value="light">{t("common.light")}</option>
               <option value="system">{t("common.system")}</option>
               <option value="enterprise">{t("common.enterprise")}</option>
+              <option value="sixmanager">{t("common.sixmanager")}</option>
             </select>
           </label>
           <label className="panel-field">

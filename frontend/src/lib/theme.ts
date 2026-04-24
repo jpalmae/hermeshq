@@ -7,7 +7,7 @@ const PUBLIC_THEME_STORAGE_KEY = "hermeshq.publicThemeMode";
 
 export function getStoredPublicThemeMode(): ThemeMode | null {
   const value = window.localStorage.getItem(PUBLIC_THEME_STORAGE_KEY);
-  if (value === "dark" || value === "light" || value === "system" || value === "enterprise") {
+  if (value === "dark" || value === "light" || value === "system" || value === "enterprise" || value === "sixmanager") {
     return value;
   }
   return null;
@@ -24,7 +24,7 @@ export function resolveThemeMode(mode: ThemeMode | null | undefined): ResolvedTh
   if (mode === "light") {
     return "light";
   }
-  if (mode === "enterprise") {
+  if (mode === "enterprise" || mode === "sixmanager") {
     return "enterprise";
   }
   if (mode === "system") {
@@ -36,6 +36,11 @@ export function resolveThemeMode(mode: ThemeMode | null | undefined): ResolvedTh
 export function applyThemeToDocument(mode: ThemeMode | null | undefined) {
   const resolvedTheme = resolveThemeMode(mode);
   document.documentElement.dataset.theme = resolvedTheme;
+  if (mode === "sixmanager") {
+    document.documentElement.dataset.brandTheme = "sixmanager";
+  } else {
+    delete document.documentElement.dataset.brandTheme;
+  }
   document.documentElement.style.colorScheme = resolvedTheme === "light" ? "light" : "dark";
   return resolvedTheme;
 }

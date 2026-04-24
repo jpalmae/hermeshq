@@ -9,7 +9,7 @@ export interface User {
   auth_source: "local" | "oidc" | string;
   role: "admin" | "user";
   is_active: boolean;
-  theme_preference: "default" | "dark" | "light" | "system" | "enterprise";
+  theme_preference: "default" | "dark" | "light" | "system" | "enterprise" | "sixmanager";
   locale_preference: "default" | "en" | "es";
   avatar_url: string | null;
   has_avatar: boolean;
@@ -135,7 +135,7 @@ export interface AppSettings {
   app_version: string;
   app_name: string | null;
   app_short_name: string | null;
-  theme_mode: "dark" | "light" | "system" | "enterprise";
+  theme_mode: "dark" | "light" | "system" | "enterprise" | "sixmanager";
   default_locale: "en" | "es";
   default_provider: string | null;
   default_model: string | null;

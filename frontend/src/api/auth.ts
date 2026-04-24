@@ -27,7 +27,7 @@ export function useUpdateMyPreferences() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (payload: {
-      theme_preference?: "default" | "dark" | "light" | "system" | "enterprise";
+      theme_preference?: "default" | "dark" | "light" | "system" | "enterprise" | "sixmanager";
       locale_preference?: "default" | "en" | "es";
     }) => {
       const { data } = await apiClient.put<User>("/auth/me/preferences", payload);
