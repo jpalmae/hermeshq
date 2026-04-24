@@ -14,7 +14,7 @@ from hermeshq.core.events import EventBroker
 from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
 from hermeshq.database import AsyncSessionLocal, init_database
 from hermeshq.models import ActivityLog, Agent, AppSettings, Node, ProviderDefinition, TerminalSession, User
-from hermeshq.routers import agents, auth, comms, dashboard, hermes_versions, integration_packages, internal_agents, internal_control, logs, managed_integrations, messaging_channels, nodes, providers, runtime_ledger, runtime_profiles, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, terminal_sessions, users
+from hermeshq.routers import agents, auth, comms, dashboard, hermes_versions, integration_factory, integration_packages, internal_agents, internal_control, logs, managed_integrations, messaging_channels, nodes, providers, runtime_ledger, runtime_profiles, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, terminal_sessions, users
 from hermeshq.schemas.common import HealthResponse
 from hermeshq.services.agent_identity import derive_agent_identity, slugify_agent_value
 from hermeshq.services.agent_supervisor import AgentSupervisor
@@ -224,6 +224,7 @@ app.include_router(nodes.router, prefix=settings.api_prefix)
 app.include_router(providers.router, prefix=settings.api_prefix)
 app.include_router(hermes_versions.router, prefix=settings.api_prefix)
 app.include_router(runtime_profiles.router, prefix=settings.api_prefix)
+app.include_router(integration_factory.router, prefix=settings.api_prefix)
 app.include_router(integration_packages.router, prefix=settings.api_prefix)
 app.include_router(managed_integrations.router, prefix=settings.api_prefix)
 app.include_router(agents.router, prefix=settings.api_prefix)

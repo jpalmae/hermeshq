@@ -26,6 +26,16 @@ async def init_database() -> None:
 def _run_schema_updates(sync_connection) -> None:
     inspector = inspect(sync_connection)
     user_columns = {column["name"] for column in inspector.get_columns("users")}
+    user_indexes = {index["name"] for index in inspector.get_indexes("users")}
+    user_unique_constraints = {constraint["name"] for constraint in inspector.get_unique_constraints("users")}
+    user_named_constraints = user_indexes | user_unique_constraints
+    if "email" not in user_columns:
+        sync_connection.execute(text("ALTER TABLE users ADD COLUMN email VARCHAR(255)"))
+    if "auth_source" not in user_columns:
+        sync_connection.execute(text("ALTER TABLE users ADD COLUMN auth_source VARCHAR(32)"))
+        sync_connection.execute(text("UPDATE users SET auth_source = 'local' WHERE auth_source IS NULL"))
+    if "oidc_subject" not in user_columns:
+        sync_connection.execute(text("ALTER TABLE users ADD COLUMN oidc_subject VARCHAR(255)"))
     if "role" not in user_columns:
         sync_connection.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(16)"))
         sync_connection.execute(text("UPDATE users SET role = 'admin' WHERE username = 'admin'"))
@@ -41,6 +51,12 @@ def _run_schema_updates(sync_connection) -> None:
         sync_connection.execute(text("UPDATE users SET locale_preference = 'default' WHERE locale_preference IS NULL"))
     if "avatar_filename" not in user_columns:
         sync_connection.execute(text("ALTER TABLE users ADD COLUMN avatar_filename VARCHAR(255)"))
+    if "ix_users_email" not in user_named_constraints:
+        sync_connection.execute(text("CREATE INDEX ix_users_email ON users(email)"))
+    if "ix_users_auth_source" not in user_named_constraints:
+        sync_connection.execute(text("CREATE INDEX ix_users_auth_source ON users(auth_source)"))
+    if "ix_users_oidc_subject" not in user_named_constraints:
+        sync_connection.execute(text("CREATE INDEX ix_users_oidc_subject ON users(oidc_subject)"))
     if not inspector.has_table("agent_assignments"):
         sync_connection.execute(
             text(
@@ -217,6 +233,31 @@ def _run_schema_updates(sync_connection) -> None:
         )
         sync_connection.execute(text("CREATE INDEX ix_conversation_threads_agent_id ON conversation_threads(agent_id)"))
         sync_connection.execute(text("CREATE INDEX ix_conversation_threads_user_id ON conversation_threads(user_id)"))
+    if not inspector.has_table("integration_drafts"):
+        sync_connection.execute(
+            text(
+                """
+                CREATE TABLE integration_drafts (
+                    id VARCHAR(36) PRIMARY KEY,
+                    slug VARCHAR(128) NOT NULL UNIQUE,
+                    template VARCHAR(32) NOT NULL DEFAULT 'rest-api',
+                    status VARCHAR(24) NOT NULL DEFAULT 'draft',
+                    created_by_user_id VARCHAR(36) NULL REFERENCES users(id) ON DELETE SET NULL,
+                    created_by_agent_id VARCHAR(36) NULL REFERENCES agents(id) ON DELETE SET NULL,
+                    last_validation JSON NULL,
+                    published_package_slug VARCHAR(128) NULL,
+                    published_package_version VARCHAR(32) NULL,
+                    published_at TIMESTAMP WITH TIME ZONE NULL,
+                    notes TEXT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        sync_connection.execute(text("CREATE INDEX ix_integration_drafts_slug ON integration_drafts(slug)"))
+        sync_connection.execute(text("CREATE INDEX ix_integration_drafts_template ON integration_drafts(template)"))
+        sync_connection.execute(text("CREATE INDEX ix_integration_drafts_status ON integration_drafts(status)"))
     task_columns = {column["name"] for column in inspector.get_columns("tasks")}
     if "board_column" not in task_columns:
         sync_connection.execute(text("ALTER TABLE tasks ADD COLUMN board_column VARCHAR(32)"))

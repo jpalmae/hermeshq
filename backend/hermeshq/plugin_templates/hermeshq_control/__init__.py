@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 
 
@@ -512,6 +513,159 @@ def register(ctx):
             },
             "handler": _delete_handler(lambda args: f"/control/scheduled-tasks/{args.get('scheduled_task_id')}", required=["scheduled_task_id"]),
             "emoji": "🗑️",
+        },
+        {
+            "name": "hq_control_list_integration_drafts",
+            "description": "List integration factory drafts available for editing and publication.",
+            "parameters": {"type": "object", "properties": {}},
+            "handler": _payload_handler("GET", lambda _args: "/control/integration-drafts"),
+            "emoji": "🏗️",
+        },
+        {
+            "name": "hq_control_create_integration_draft",
+            "description": "Create a new managed integration draft scaffold. Use template 'rest-api' for a working HTTP integration skeleton or 'empty' for a minimal package.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slug": {"type": "string"},
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "template": {"type": "string", "enum": ["rest-api", "empty"]},
+                    "version": {"type": "string"},
+                },
+                "required": ["slug", "name"],
+            },
+            "handler": _payload_handler("POST", lambda _args: "/control/integration-drafts", required=["slug", "name"]),
+            "emoji": "🧱",
+        },
+        {
+            "name": "hq_control_get_integration_draft",
+            "description": "Get integration draft metadata, status, files, and current scaffold details by draft id.",
+            "parameters": {
+                "type": "object",
+                "properties": {"draft_id": {"type": "string"}},
+                "required": ["draft_id"],
+            },
+            "handler": _payload_handler("GET", lambda args: f"/control/integration-drafts/{args.get('draft_id')}", required=["draft_id"]),
+            "emoji": "📘",
+        },
+        {
+            "name": "hq_control_update_integration_draft",
+            "description": "Update integration draft metadata such as name, description, version, or notes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "draft_id": {"type": "string"},
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "version": {"type": "string"},
+                    "notes": {"type": "string"},
+                },
+                "required": ["draft_id"],
+            },
+            "handler": _payload_handler(
+                "PUT",
+                lambda args: f"/control/integration-drafts/{args.get('draft_id')}",
+                required=["draft_id"],
+                payload_builder=lambda args: {key: value for key, value in dict(args or {}).items() if key != "draft_id"},
+            ),
+            "emoji": "📝",
+        },
+        {
+            "name": "hq_control_get_integration_draft_file",
+            "description": "Read a draft file by relative path, for example manifest.yaml or plugin/__init__.py.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "draft_id": {"type": "string"},
+                    "path": {"type": "string"},
+                },
+                "required": ["draft_id", "path"],
+            },
+            "handler": _payload_handler(
+                "GET",
+                lambda args: f"/control/integration-drafts/{args.get('draft_id')}/file?path={urllib.parse.quote(str(args.get('path') or ''))}",
+                required=["draft_id", "path"],
+            ),
+            "emoji": "📄",
+        },
+        {
+            "name": "hq_control_put_integration_draft_file",
+            "description": "Create or replace a draft file by relative path with the provided content.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "draft_id": {"type": "string"},
+                    "path": {"type": "string"},
+                    "content": {"type": "string"},
+                },
+                "required": ["draft_id", "path", "content"],
+            },
+            "handler": _payload_handler(
+                "PUT",
+                lambda args: f"/control/integration-drafts/{args.get('draft_id')}/file?path={urllib.parse.quote(str(args.get('path') or ''))}",
+                required=["draft_id", "path", "content"],
+                payload_builder=lambda args: {"content": args.get("content", "")},
+            ),
+            "emoji": "✍️",
+        },
+        {
+            "name": "hq_control_delete_integration_draft_file",
+            "description": "Delete a draft file by relative path.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "draft_id": {"type": "string"},
+                    "path": {"type": "string"},
+                },
+                "required": ["draft_id", "path"],
+            },
+            "handler": _delete_handler(
+                lambda args: f"/control/integration-drafts/{args.get('draft_id')}/file?path={urllib.parse.quote(str(args.get('path') or ''))}",
+                required=["draft_id", "path"],
+            ),
+            "emoji": "🗑️",
+        },
+        {
+            "name": "hq_control_validate_integration_draft",
+            "description": "Run structural validation for an integration draft and return checks for manifest, plugin, and Python files.",
+            "parameters": {
+                "type": "object",
+                "properties": {"draft_id": {"type": "string"}},
+                "required": ["draft_id"],
+            },
+            "handler": _payload_handler(
+                "POST",
+                lambda args: f"/control/integration-drafts/{args.get('draft_id')}/validate",
+                required=["draft_id"],
+            ),
+            "emoji": "🩺",
+        },
+        {
+            "name": "hq_control_publish_integration_draft",
+            "description": "Publish an integration draft into Managed integrations and install it at instance level.",
+            "parameters": {
+                "type": "object",
+                "properties": {"draft_id": {"type": "string"}},
+                "required": ["draft_id"],
+            },
+            "handler": _payload_handler(
+                "POST",
+                lambda args: f"/control/integration-drafts/{args.get('draft_id')}/publish",
+                required=["draft_id"],
+            ),
+            "emoji": "🚀",
+        },
+        {
+            "name": "hq_control_delete_integration_draft",
+            "description": "Delete an integration draft and its scaffold files.",
+            "parameters": {
+                "type": "object",
+                "properties": {"draft_id": {"type": "string"}},
+                "required": ["draft_id"],
+            },
+            "handler": _delete_handler(lambda args: f"/control/integration-drafts/{args.get('draft_id')}", required=["draft_id"]),
+            "emoji": "🧹",
         },
     ]
 

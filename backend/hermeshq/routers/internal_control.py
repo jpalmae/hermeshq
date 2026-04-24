@@ -17,12 +17,22 @@ from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.secret import Secret
 from hermeshq.models.user import User
 from hermeshq.routers import agents as agents_router
+from hermeshq.routers import integration_factory as integration_factory_router
 from hermeshq.routers import integration_packages as integration_packages_router
 from hermeshq.routers import providers as providers_router
 from hermeshq.routers import scheduled_tasks as scheduled_tasks_router
 from hermeshq.routers import secrets as secrets_router
 from hermeshq.routers import users as users_router
 from hermeshq.schemas.agent import AgentCreate, AgentRead, AgentUpdate
+from hermeshq.schemas.integration_factory import (
+    IntegrationDraftCreate,
+    IntegrationDraftFileContentRead,
+    IntegrationDraftFileUpdate,
+    IntegrationDraftPublishRead,
+    IntegrationDraftRead,
+    IntegrationDraftUpdate,
+    IntegrationDraftValidationRead,
+)
 from hermeshq.schemas.managed_integration import (
     ManagedIntegrationRead,
     ManagedIntegrationTestRequest,
@@ -506,6 +516,173 @@ async def control_uninstall_integration(
         details={"integration_slug": slug},
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/integration-drafts", response_model=list[IntegrationDraftRead])
+async def control_list_integration_drafts(
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> list[IntegrationDraftRead]:
+    admin_user = await _load_admin_proxy(db)
+    return await integration_factory_router.list_integration_drafts(admin_user, db)
+
+
+@router.post("/integration-drafts", response_model=IntegrationDraftRead, status_code=status.HTTP_201_CREATED)
+async def control_create_integration_draft(
+    payload: IntegrationDraftCreate,
+    current_agent: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> IntegrationDraftRead:
+    admin_user = await _load_admin_proxy(db)
+    created = await integration_factory_router.create_integration_draft(payload, admin_user, db)
+    await _log_control_action(
+        db,
+        current_agent,
+        event_type="hq_control.integration_draft.created",
+        message=f"Created integration draft {created.slug}",
+        details={"draft_id": created.id, "draft_slug": created.slug},
+    )
+    return created
+
+
+@router.get("/integration-drafts/{draft_id}", response_model=IntegrationDraftRead)
+async def control_get_integration_draft(
+    draft_id: str,
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> IntegrationDraftRead:
+    admin_user = await _load_admin_proxy(db)
+    return await integration_factory_router.get_integration_draft(draft_id, admin_user, db)
+
+
+@router.put("/integration-drafts/{draft_id}", response_model=IntegrationDraftRead)
+async def control_update_integration_draft(
+    draft_id: str,
+    payload: IntegrationDraftUpdate,
+    current_agent: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> IntegrationDraftRead:
+    admin_user = await _load_admin_proxy(db)
+    updated = await integration_factory_router.update_integration_draft(draft_id, payload, admin_user, db)
+    await _log_control_action(
+        db,
+        current_agent,
+        event_type="hq_control.integration_draft.updated",
+        message=f"Updated integration draft {updated.slug}",
+        details={"draft_id": updated.id, "draft_slug": updated.slug},
+    )
+    return updated
+
+
+@router.delete("/integration-drafts/{draft_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def control_delete_integration_draft(
+    draft_id: str,
+    current_agent: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    admin_user = await _load_admin_proxy(db)
+    draft = await integration_factory_router.get_integration_draft(draft_id, admin_user, db)
+    await integration_factory_router.delete_integration_draft(draft_id, admin_user, db)
+    await _log_control_action(
+        db,
+        current_agent,
+        event_type="hq_control.integration_draft.deleted",
+        message=f"Deleted integration draft {draft.slug}",
+        details={"draft_id": draft.id, "draft_slug": draft.slug},
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/integration-drafts/{draft_id}/file", response_model=IntegrationDraftFileContentRead)
+async def control_get_integration_draft_file(
+    draft_id: str,
+    path: str,
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> IntegrationDraftFileContentRead:
+    admin_user = await _load_admin_proxy(db)
+    return await integration_factory_router.get_integration_draft_file(draft_id, path, admin_user, db)
+
+
+@router.put("/integration-drafts/{draft_id}/file", response_model=IntegrationDraftRead)
+async def control_put_integration_draft_file(
+    draft_id: str,
+    path: str,
+    payload: IntegrationDraftFileUpdate,
+    current_agent: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> IntegrationDraftRead:
+    admin_user = await _load_admin_proxy(db)
+    updated = await integration_factory_router.put_integration_draft_file(draft_id, payload, path, admin_user, db)
+    await _log_control_action(
+        db,
+        current_agent,
+        event_type="hq_control.integration_draft.file_updated",
+        message=f"Updated {path} in integration draft {updated.slug}",
+        details={"draft_id": updated.id, "draft_slug": updated.slug, "path": path},
+    )
+    return updated
+
+
+@router.delete("/integration-drafts/{draft_id}/file", response_model=IntegrationDraftRead)
+async def control_delete_integration_draft_file(
+    draft_id: str,
+    path: str,
+    current_agent: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> IntegrationDraftRead:
+    admin_user = await _load_admin_proxy(db)
+    updated = await integration_factory_router.delete_integration_draft_file(draft_id, path, admin_user, db)
+    await _log_control_action(
+        db,
+        current_agent,
+        event_type="hq_control.integration_draft.file_deleted",
+        message=f"Deleted {path} from integration draft {updated.slug}",
+        details={"draft_id": updated.id, "draft_slug": updated.slug, "path": path},
+    )
+    return updated
+
+
+@router.post("/integration-drafts/{draft_id}/validate", response_model=IntegrationDraftValidationRead)
+async def control_validate_integration_draft(
+    draft_id: str,
+    current_agent: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> IntegrationDraftValidationRead:
+    admin_user = await _load_admin_proxy(db)
+    draft = await integration_factory_router.get_integration_draft(draft_id, admin_user, db)
+    validation = await integration_factory_router.validate_integration_draft(draft_id, admin_user, db)
+    await _log_control_action(
+        db,
+        current_agent,
+        event_type="hq_control.integration_draft.validated",
+        message=f"Validated integration draft {draft.slug}",
+        details={"draft_id": draft.id, "draft_slug": draft.slug, "valid": validation.valid},
+    )
+    return validation
+
+
+@router.post("/integration-drafts/{draft_id}/publish", response_model=IntegrationDraftPublishRead)
+async def control_publish_integration_draft(
+    draft_id: str,
+    request: Request,
+    current_agent: Agent = Depends(_require_admin_scope),
+    db: AsyncSession = Depends(get_db_session),
+) -> IntegrationDraftPublishRead:
+    admin_user = await _load_admin_proxy(db)
+    published = await integration_factory_router.publish_integration_draft(draft_id, request, admin_user, db)
+    await _log_control_action(
+        db,
+        current_agent,
+        event_type="hq_control.integration_draft.published",
+        message=f"Published integration draft {published.draft.slug}",
+        details={
+            "draft_id": published.draft.id,
+            "draft_slug": published.draft.slug,
+            "integration_slug": published.integration.get("slug"),
+        },
+    )
+    return published
 
 
 @router.put("/agents/{agent_id}/integrations/{integration_slug}", response_model=AgentRead)

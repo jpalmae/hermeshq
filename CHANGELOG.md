@@ -12,6 +12,7 @@
 - real integration health checks for Microsoft Graph and Google OAuth-backed managed integrations
 - a bundled `snyk-agent-scan` managed integration with health check and manual `scan_skills` action traced into agent activity
 - support for uploaded `standard`-compatible integration packages built from legacy Hermes skills, validated with a new `gamma-app` package that exposes Gamma API tools, actions, and a companion skill bundle in HermesHQ format
+- an `Integration Factory` workflow for admins and `HQ Operator`: draft integration packages can now be scaffolded, edited file-by-file, validated, and published into `Managed Integrations` without leaving HermesHQ
 - a task board / Kanban phase 1 with board columns, drag state persistence, manual board ownership, and a collapsible `Submit task` rail
 - agent archival instead of hard delete: archived agents keep `Activity stream`, `Runtime ledger`, and messages for audit, can be listed again with `Show archived`, and open in read-only operational mode
 - per-agent Hermes Agent version pinning plus instance default Hermes version selection
@@ -27,13 +28,14 @@
 
 ### Changed
 
-- `Settings` is now organized into internal tabs (`General`, `Runtime`, `Providers`, `Integrations`, `Hermes Versions`, `Secrets`, `Templates`) to reduce the operational sprawl of one long admin page
+- `Settings` is now organized into internal tabs (`General`, `Runtime`, `Providers`, `Integrations`, `Factory`, `Hermes Versions`, `Secrets`, `Templates`) to reduce the operational sprawl of one long admin page
 - the `enterprise` theme now applies a more structured enterprise control-surface look across the shell, overview, surface system, task board, agent detail, comms, users, settings, manual, nodes, my account, and login screens without replacing the older themes
 - the login screen now follows the instance default public theme instead of always presenting a dark entry surface
 - `standard` agents now lose direct terminal/process execution in the shared backend runtime and no longer expose the Hermes TUI
 - `Settings -> Integrations` now separates built-in runtime capabilities, HermesHQ platform plugins, and installable integration packages more clearly
 - agent detail now has a dedicated `Integrations` section with effective capability summaries, managed integration metadata, actions, and connectivity testing
 - managed integrations documentation now includes package requirements and the Gamma.app upload flow for converting older skill bundles into HermesHQ-native integration packages
+- managed integrations documentation now also includes the full `Integration Factory` authoring flow, including draft lifecycle, validation, publication, and operator-assisted publishing
 - `Activity stream` now groups streamed `agent.output` fragments into readable consolidated blocks instead of showing token-like fragments line by line
 - `Runtime ledger` and `Activity stream` now include client-side search
 - gateway supervision now treats Hermes messaging as one shared gateway process per agent, which avoids WhatsApp/Telegram PID races and keeps multi-platform channels under the same `HERMES_HOME`

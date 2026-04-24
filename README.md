@@ -235,6 +235,45 @@ Admins can:
 - enable and configure them per agent
 - run per-agent connection tests
 
+HermesHQ also includes an `Integration Factory` for administrators and `HQ Operator`.
+
+- create a draft package scaffold from `Settings -> Factory`
+- edit `manifest.yaml`, plugin files, health checks, and companion skill content in-browser
+- validate the draft before publication
+- publish the draft directly into `Managed Integrations`, where it becomes installable and usable by `standard` agents once enabled per agent
+
+This turns `HQ Operator` into a practical builder/publisher for reusable capabilities instead of leaving every new skill or plugin as a one-off technical artifact.
+
+### Integration Factory Flow
+
+Typical flow:
+
+1. open `Settings -> Factory`
+2. create a draft with a unique `slug`, human-readable `name`, description, and template
+3. review and edit the generated files:
+   - `manifest.yaml`
+   - `plugin/__init__.py`
+   - `plugin/plugin.yaml`
+   - optional `healthcheck.py`
+   - optional `actions.py`
+   - optional `skill/SKILL.md`
+4. use `Validate` to check:
+   - package structure
+   - manifest/profile declarations
+   - plugin metadata
+   - Python syntax for every `*.py` file
+5. use `Publish` when validation is clean
+6. go to `Settings -> Integrations` and confirm the package is now in the managed catalog
+7. enable that integration per agent from `Agent -> Integrations`
+8. complete required fields and secrets, then run `Test connection`
+
+Important behavior:
+
+- publishing keeps the draft record, so you can continue iterating and republish later
+- published drafts become uploaded managed integrations
+- standard users still do not author code; they consume approved integrations after an admin enables them
+- `HQ Operator` exposes matching administrative tools for the same lifecycle: list, create, edit files, validate, publish, and delete drafts
+
 HermesHQ also supports uploaded `standard`-compatible integrations built as real plugins instead of shell wrappers. A practical example is `gamma-app`, which can be uploaded as an integration package and then enabled on administrative agents to create presentations, documents, webpages, and social content through Gamma's public API.
 
 This separation is intentional:

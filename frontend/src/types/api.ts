@@ -264,6 +264,56 @@ export interface ManagedIntegrationDefinition {
   }>;
 }
 
+export interface IntegrationDraftFile {
+  path: string;
+  size: number;
+}
+
+export interface IntegrationDraftCheck {
+  level: "info" | "warning" | "error";
+  code: string;
+  message: string;
+  path: string | null;
+}
+
+export interface IntegrationDraftValidation {
+  valid: boolean;
+  checks: IntegrationDraftCheck[];
+  validated_at: string | null;
+}
+
+export interface IntegrationDraft {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  version: string;
+  template: string;
+  status: string;
+  created_by_user_id: string | null;
+  created_by_agent_id: string | null;
+  plugin_slug: string | null;
+  skill_identifier: string | null;
+  standard_compatible: boolean;
+  supported_profiles: string[];
+  files: IntegrationDraftFile[];
+  last_validation: IntegrationDraftValidation | null;
+  published_package_slug: string | null;
+  published_package_version: string | null;
+  published_at: string | null;
+  notes: string | null;
+}
+
+export interface IntegrationDraftFileContent {
+  path: string;
+  content: string;
+}
+
+export interface IntegrationDraftPublishResult {
+  draft: IntegrationDraft;
+  integration: ManagedIntegrationDefinition;
+}
+
 export interface Task {
   id: string;
   agent_id: string;

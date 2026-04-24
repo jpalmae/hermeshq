@@ -5,6 +5,7 @@ from hermeshq.models.agent_assignment import AgentAssignment
 from hermeshq.models.base import Base
 from hermeshq.models.conversation_thread import ConversationThread
 from hermeshq.models.hermes_version import HermesVersion
+from hermeshq.models.integration_draft import IntegrationDraft
 from hermeshq.models.message import AgentMessage
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.node import Node
@@ -26,6 +27,7 @@ __all__ = [
     "Base",
     "ConversationThread",
     "HermesVersion",
+    "IntegrationDraft",
     "MessagingChannel",
     "Node",
     "ProviderDefinition",
