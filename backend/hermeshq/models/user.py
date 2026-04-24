@@ -11,8 +11,11 @@ class User(TimestampMixin, Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     display_name: Mapped[str] = mapped_column(String(128))
     password_hash: Mapped[str] = mapped_column(String(255))
+    auth_source: Mapped[str] = mapped_column(String(32), default="local", index=True)
+    oidc_subject: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     role: Mapped[str] = mapped_column(String(16), default="user", index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     theme_preference: Mapped[str] = mapped_column(String(16), default="default")

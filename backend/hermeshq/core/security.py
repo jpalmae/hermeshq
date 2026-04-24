@@ -6,7 +6,7 @@ from fastapi import Depends, HTTPException, Query, WebSocket, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hermeshq.config import get_settings
@@ -30,10 +30,10 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
 
 
-def create_access_token(subject: str) -> tuple[str, datetime]:
+def create_access_token(subject: str, *, subject_kind: str = "id") -> tuple[str, datetime]:
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_minutes)
     token = jwt.encode(
-        {"sub": subject, "exp": expires_at},
+        {"sub": subject, "sub_kind": subject_kind, "exp": expires_at},
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
     )
@@ -41,11 +41,16 @@ def create_access_token(subject: str) -> tuple[str, datetime]:
 
 
 def decode_access_token(token: str) -> str | None:
+    subject, _ = decode_access_token_subject(token)
+    return subject
+
+
+def decode_access_token_subject(token: str) -> tuple[str | None, str | None]:
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
     except JWTError:
-        return None
-    return payload.get("sub")
+        return None, None
+    return payload.get("sub"), payload.get("sub_kind")
 
 
 def create_agent_service_token(agent_id: str) -> str:
@@ -64,6 +69,27 @@ async def get_user_by_username(db: AsyncSession, username: str | None) -> User |
     return result.scalar_one_or_none()
 
 
+async def get_user_by_subject(db: AsyncSession, subject: str | None, subject_kind: str | None = None) -> User | None:
+    if not subject:
+        return None
+    if subject_kind == "id":
+        return await db.get(User, subject)
+    if subject_kind == "username":
+        return await get_user_by_username(db, subject)
+    user = await db.get(User, subject)
+    if user:
+        return user
+    result = await db.execute(
+        select(User).where(
+            or_(
+                User.username == subject,
+                User.oidc_subject == subject,
+            )
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db_session),
@@ -73,10 +99,10 @@ async def get_current_user(
         detail="Invalid authentication credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    username = decode_access_token(token)
-    if not username:
+    subject, subject_kind = decode_access_token_subject(token)
+    if not subject:
         raise credentials_error
-    user = await get_user_by_username(db, username)
+    user = await get_user_by_subject(db, subject, subject_kind)
     if not user or not user.is_active:
         raise credentials_error
     return user
@@ -86,10 +112,10 @@ async def get_current_user_from_query_token(
     token: str = Query(...),
     db: AsyncSession = Depends(get_db_session),
 ) -> User:
-    username = decode_access_token(token)
-    if not username:
+    subject, subject_kind = decode_access_token_subject(token)
+    if not subject:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials")
-    user = await get_user_by_username(db, username)
+    user = await get_user_by_subject(db, subject, subject_kind)
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials")
     return user
@@ -97,8 +123,8 @@ async def get_current_user_from_query_token(
 
 async def get_websocket_user(websocket: WebSocket, db: AsyncSession) -> User | None:
     token = websocket.query_params.get("token")
-    username = decode_access_token(token or "")
-    user = await get_user_by_username(db, username)
+    subject, subject_kind = decode_access_token_subject(token or "")
+    user = await get_user_by_subject(db, subject, subject_kind)
     if not user or not user.is_active:
         return None
     return user

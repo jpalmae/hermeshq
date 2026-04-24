@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient } from "./client";
-import type { User } from "../types/api";
+import { resolveApiBase } from "../lib/apiBase";
+import type { AuthProvidersResponse, User } from "../types/api";
 
 export async function login(username: string, password: string) {
   const { data } = await apiClient.post<{ access_token: string; expires_at: string }>(
@@ -9,6 +10,30 @@ export async function login(username: string, password: string) {
     { username, password },
   );
   return data;
+}
+
+export function useAuthProviders() {
+  return useQuery({
+    queryKey: ["auth-providers"],
+    queryFn: async () => {
+      const { data } = await apiClient.get<AuthProvidersResponse>("/auth/providers");
+      return data;
+    },
+    retry: false,
+  });
+}
+
+export function buildOidcLoginUrl(provider?: string) {
+  const base = resolveApiBase();
+  if (provider) {
+    return `${base}/auth/oidc/login?provider=${encodeURIComponent(provider)}`;
+  }
+  return `${base}/auth/oidc/login`;
+}
+
+export function buildOidcLogoutUrl() {
+  const base = resolveApiBase();
+  return `${base}/auth/oidc/logout`;
 }
 
 export function useMe(enabled: boolean) {

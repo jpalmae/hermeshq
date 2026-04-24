@@ -322,6 +322,12 @@
     color: var(--text-primary);
   }
 
+  .panel-button-primary:disabled,
+  .panel-button-secondary:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
   :root[data-theme="enterprise"] .panel-button-secondary {
     background: rgba(255, 255, 255, 0.015);
   }
@@ -329,6 +335,28 @@
   :root[data-theme="enterprise"] .panel-button-secondary:hover {
     border-color: color-mix(in srgb, var(--interactive) 35%, var(--border-visible));
     background: rgba(255, 255, 255, 0.026);
+  }
+
+  :root[data-theme="enterprise"] .panel-button-secondary:disabled,
+  :root[data-theme="enterprise"] .panel-button-secondary:disabled:hover {
+    border-color: color-mix(in srgb, var(--border) 88%, transparent);
+    background: rgba(255, 255, 255, 0.012);
+    color: var(--text-disabled);
+    box-shadow: none;
+    transform: none;
+  }
+
+  :root[data-theme="enterprise"] .login-provider-button {
+    min-height: 3.3rem;
+    padding-inline: 1rem;
+  }
+
+  :root[data-theme="enterprise"] .login-provider-status {
+    color: var(--text-disabled);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
   }
 
   :root[data-theme="enterprise"] .panel-button-primary:hover {

@@ -28,6 +28,21 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hermeshq}:${POSTGRES_PASSWORD:-hermeshq}@postgres:5432/${POSTGRES_DB:-hermeshq}
       JWT_SECRET: ${JWT_SECRET:-change-me}
+      AUTH_MODE: ${AUTH_MODE:-local}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+      OIDC_SCOPE: ${OIDC_SCOPE:-openid profile email}
+      OIDC_PROVIDER_NAME: ${OIDC_PROVIDER_NAME:-Authentik}
+      OIDC_PROVIDER_SLUG: ${OIDC_PROVIDER_SLUG:-authentik}
+      OIDC_POST_LOGOUT_REDIRECT_URI: ${OIDC_POST_LOGOUT_REDIRECT_URI:-}
+      OIDC_AUTO_PROVISION_USERS: ${OIDC_AUTO_PROVISION_USERS:-false}
+      OIDC_VISIBLE_PROVIDERS: ${OIDC_VISIBLE_PROVIDERS:-authentik}
+      OIDC_PROVIDER_LOGIN_URL_GOOGLE: ${OIDC_PROVIDER_LOGIN_URL_GOOGLE:-}
+      OIDC_PROVIDER_LOGIN_URL_MICROSOFT: ${OIDC_PROVIDER_LOGIN_URL_MICROSOFT:-}
+      OIDC_PROVIDER_LOGIN_URL_AUTHENTIK: ${OIDC_PROVIDER_LOGIN_URL_AUTHENTIK:-}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
       ADMIN_DISPLAY_NAME: ${ADMIN_DISPLAY_NAME:-Hermes Operator}
@@ -37,6 +52,8 @@ services:
       CORS_ORIGINS: '${CORS_ORIGINS_JSON:-["http://localhost:3420","http://frontend"]}'
     volumes:
       - hermeshq_workspaces:/app/workspaces
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     restart: always

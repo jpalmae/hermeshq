@@ -10,3 +10,4 @@ python-multipart>=0.0.9,<1.0
 croniter>=6.0,<7.0
 psutil>=6.0,<7.0
 python-telegram-bot>=22.0,<23.0
+httpx>=0.28,<1.0

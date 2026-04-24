@@ -4,6 +4,7 @@ export type ThemeMode = AppSettings["theme_mode"];
 export type UserThemePreference = "default" | ThemeMode;
 export type ResolvedTheme = "dark" | "light" | "enterprise";
 const PUBLIC_THEME_STORAGE_KEY = "hermeshq.publicThemeMode";
+const USER_THEME_STORAGE_KEY = "hermeshq.userThemeMode";
 
 export function getStoredPublicThemeMode(): ThemeMode | null {
   const value = window.localStorage.getItem(PUBLIC_THEME_STORAGE_KEY);
@@ -18,6 +19,21 @@ export function cachePublicThemeMode(mode: ThemeMode | null | undefined) {
     return;
   }
   window.localStorage.setItem(PUBLIC_THEME_STORAGE_KEY, mode);
+}
+
+export function getStoredUserThemeMode(): ThemeMode | null {
+  const value = window.localStorage.getItem(USER_THEME_STORAGE_KEY);
+  if (value === "dark" || value === "light" || value === "system" || value === "enterprise" || value === "sixmanager") {
+    return value;
+  }
+  return null;
+}
+
+export function cacheUserThemeMode(mode: ThemeMode | null | undefined) {
+  if (!mode) {
+    return;
+  }
+  window.localStorage.setItem(USER_THEME_STORAGE_KEY, mode);
 }
 
 export function resolveThemeMode(mode: ThemeMode | null | undefined): ResolvedTheme {

@@ -17,10 +17,26 @@ class TokenResponse(BaseModel):
     expires_at: datetime
 
 
+class AuthProviderRead(BaseModel):
+    slug: str
+    name: str
+    kind: str
+    enabled: bool = True
+
+
+class AuthProvidersResponse(BaseModel):
+    auth_mode: str
+    local_login_enabled: bool
+    oidc_enabled: bool
+    providers: list[AuthProviderRead]
+
+
 class UserRead(ORMModel):
     id: str
     username: str
+    email: str | None = None
     display_name: str
+    auth_source: str
     role: str
     is_active: bool
     theme_preference: str

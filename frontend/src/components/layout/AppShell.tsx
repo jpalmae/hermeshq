@@ -1,7 +1,7 @@
 import { useEffect, type CSSProperties } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 
-import { useMe, useUpdateMyPreferences } from "../../api/auth";
+import { buildOidcLogoutUrl, useMe, useUpdateMyPreferences } from "../../api/auth";
 import { UserAvatar } from "../UserAvatar";
 import { resolveAssetUrl, usePublicBranding } from "../../api/settings";
 import { useWebSocket } from "../../hooks/useWebSocket";
@@ -27,6 +27,16 @@ export function AppShell() {
   const appVersion = branding?.app_version || "";
 
   useWebSocket();
+
+  function handleLogout() {
+    const authSource = user?.auth_source;
+    logout();
+    if (authSource === "oidc") {
+      window.location.assign(buildOidcLogoutUrl());
+      return;
+    }
+    window.location.assign("/");
+  }
 
   useEffect(() => {
     if (user) {
@@ -207,7 +217,7 @@ export function AppShell() {
               </NavLink>
             </>
           )}
-          <button type="button" className="panel-button-secondary w-full" onClick={logout}>
+          <button type="button" className="panel-button-secondary w-full" onClick={handleLogout}>
             {sidebarCollapsed ? "Out" : t("nav.signOut")}
           </button>
         </div>
