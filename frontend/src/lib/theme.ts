@@ -8,7 +8,14 @@ const USER_THEME_STORAGE_KEY = "hermeshq.userThemeMode";
 
 export function getStoredPublicThemeMode(): ThemeMode | null {
   const value = window.localStorage.getItem(PUBLIC_THEME_STORAGE_KEY);
-  if (value === "dark" || value === "light" || value === "system" || value === "enterprise" || value === "sixmanager") {
+  if (
+    value === "dark" ||
+    value === "light" ||
+    value === "system" ||
+    value === "enterprise" ||
+    value === "sixmanager" ||
+    value === "sixmanager-light"
+  ) {
     return value;
   }
   return null;
@@ -23,7 +30,14 @@ export function cachePublicThemeMode(mode: ThemeMode | null | undefined) {
 
 export function getStoredUserThemeMode(): ThemeMode | null {
   const value = window.localStorage.getItem(USER_THEME_STORAGE_KEY);
-  if (value === "dark" || value === "light" || value === "system" || value === "enterprise" || value === "sixmanager") {
+  if (
+    value === "dark" ||
+    value === "light" ||
+    value === "system" ||
+    value === "enterprise" ||
+    value === "sixmanager" ||
+    value === "sixmanager-light"
+  ) {
     return value;
   }
   return null;
@@ -37,7 +51,7 @@ export function cacheUserThemeMode(mode: ThemeMode | null | undefined) {
 }
 
 export function resolveThemeMode(mode: ThemeMode | null | undefined): ResolvedTheme {
-  if (mode === "light") {
+  if (mode === "light" || mode === "sixmanager-light") {
     return "light";
   }
   if (mode === "enterprise" || mode === "sixmanager") {
@@ -54,6 +68,8 @@ export function applyThemeToDocument(mode: ThemeMode | null | undefined) {
   document.documentElement.dataset.theme = resolvedTheme;
   if (mode === "sixmanager") {
     document.documentElement.dataset.brandTheme = "sixmanager";
+  } else if (mode === "sixmanager-light") {
+    document.documentElement.dataset.brandTheme = "sixmanager-light";
   } else {
     delete document.documentElement.dataset.brandTheme;
   }

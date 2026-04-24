@@ -154,7 +154,7 @@ export function AppShell() {
                   value={user?.theme_preference ?? "default"}
                   onChange={(event) => {
                     void updatePreferences.mutateAsync({
-                      theme_preference: event.target.value as "default" | "dark" | "light" | "system" | "enterprise" | "sixmanager",
+                      theme_preference: event.target.value as "default" | "dark" | "light" | "system" | "enterprise" | "sixmanager" | "sixmanager-light",
                     }).then((updatedUser) => {
                       setUser(updatedUser);
                     });
@@ -166,6 +166,7 @@ export function AppShell() {
                   <option value="system">{t("common.system")}</option>
                   <option value="enterprise">{t("common.enterprise")}</option>
                   <option value="sixmanager">{t("common.sixmanager")}</option>
+                  <option value="sixmanager-light">{t("common.sixmanagerLight")}</option>
                 </select>
               </label>
               <label className="panel-field">

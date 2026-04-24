@@ -498,7 +498,7 @@ async def update_preferences(
     db: AsyncSession = Depends(get_db_session),
 ) -> UserRead:
     if payload.theme_preference is not None:
-        if payload.theme_preference not in {"default", "dark", "light", "system", "enterprise", "sixmanager"}:
+        if payload.theme_preference not in {"default", "dark", "light", "system", "enterprise", "sixmanager", "sixmanager-light"}:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid theme preference")
         current_user.theme_preference = payload.theme_preference
     if payload.locale_preference is not None:
