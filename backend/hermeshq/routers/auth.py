@@ -331,16 +331,15 @@ def _extract_id_token_claims(token_response: dict) -> dict:
 async def auth_providers() -> AuthProvidersResponse:
     auth_mode = _get_auth_mode()
     providers: list[AuthProviderRead] = []
-    if auth_mode in {AUTH_MODE_HYBRID, AUTH_MODE_OIDC}:
-        for slug in _get_public_oidc_provider_slugs():
-            providers.append(
-                AuthProviderRead(
-                    slug=slug,
-                    name=_get_oidc_provider_label(slug),
-                    kind="oidc",
-                    enabled=bool(_oidc_enabled() and _get_oidc_provider_login_url(slug)),
-                )
+    for slug in _get_public_oidc_provider_slugs():
+        providers.append(
+            AuthProviderRead(
+                slug=slug,
+                name=_get_oidc_provider_label(slug),
+                kind="oidc",
+                enabled=bool(_oidc_enabled() and _get_oidc_provider_login_url(slug)),
             )
+        )
     return AuthProvidersResponse(
         auth_mode=auth_mode,
         local_login_enabled=True,
