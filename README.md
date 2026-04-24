@@ -307,6 +307,31 @@ In the current phase:
 
 This is already real enforcement for `standard` versus technical/security agents, even though the deeper execution-plane split is still a later phase.
 
+## Hermes Agent Versions
+
+HermesHQ can manage multiple Hermes Agent builds side by side and assign them per agent or as the instance default.
+
+`Settings -> Hermes Versions` now has two paths:
+
+- `Upstream releases`: HermesHQ queries the real upstream Hermes repository and lists actual tags plus the package version detected from each release
+- `Manual catalog entry`: still available for advanced cases, but the backend now validates the `release_tag` against upstream before saving
+
+Recommended flow:
+
+1. open `Settings -> Hermes Versions`
+2. use `Refresh upstream tags`
+3. review the real upstream list
+4. click `Add to catalog` on the release you want
+5. use `Install` to materialize it under `/app/workspaces/_hermes_versions/<version>`
+6. optionally set it as the instance default or pin it on specific agents
+
+Important behavior:
+
+- HermesHQ now treats the upstream Hermes repo as the source of truth for release tags
+- `release_tag` is validated before save and before install, so broken tags fail early instead of failing only during `git checkout`
+- when HermesHQ can detect a package version from upstream metadata, it proposes that as the catalog version automatically
+- if the catalog label differs from the runtime version detected after install, HermesHQ surfaces a warning so rollout decisions are made against the real runtime version
+
 ## Backup and Restore
 
 HermesHQ includes instance-level backup and restore scripts:

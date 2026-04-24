@@ -16,7 +16,7 @@
 - a task board / Kanban phase 1 with board columns, drag state persistence, manual board ownership, and a collapsible `Submit task` rail
 - agent archival instead of hard delete: archived agents keep `Activity stream`, `Runtime ledger`, and messages for audit, can be listed again with `Show archived`, and open in read-only operational mode
 - per-agent Hermes Agent version pinning plus instance default Hermes version selection
-- a persistent Hermes Agent version catalog in `Settings`, with catalog entry creation, metadata editing, install/uninstall, default selection, and per-agent override
+- an upstream-aware Hermes Agent version catalog in `Settings`, with real tag discovery from the Hermes repo, automatic catalog entry creation from upstream releases, metadata editing, install/uninstall, default selection, and per-agent override
 - version-specific Hermes runtime resolution for tasks, TUI, and gateways using isolated installs under `/app/workspaces/_hermes_versions/<version>`
 - real deletion for installed agent skills from the Hermes skill registry; managed skills are also removed from the agent assignment list on delete
 - built-in `scripts/backup-instance.sh` and `scripts/restore-instance.sh` to preserve and rehydrate PostgreSQL, workspaces, `.env` and `cloudflared` token state
@@ -42,6 +42,7 @@
 - the dependency canvas now varies agent identity shapes by runtime profile instead of rendering every agent the same way
 - the installer now auto-installs Docker on Linux hosts when missing, attempts Docker-without-root setup, preserves existing instance env files, shows admin credentials at the end, and performs rollback/cleanup on failed first installs
 - the frontend API/WebSocket base resolution no longer depends on `localhost` for remote installs
+- `Settings -> Hermes Versions` now validates manual `release_tag` values against the upstream Hermes repository and warns when a catalog label differs from the detected runtime version after install
 - README, manual, and docs now explain Hermes Agent vs HermesHQ more explicitly and present the project as an actively developed system that may still contain rough edges
 
 ### Fixed

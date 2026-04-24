@@ -3,6 +3,8 @@ import json
 import re
 import shutil
 import sys
+import time
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,7 +16,13 @@ from hermeshq.config import get_settings
 from hermeshq.models.agent import Agent
 from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.hermes_version import HermesVersion
-from hermeshq.schemas.hermes_version import HermesVersionCreate, HermesVersionRead, HermesVersionUpdate
+from hermeshq.schemas.hermes_version import (
+    HermesUpstreamCatalogCreate,
+    HermesUpstreamVersionRead,
+    HermesVersionCreate,
+    HermesVersionRead,
+    HermesVersionUpdate,
+)
 
 
 class HermesVersionError(RuntimeError):
@@ -33,6 +41,8 @@ class HermesRuntimeSelection:
 
 
 class HermesVersionManager:
+    HERMES_REPO_URL = "https://github.com/NousResearch/hermes-agent.git"
+    HERMES_RAW_PYPROJECT_URL = "https://raw.githubusercontent.com/NousResearch/hermes-agent/{tag}/pyproject.toml"
     DEFAULT_CATALOG = (
         {
             "version": "0.8.0",
@@ -46,11 +56,15 @@ class HermesVersionManager:
         },
     )
     _VERSION_RE = re.compile(r"(\d+\.\d+\.\d+)")
+    _TAG_RE = re.compile(r"refs/tags/(.+)$")
+    _PYPROJECT_VERSION_RE = re.compile(r'^\s*version\s*=\s*"([^"]+)"\s*$', re.MULTILINE)
+    _UPSTREAM_CACHE_TTL_SECONDS = 900
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self.session_factory = session_factory
         self.settings = get_settings()
         self.root = (self.settings.workspaces_root / "_hermes_versions").resolve()
+        self._upstream_cache: tuple[float, list[HermesUpstreamVersionRead]] | None = None
 
     def ensure_root(self) -> Path:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -80,6 +94,9 @@ class HermesVersionManager:
         version = payload.version.strip()
         if not version:
             raise HermesVersionError("Version is required")
+        release_tag = (payload.release_tag or "").strip() or None
+        if release_tag:
+            await self.ensure_release_tag_exists(release_tag)
         async with self.session_factory() as session:
             existing = await session.get(HermesVersion, version)
             if existing:
@@ -87,7 +104,7 @@ class HermesVersionManager:
             session.add(
                 HermesVersion(
                     version=version,
-                    release_tag=(payload.release_tag or "").strip() or None,
+                    release_tag=release_tag,
                     description=(payload.description or "").strip() or None,
                 )
             )
@@ -96,12 +113,38 @@ class HermesVersionManager:
         return await self.describe_version(version, default_version)
 
     async def update_catalog_entry(self, version: str, payload: HermesVersionUpdate) -> HermesVersionRead:
+        release_tag = (payload.release_tag or "").strip() or None
+        if release_tag:
+            await self.ensure_release_tag_exists(release_tag)
         async with self.session_factory() as session:
             record = await session.get(HermesVersion, version)
             if not record:
                 raise HermesVersionError(f"Hermes version '{version}' is not in the catalog")
-            record.release_tag = (payload.release_tag or "").strip() or None
+            record.release_tag = release_tag
             record.description = (payload.description or "").strip() or None
+            await session.commit()
+        default_version = await self.get_default_version()
+        return await self.describe_version(version, default_version)
+
+    async def create_catalog_entry_from_upstream(self, payload: HermesUpstreamCatalogCreate) -> HermesVersionRead:
+        release = await self.get_upstream_release(payload.release_tag)
+        async with self.session_factory() as session:
+            existing_by_tag = await session.execute(
+                select(HermesVersion).where(HermesVersion.release_tag == release.release_tag)
+            )
+            if existing_by_tag.scalars().first():
+                raise HermesVersionError(f"Hermes release tag '{release.release_tag}' already exists in the catalog")
+
+            preferred_version = self._preferred_catalog_version_for_release(release)
+            version = await self._next_available_catalog_version(session, preferred_version, release.release_tag)
+
+            session.add(
+                HermesVersion(
+                    version=version,
+                    release_tag=release.release_tag,
+                    description=(payload.description or "").strip() or None,
+                )
+            )
             await session.commit()
         default_version = await self.get_default_version()
         return await self.describe_version(version, default_version)
@@ -200,8 +243,72 @@ class HermesVersionManager:
             return self._extract_version(output)
         return None
 
+    async def list_upstream_releases(self, *, force_refresh: bool = False) -> list[HermesUpstreamVersionRead]:
+        now = time.time()
+        if (
+            not force_refresh
+            and self._upstream_cache is not None
+            and now - self._upstream_cache[0] < self._UPSTREAM_CACHE_TTL_SECONDS
+        ):
+            return self._upstream_cache[1]
+
+        code, output = await self._run_capture("git", "ls-remote", "--tags", "--refs", self.HERMES_REPO_URL)
+        if code != 0:
+            raise HermesVersionError(output or "Failed to fetch upstream Hermes tags")
+
+        tags: list[tuple[str, str]] = []
+        for line in output.splitlines():
+            parts = line.strip().split("\t")
+            if len(parts) != 2:
+                continue
+            commit_sha, ref = parts
+            match = self._TAG_RE.match(ref)
+            if not match:
+                continue
+            tags.append((match.group(1), commit_sha))
+        tags.sort(key=lambda item: self._version_sort_key(item[0].removeprefix("v")), reverse=True)
+
+        async with self.session_factory() as session:
+            catalog_entries = (await session.execute(select(HermesVersion))).scalars().all()
+        versions_by_tag: dict[str, list[str]] = {}
+        for entry in catalog_entries:
+            if entry.release_tag:
+                versions_by_tag.setdefault(entry.release_tag, []).append(entry.version)
+
+        releases: list[HermesUpstreamVersionRead] = []
+        for tag, commit_sha in tags:
+            detected_version = await self._fetch_upstream_package_version(tag)
+            catalog_versions = sorted(versions_by_tag.get(tag, []), key=self._version_sort_key, reverse=True)
+            releases.append(
+                HermesUpstreamVersionRead(
+                    release_tag=tag,
+                    commit_sha=commit_sha,
+                    detected_version=detected_version,
+                    catalog_versions=catalog_versions,
+                    already_in_catalog=bool(catalog_versions),
+                )
+            )
+
+        self._upstream_cache = (now, releases)
+        return releases
+
+    async def get_upstream_release(self, release_tag: str) -> HermesUpstreamVersionRead:
+        normalized = release_tag.strip()
+        if not normalized:
+            raise HermesVersionError("Release tag is required")
+        for release in await self.list_upstream_releases():
+            if release.release_tag == normalized:
+                return release
+        raise HermesVersionError(f"Hermes release tag '{normalized}' was not found in upstream")
+
+    async def ensure_release_tag_exists(self, release_tag: str) -> None:
+        await self.get_upstream_release(release_tag)
+
     async def install_version(self, version: str) -> HermesVersionRead:
         catalog = await self.get_catalog_entry(version)
+        if not catalog.release_tag:
+            raise HermesVersionError("Configure a release tag first before installing this Hermes version")
+        await self.ensure_release_tag_exists(catalog.release_tag)
         target_root = self.version_root(version)
         if target_root.exists() and self.is_installed(version):
             detected = await self.detect_installed_version(version)
@@ -222,7 +329,7 @@ class HermesVersionManager:
                     str(pip_bin),
                     "install",
                     "--no-cache-dir",
-                    f"git+https://github.com/NousResearch/hermes-agent.git@{catalog.release_tag}",
+                    f"git+{self.HERMES_REPO_URL}@{catalog.release_tag}",
                 ),
             ]
             for command in install_commands:
@@ -280,6 +387,14 @@ class HermesVersionManager:
         detected_version = metadata.get("detected_version")
         if installed and not detected_version:
             detected_version = await self.detect_installed_version(version)
+        version_matches_detected = None
+        detected_version_warning = None
+        if detected_version:
+            version_matches_detected = version == detected_version
+            if not version_matches_detected:
+                detected_version_warning = (
+                    f"Catalog version '{version}' differs from detected Hermes runtime version '{detected_version}'."
+                )
         return HermesVersionRead(
             version=version,
             release_tag=catalog.release_tag,
@@ -289,6 +404,8 @@ class HermesVersionManager:
             install_status="ready" if installed else "available",
             installed_path=str(self.version_root(version)) if installed else None,
             detected_version=detected_version,
+            version_matches_detected=version_matches_detected,
+            detected_version_warning=detected_version_warning,
             is_default=default_version == version,
             is_effective_default=default_version == version,
             in_use_by_agents=await self.count_pinned_agents(version),
@@ -307,6 +424,8 @@ class HermesVersionManager:
                 install_status="ready",
                 installed_path=shutil.which("hermes"),
                 detected_version=bundled_version,
+                version_matches_detected=True if bundled_version else None,
+                detected_version_warning=None,
                 is_default=default_version is None,
                 is_effective_default=default_version is None,
                 in_use_by_agents=0,
@@ -345,3 +464,49 @@ class HermesVersionManager:
             detected_version=bundled_version,
             release_tag=None,
         )
+
+    async def _fetch_upstream_package_version(self, tag: str) -> str | None:
+        def _read_pyproject() -> str:
+            with urllib.request.urlopen(
+                self.HERMES_RAW_PYPROJECT_URL.format(tag=tag),
+                timeout=15,
+            ) as response:
+                return response.read().decode("utf-8", errors="replace")
+
+        try:
+            text = await asyncio.to_thread(_read_pyproject)
+        except Exception:
+            return None
+        match = self._PYPROJECT_VERSION_RE.search(text)
+        if not match:
+            return None
+        return match.group(1).strip() or None
+
+    def _preferred_catalog_version_for_release(self, release: HermesUpstreamVersionRead) -> str:
+        if release.detected_version:
+            return release.detected_version
+        return release.release_tag.removeprefix("v")
+
+    async def _next_available_catalog_version(
+        self,
+        session: AsyncSession,
+        preferred_version: str,
+        release_tag: str,
+    ) -> str:
+        candidate = preferred_version.strip()
+        if not candidate:
+            candidate = release_tag.removeprefix("v")
+        existing = await session.get(HermesVersion, candidate)
+        if not existing:
+            return candidate
+        suffix_base = f"{candidate}@{release_tag.removeprefix('v')}"
+        existing = await session.get(HermesVersion, suffix_base)
+        if not existing:
+            return suffix_base[:32]
+        counter = 2
+        while True:
+            numbered = f"{suffix_base}-{counter}"[:32]
+            existing = await session.get(HermesVersion, numbered)
+            if not existing:
+                return numbered
+            counter += 1

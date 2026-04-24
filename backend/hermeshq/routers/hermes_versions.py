@@ -6,7 +6,13 @@ from hermeshq.core.security import require_admin
 from hermeshq.database import get_db_session
 from hermeshq.models.agent import Agent
 from hermeshq.models.user import User
-from hermeshq.schemas.hermes_version import HermesVersionCreate, HermesVersionRead, HermesVersionUpdate
+from hermeshq.schemas.hermes_version import (
+    HermesUpstreamCatalogCreate,
+    HermesUpstreamVersionRead,
+    HermesVersionCreate,
+    HermesVersionRead,
+    HermesVersionUpdate,
+)
 from hermeshq.services.hermes_version_manager import HermesVersionError
 
 router = APIRouter(prefix="/hermes-versions", tags=["hermes-versions"])
@@ -20,6 +26,18 @@ async def list_hermes_versions(
     return await request.app.state.hermes_version_manager.list_versions()
 
 
+@router.get("/upstream", response_model=list[HermesUpstreamVersionRead])
+async def list_upstream_hermes_versions(
+    request: Request,
+    refresh: bool = False,
+    _: User = Depends(require_admin),
+) -> list[HermesUpstreamVersionRead]:
+    try:
+        return await request.app.state.hermes_version_manager.list_upstream_releases(force_refresh=refresh)
+    except HermesVersionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("", response_model=HermesVersionRead, status_code=status.HTTP_201_CREATED)
 async def create_hermes_version_catalog_entry(
     payload: HermesVersionCreate,
@@ -28,6 +46,18 @@ async def create_hermes_version_catalog_entry(
 ) -> HermesVersionRead:
     try:
         return await request.app.state.hermes_version_manager.create_catalog_entry(payload)
+    except HermesVersionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/from-upstream", response_model=HermesVersionRead, status_code=status.HTTP_201_CREATED)
+async def create_hermes_version_from_upstream(
+    payload: HermesUpstreamCatalogCreate,
+    request: Request,
+    _: User = Depends(require_admin),
+) -> HermesVersionRead:
+    try:
+        return await request.app.state.hermes_version_manager.create_catalog_entry_from_upstream(payload)
     except HermesVersionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

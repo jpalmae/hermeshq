@@ -162,9 +162,19 @@ export interface HermesVersion {
   install_status: string;
   installed_path: string | null;
   detected_version: string | null;
+  version_matches_detected: boolean | null;
+  detected_version_warning: string | null;
   is_default: boolean;
   is_effective_default: boolean;
   in_use_by_agents: number;
+}
+
+export interface HermesUpstreamVersion {
+  release_tag: string;
+  commit_sha: string;
+  detected_version: string | null;
+  catalog_versions: string[];
+  already_in_catalog: boolean;
 }
 
 export interface ProviderDefinition {
