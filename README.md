@@ -14,7 +14,7 @@ It keeps Hermes as the real execution engine, then adds the operational layer ar
 - task dispatch, schedules, runtime ledger, and activity stream
 - hierarchy-aware inter-agent delegation
 - per-agent Telegram and WhatsApp channels
-- provider presets, secrets vault, runtime profiles, and managed integrations
+- provider presets, secrets vault, runtime profiles, and managed integrations, including AWS Bedrock and generic OpenAI-compatible endpoints
 
 Project landing page: [jpalmae.github.io/hermeshq](https://jpalmae.github.io/hermeshq/)  
 Controlled demo page: [jpalmae.github.io/hermeshq/demo.html](https://jpalmae.github.io/hermeshq/demo.html)
@@ -43,7 +43,7 @@ HermesHQ uses that same Hermes runtime underneath, but wraps it in a control pla
 - task dispatch, schedules, and runtime ledger
 - inter-agent comms and hierarchy-aware delegation
 - per-agent Telegram and WhatsApp channels
-- provider presets, secrets vault, and managed integrations
+- provider presets, secrets vault, and managed integrations, including AWS Bedrock and generic OpenAI-compatible endpoints
 - runtime profiles and capability visibility
 
 In short:
@@ -117,7 +117,7 @@ Hermes works well as a local runtime. HermesHQ adds the things teams usually nee
 - per-user theme override
 - per-user language override with instance default
 - secrets vault
-- editable provider registry and presets
+- editable provider registry and presets, including AWS Bedrock (`aws_sdk`) and OpenAI-compatible API endpoints
 - managed integration package catalog with install/uninstall and per-agent tests
 
 ### UX

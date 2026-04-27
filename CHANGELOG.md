@@ -25,6 +25,7 @@
 - GitHub Pages landing content, dark demo assets, refreshed screenshots, and README video/demo support for project presentation
 - Telegram chat traceability into agent `Activity stream` by persisting inbound and outbound gateway messages as `channel.telegram.*` events
 - native per-agent WhatsApp channels using the Hermes gateway, including bridge asset sync, QR-based pairing, runtime visibility, and shared gateway supervision compatible with multi-platform agent messaging
+- two new inference provider presets: `AWS Bedrock` using `auth_type=aws_sdk` and `OpenAI-compatible API` for generic OpenAI-style gateways and self-hosted endpoints
 
 ### Changed
 
@@ -36,6 +37,7 @@
 - agent detail now has a dedicated `Integrations` section with effective capability summaries, managed integration metadata, actions, and connectivity testing
 - managed integrations documentation now includes package requirements and the Gamma.app upload flow for converting older skill bundles into HermesHQ-native integration packages
 - managed integrations documentation now also includes the full `Integration Factory` authoring flow, including draft lifecycle, validation, publication, and operator-assisted publishing
+- the manual and README now document how to configure `AWS Bedrock` versus `OpenAI-compatible API`, including the current credential model and runtime caveats for Bedrock
 - `Activity stream` now groups streamed `agent.output` fragments into readable consolidated blocks instead of showing token-like fragments line by line
 - `Runtime ledger` and `Activity stream` now include client-side search
 - gateway supervision now treats Hermes messaging as one shared gateway process per agent, which avoids WhatsApp/Telegram PID races and keeps multi-platform channels under the same `HERMES_HOME`
