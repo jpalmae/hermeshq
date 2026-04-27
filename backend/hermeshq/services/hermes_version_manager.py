@@ -59,6 +59,43 @@ class HermesVersionManager:
     _TAG_RE = re.compile(r"refs/tags/(.+)$")
     _PYPROJECT_VERSION_RE = re.compile(r'^\s*version\s*=\s*"([^"]+)"\s*$', re.MULTILINE)
     _UPSTREAM_CACHE_TTL_SECONDS = 900
+    _RUN_AGENT_HOTFIX_MARKER = "HERMESHQ_OPENAI_COMPAT_UA_HOTFIX"
+    _RUN_AGENT_INIT_NEEDLE = """                elif base_url_host_matches(effective_base, "chatgpt.com"):
+                    from agent.auxiliary_client import _codex_cloudflare_headers
+                    client_kwargs["default_headers"] = _codex_cloudflare_headers(api_key)"""
+    _RUN_AGENT_INIT_REPLACEMENT = """                elif base_url_host_matches(effective_base, "chatgpt.com"):
+                    from agent.auxiliary_client import _codex_cloudflare_headers
+                    client_kwargs["default_headers"] = _codex_cloudflare_headers(api_key)
+                else:
+                    # HERMESHQ_OPENAI_COMPAT_UA_HOTFIX: generic OpenAI-compatible gateways
+                    # behind WAF/CDN layers may block the OpenAI SDK default User-Agent.
+                    client_kwargs["default_headers"] = {"User-Agent": "HermesAgent"}"""
+    _RUN_AGENT_APPLY_HEADERS_NEEDLE = """        elif base_url_host_matches(base_url, "chatgpt.com"):
+            from agent.auxiliary_client import _codex_cloudflare_headers
+            self._client_kwargs["default_headers"] = _codex_cloudflare_headers(
+                self._client_kwargs.get("api_key", "")
+            )
+        else:
+            self._client_kwargs.pop("default_headers", None)"""
+    _RUN_AGENT_APPLY_HEADERS_REPLACEMENT = """        elif base_url_host_matches(base_url, "chatgpt.com"):
+            from agent.auxiliary_client import _codex_cloudflare_headers
+            self._client_kwargs["default_headers"] = _codex_cloudflare_headers(
+                self._client_kwargs.get("api_key", "")
+            )
+        else:
+            # HERMESHQ_OPENAI_COMPAT_UA_HOTFIX: keep a neutral HermesAgent UA for
+            # generic OpenAI-compatible endpoints instead of the OpenAI SDK default.
+            self._client_kwargs["default_headers"] = {"User-Agent": "HermesAgent"}"""
+    _RUN_AGENT_ROUTED_HEADERS_NEEDLE = """                    # Preserve any default_headers the router set
+                    if hasattr(_routed_client, '_default_headers') and _routed_client._default_headers:
+                        client_kwargs["default_headers"] = dict(_routed_client._default_headers)"""
+    _RUN_AGENT_ROUTED_HEADERS_REPLACEMENT = """                    # Preserve any default_headers the router set
+                    if hasattr(_routed_client, '_default_headers') and _routed_client._default_headers:
+                        client_kwargs["default_headers"] = dict(_routed_client._default_headers)
+                    elif str(_routed_client.base_url or "").strip():
+                        # HERMESHQ_OPENAI_COMPAT_UA_HOTFIX: generic OpenAI-compatible
+                        # endpoints may block the OpenAI SDK default User-Agent.
+                        client_kwargs["default_headers"] = {"User-Agent": "HermesAgent"}"""
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self.session_factory = session_factory
@@ -243,6 +280,35 @@ class HermesVersionManager:
             return self._extract_version(output)
         return None
 
+    def _run_agent_path(self, version: str) -> Path | None:
+        lib_root = self.version_root(version) / ".venv" / "lib"
+        if not lib_root.exists():
+            return None
+        candidates = sorted(lib_root.glob("python*/site-packages/run_agent.py"))
+        return candidates[0] if candidates else None
+
+    def _apply_runtime_hotfixes(self, version: str) -> None:
+        run_agent_path = self._run_agent_path(version)
+        if not run_agent_path or not run_agent_path.exists():
+            return
+        text = run_agent_path.read_text(encoding="utf-8")
+        if self._RUN_AGENT_HOTFIX_MARKER in text:
+            return
+        updated = text.replace(self._RUN_AGENT_INIT_NEEDLE, self._RUN_AGENT_INIT_REPLACEMENT, 1)
+        updated = updated.replace(
+            self._RUN_AGENT_ROUTED_HEADERS_NEEDLE,
+            self._RUN_AGENT_ROUTED_HEADERS_REPLACEMENT,
+            1,
+        )
+        updated = updated.replace(
+            self._RUN_AGENT_APPLY_HEADERS_NEEDLE,
+            self._RUN_AGENT_APPLY_HEADERS_REPLACEMENT,
+            1,
+        )
+        if updated == text:
+            return
+        run_agent_path.write_text(updated, encoding="utf-8")
+
     async def list_upstream_releases(self, *, force_refresh: bool = False) -> list[HermesUpstreamVersionRead]:
         now = time.time()
         if (
@@ -336,6 +402,7 @@ class HermesVersionManager:
                 code, output = await self._run_capture(*command)
                 if code != 0:
                     raise HermesVersionError(output or f"Failed to install Hermes {version}")
+            self._apply_runtime_hotfixes(version)
             detected_version = await self.detect_installed_version(version)
             self._write_metadata(
                 version,
@@ -440,6 +507,7 @@ class HermesVersionManager:
             catalog = await self.get_catalog_entry(requested_version)
             if not self.is_installed(requested_version):
                 raise HermesVersionError(f"Hermes version '{requested_version}' is not installed")
+            self._apply_runtime_hotfixes(requested_version)
             detected_version = self._read_metadata(requested_version).get("detected_version")
             if not detected_version:
                 detected_version = await self.detect_installed_version(requested_version)
