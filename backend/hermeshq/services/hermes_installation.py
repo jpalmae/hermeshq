@@ -37,6 +37,8 @@ class HermesInstallationError(RuntimeError):
 class HermesInstallationManager:
     _DESC_RE = re.compile(r"^\s*description:\s*(.+?)\s*$", re.MULTILINE)
     _WHATSAPP_BRIDGE_SOURCE = Path(__file__).resolve().parents[1] / "assets" / "whatsapp-bridge"
+    _CUSTOM_OPENAI_PROVIDER_KEY = "hermeshq-openai-compatible"
+    _CUSTOM_OPENAI_PROVIDER_NAME = "HermesHQ OpenAI-compatible"
 
     def __init__(
         self,
@@ -80,6 +82,7 @@ class HermesInstallationManager:
         hermes_home = self.build_hermes_home(agent.workspace_path)
         profile = get_runtime_profile(agent.runtime_profile)
         runtime_provider = normalize_runtime_provider(agent.provider)
+        effective_base_url = self._effective_provider_base_url(agent)
         env = {**os.environ, "HERMES_HOME": str(hermes_home), "TERM": "xterm-256color"}
         env["HERMESHQ_AGENT_ID"] = agent.id
         env["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id)
@@ -95,11 +98,11 @@ class HermesInstallationManager:
         if api_key:
             for env_name in self._provider_env_names(runtime_provider):
                 env[env_name] = api_key
-        if agent.base_url:
+        if effective_base_url:
             provider_base_url_env = self._provider_base_url_env_name(runtime_provider)
             if provider_base_url_env:
-                env[provider_base_url_env] = agent.base_url
-            env["OPENAI_BASE_URL"] = agent.base_url
+                env[provider_base_url_env] = effective_base_url
+            env["OPENAI_BASE_URL"] = effective_base_url
         managed_env = await self._build_managed_env_map(agent) if include_channels else {}
         for key, value in managed_env.items():
             env[key] = value
@@ -266,11 +269,13 @@ class HermesInstallationManager:
         telegram_channel = next((item for item in messaging_channels if item.platform == "telegram"), None)
         whatsapp_channel = next((item for item in messaging_channels if item.platform == "whatsapp"), None)
         runtime_provider = normalize_runtime_provider(agent.provider)
+        model_provider = self._model_provider_for_agent(agent)
+        effective_base_url = self._effective_provider_base_url(agent)
         config = {
             "model": {
                 "default": agent.model,
-                "provider": runtime_provider,
-                "base_url": agent.base_url or "",
+                "provider": model_provider,
+                "base_url": effective_base_url,
             },
             "agent": {
                 "max_turns": agent.max_iterations,
@@ -290,6 +295,15 @@ class HermesInstallationManager:
                 "external_dirs": [],
             },
         }
+        if self._uses_custom_openai_provider(agent):
+            config["providers"] = {
+                self._CUSTOM_OPENAI_PROVIDER_KEY: {
+                    "name": self._CUSTOM_OPENAI_PROVIDER_NAME,
+                    "base_url": effective_base_url,
+                    "key_env": "OPENAI_API_KEY",
+                    "default_model": agent.model,
+                }
+            }
         if active_skin:
             config["display"] = {"skin": active_skin}
         if telegram_channel and self._channel_runtime_enabled(telegram_channel):
@@ -673,16 +687,17 @@ class HermesInstallationManager:
     ) -> dict[str, str]:
         managed: dict[str, str] = {}
         runtime_provider = normalize_runtime_provider(agent.provider)
+        effective_base_url = self._effective_provider_base_url(agent)
 
         api_key = await self._resolve_api_key(agent.api_key_ref)
         if api_key:
             for env_name in self._provider_env_names(runtime_provider):
                 managed[env_name] = api_key
-        if agent.base_url:
+        if effective_base_url:
             provider_base_url_env = self._provider_base_url_env_name(runtime_provider)
             if provider_base_url_env:
-                managed[provider_base_url_env] = agent.base_url
-            managed["OPENAI_BASE_URL"] = agent.base_url
+                managed[provider_base_url_env] = effective_base_url
+            managed["OPENAI_BASE_URL"] = effective_base_url
 
         channels = await self._load_messaging_channels(agent.id)
         managed["WHATSAPP_ENABLED"] = "false"
@@ -814,7 +829,7 @@ class HermesInstallationManager:
         api_key = await self._resolve_api_key(agent.api_key_ref)
         entries: list[dict] = []
         if api_key:
-            base_url = (agent.base_url or "").strip()
+            base_url = self._effective_provider_base_url(agent)
             for priority, env_name in enumerate(self._provider_env_names(runtime_provider)):
                 entries.append(
                     {
@@ -831,8 +846,40 @@ class HermesInstallationManager:
                         "request_count": 0,
                     }
                 )
-        credential_pool[runtime_provider] = entries
+        if self._uses_custom_openai_provider(agent):
+            credential_pool.pop("openai", None)
+            credential_pool.pop("openai-codex", None)
+            credential_pool[self._custom_openai_pool_key()] = entries
+        else:
+            credential_pool[runtime_provider] = entries
         auth_path.write_text(json.dumps(auth_store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    def _uses_custom_openai_provider(self, agent: Agent) -> bool:
+        runtime_provider = normalize_runtime_provider(agent.provider)
+        return runtime_provider == "openai-codex" and bool(agent.api_key_ref or agent.base_url)
+
+    def _model_provider_for_agent(self, agent: Agent) -> str:
+        if self._uses_custom_openai_provider(agent):
+            return self._CUSTOM_OPENAI_PROVIDER_KEY
+        return normalize_runtime_provider(agent.provider) or ""
+
+    def _effective_provider_base_url(self, agent: Agent) -> str:
+        base_url = (agent.base_url or "").strip()
+        if self._uses_custom_openai_provider(agent):
+            return self._normalize_openai_compatible_base_url(base_url)
+        return base_url
+
+    def _normalize_openai_compatible_base_url(self, base_url: str) -> str:
+        cleaned = (base_url or "").strip().rstrip("/")
+        if not cleaned:
+            return "https://api.openai.com/v1"
+        for suffix in ("/chat/completions", "/responses", "/completions"):
+            if cleaned.lower().endswith(suffix):
+                return cleaned[: -len(suffix)].rstrip("/")
+        return cleaned
+
+    def _custom_openai_pool_key(self) -> str:
+        return f"custom:{self._CUSTOM_OPENAI_PROVIDER_NAME.lower().replace(' ', '-')}"
 
     def _provider_env_names(self, provider: str | None) -> list[str]:
         if not provider:

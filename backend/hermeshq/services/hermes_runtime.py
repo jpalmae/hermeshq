@@ -94,14 +94,15 @@ class HermesRuntime:
             agent.enabled_toolsets,
             agent.disabled_toolsets,
         )
-        runtime_provider = normalize_runtime_provider(agent.provider)
+        runtime_provider = self.installation_manager._model_provider_for_agent(agent)
+        effective_base_url = self.installation_manager._effective_provider_base_url(agent)
         payload = {
             "task_id": str(task.id),
             "prompt": task.prompt,
             "system_override": task.system_override,
             "model": agent.model,
             "provider": runtime_provider,
-            "base_url": agent.base_url,
+            "base_url": effective_base_url,
             "api_key": api_key,
             "enabled_toolsets": enabled_toolsets or None,
             "disabled_toolsets": disabled_toolsets or None,
