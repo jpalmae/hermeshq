@@ -24,7 +24,7 @@ from hermeshq.services.hermes_runtime import HermesRuntime
 from hermeshq.services.gateway_supervisor import GatewaySupervisor
 from hermeshq.services.hermes_version_manager import HermesVersionManager
 from hermeshq.services.pty_manager import PTYManager
-from hermeshq.services.provider_catalog import BUILTIN_PROVIDERS, seed_provider_defaults
+from hermeshq.services.provider_catalog import BUILTIN_PROVIDERS, normalize_runtime_provider, seed_provider_defaults
 from hermeshq.services.runtime_profiles import normalize_runtime_profile_slug, terminal_allowed_for_profile
 from hermeshq.services.scheduler import SchedulerService
 from hermeshq.services.secret_vault import SecretVault
@@ -68,6 +68,9 @@ async def bootstrap_defaults() -> None:
         else:
             if settings_row.default_hermes_version == "bundled":
                 settings_row.default_hermes_version = None
+            normalized_default_provider = normalize_runtime_provider(settings_row.default_provider)
+            if normalized_default_provider != settings_row.default_provider:
+                settings_row.default_provider = normalized_default_provider
         for payload in BUILTIN_PROVIDERS:
             provider = await session.get(ProviderDefinition, payload["slug"])
             if not provider:
@@ -107,6 +110,9 @@ async def bootstrap_defaults() -> None:
             agent.friendly_name = resolved_friendly
             agent.name = resolved_name
             agent.slug = candidate_slug
+            normalized_provider = normalize_runtime_provider(agent.provider)
+            if normalized_provider != agent.provider:
+                agent.provider = normalized_provider
             agent.runtime_profile = normalize_runtime_profile_slug(agent.runtime_profile)
         await session.commit()
 

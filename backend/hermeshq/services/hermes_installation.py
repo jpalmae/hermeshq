@@ -25,6 +25,7 @@ from hermeshq.services.managed_capabilities import (
     plugin_templates_root,
 )
 from hermeshq.services.hermes_version_manager import HermesRuntimeSelection, HermesVersionManager
+from hermeshq.services.provider_catalog import normalize_runtime_provider
 from hermeshq.services.runtime_profiles import get_runtime_profile
 from hermeshq.services.secret_vault import SecretVault
 
@@ -78,6 +79,7 @@ class HermesInstallationManager:
     async def build_process_env(self, agent: Agent, *, include_channels: bool = True) -> dict[str, str]:
         hermes_home = self.build_hermes_home(agent.workspace_path)
         profile = get_runtime_profile(agent.runtime_profile)
+        runtime_provider = normalize_runtime_provider(agent.provider)
         env = {**os.environ, "HERMES_HOME": str(hermes_home), "TERM": "xterm-256color"}
         env["HERMESHQ_AGENT_ID"] = agent.id
         env["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id)
@@ -91,10 +93,10 @@ class HermesInstallationManager:
             env["HERMESHQ_HERMES_RELEASE_TAG"] = runtime_selection.release_tag
         api_key = await self._resolve_api_key(agent.api_key_ref)
         if api_key:
-            for env_name in self._provider_env_names(agent.provider):
+            for env_name in self._provider_env_names(runtime_provider):
                 env[env_name] = api_key
         if agent.base_url:
-            provider_base_url_env = self._provider_base_url_env_name(agent.provider)
+            provider_base_url_env = self._provider_base_url_env_name(runtime_provider)
             if provider_base_url_env:
                 env[provider_base_url_env] = agent.base_url
             env["OPENAI_BASE_URL"] = agent.base_url
@@ -263,10 +265,11 @@ class HermesInstallationManager:
         profile = get_runtime_profile(agent.runtime_profile)
         telegram_channel = next((item for item in messaging_channels if item.platform == "telegram"), None)
         whatsapp_channel = next((item for item in messaging_channels if item.platform == "whatsapp"), None)
+        runtime_provider = normalize_runtime_provider(agent.provider)
         config = {
             "model": {
                 "default": agent.model,
-                "provider": agent.provider,
+                "provider": runtime_provider,
                 "base_url": agent.base_url or "",
             },
             "agent": {
@@ -669,13 +672,14 @@ class HermesInstallationManager:
         platform: str | None = None,
     ) -> dict[str, str]:
         managed: dict[str, str] = {}
+        runtime_provider = normalize_runtime_provider(agent.provider)
 
         api_key = await self._resolve_api_key(agent.api_key_ref)
         if api_key:
-            for env_name in self._provider_env_names(agent.provider):
+            for env_name in self._provider_env_names(runtime_provider):
                 managed[env_name] = api_key
         if agent.base_url:
-            provider_base_url_env = self._provider_base_url_env_name(agent.provider)
+            provider_base_url_env = self._provider_base_url_env_name(runtime_provider)
             if provider_base_url_env:
                 managed[provider_base_url_env] = agent.base_url
             managed["OPENAI_BASE_URL"] = agent.base_url
@@ -802,7 +806,8 @@ class HermesInstallationManager:
             credential_pool = {}
             auth_store["credential_pool"] = credential_pool
 
-        if not agent.provider:
+        runtime_provider = normalize_runtime_provider(agent.provider)
+        if not runtime_provider:
             auth_path.write_text(json.dumps(auth_store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             return
 
@@ -810,7 +815,7 @@ class HermesInstallationManager:
         entries: list[dict] = []
         if api_key:
             base_url = (agent.base_url or "").strip()
-            for priority, env_name in enumerate(self._provider_env_names(agent.provider)):
+            for priority, env_name in enumerate(self._provider_env_names(runtime_provider)):
                 entries.append(
                     {
                         "id": f"{env_name.lower()}-{priority}",
@@ -826,7 +831,7 @@ class HermesInstallationManager:
                         "request_count": 0,
                     }
                 )
-        credential_pool[agent.provider] = entries
+        credential_pool[runtime_provider] = entries
         auth_path.write_text(json.dumps(auth_store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     def _provider_env_names(self, provider: str | None) -> list[str]:

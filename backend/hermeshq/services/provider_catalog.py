@@ -1,6 +1,17 @@
 from hermeshq.models.provider import ProviderDefinition
 
 
+PROVIDER_RUNTIME_ALIASES: dict[str, str] = {
+    "openai": "openai-codex",
+}
+
+
+def normalize_runtime_provider(provider: str | None) -> str | None:
+    if not provider:
+        return provider
+    return PROVIDER_RUNTIME_ALIASES.get(provider, provider)
+
+
 BUILTIN_PROVIDERS: list[dict] = [
     {
         "slug": "kimi-coding",
@@ -50,7 +61,7 @@ BUILTIN_PROVIDERS: list[dict] = [
     {
         "slug": "openai-api",
         "name": "OpenAI API",
-        "runtime_provider": "openai",
+        "runtime_provider": "openai-codex",
         "auth_type": "api_key",
         "base_url": "https://api.openai.com/v1",
         "default_model": "gpt-4.1",
@@ -65,7 +76,7 @@ BUILTIN_PROVIDERS: list[dict] = [
     {
         "slug": "openai-compatible",
         "name": "OpenAI-compatible API",
-        "runtime_provider": "openai",
+        "runtime_provider": "openai-codex",
         "auth_type": "api_key",
         "base_url": None,
         "default_model": None,
@@ -80,7 +91,7 @@ BUILTIN_PROVIDERS: list[dict] = [
     {
         "slug": "gemini-api",
         "name": "Gemini API",
-        "runtime_provider": "openai",
+        "runtime_provider": "openai-codex",
         "auth_type": "api_key",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "default_model": "gemini-2.5-pro",
@@ -129,10 +140,12 @@ def seed_provider_defaults(existing: ProviderDefinition | None, payload: dict) -
     if not existing:
         return
     existing.name = existing.name or payload["name"]
-    existing.runtime_provider = existing.runtime_provider or payload["runtime_provider"]
-    existing.auth_type = existing.auth_type or payload["auth_type"]
+    existing.runtime_provider = payload["runtime_provider"]
+    existing.auth_type = payload["auth_type"]
     existing.base_url = existing.base_url or payload["base_url"]
     existing.default_model = existing.default_model or payload["default_model"]
     existing.description = existing.description or payload["description"]
     existing.docs_url = existing.docs_url or payload["docs_url"]
     existing.secret_placeholder = existing.secret_placeholder or payload["secret_placeholder"]
+    existing.supports_secret_ref = payload["supports_secret_ref"]
+    existing.supports_custom_base_url = payload["supports_custom_base_url"]

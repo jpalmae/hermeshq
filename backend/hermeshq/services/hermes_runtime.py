@@ -11,6 +11,7 @@ from hermeshq.models.agent import Agent
 from hermeshq.models.secret import Secret
 from hermeshq.models.task import Task
 from hermeshq.services.hermes_installation import HermesInstallationManager
+from hermeshq.services.provider_catalog import normalize_runtime_provider
 from hermeshq.services.runtime_profiles import resolve_effective_toolsets
 from hermeshq.services.secret_vault import SecretVault
 
@@ -93,12 +94,13 @@ class HermesRuntime:
             agent.enabled_toolsets,
             agent.disabled_toolsets,
         )
+        runtime_provider = normalize_runtime_provider(agent.provider)
         payload = {
             "task_id": str(task.id),
             "prompt": task.prompt,
             "system_override": task.system_override,
             "model": agent.model,
-            "provider": agent.provider,
+            "provider": runtime_provider,
             "base_url": agent.base_url,
             "api_key": api_key,
             "enabled_toolsets": enabled_toolsets or None,
@@ -179,7 +181,7 @@ class HermesRuntime:
             raise RuntimeExecutionError(f"Could not resolve secret '{api_key_ref}'") from exc
 
     def _has_credentials(self, agent: Agent) -> bool:
-        if self._provider_uses_sdk_auth(agent.provider):
+        if self._provider_uses_sdk_auth(normalize_runtime_provider(agent.provider)):
             return True
         if agent.api_key_ref:
             return True
