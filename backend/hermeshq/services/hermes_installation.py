@@ -842,6 +842,7 @@ class HermesInstallationManager:
         except Exception:
             pass
         fallback = {
+            "bedrock": [],
             "zai": ["ZAI_API_KEY", "GLM_API_KEY", "Z_AI_API_KEY"],
             "openrouter": ["OPENROUTER_API_KEY"],
             "anthropic": ["ANTHROPIC_API_KEY"],
@@ -865,6 +866,7 @@ class HermesInstallationManager:
         except Exception:
             pass
         fallback = {
+            "bedrock": "BEDROCK_BASE_URL",
             "zai": "GLM_BASE_URL",
             "openrouter": "OPENROUTER_BASE_URL",
             "openai": "OPENAI_BASE_URL",

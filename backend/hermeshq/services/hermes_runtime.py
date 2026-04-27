@@ -179,6 +179,8 @@ class HermesRuntime:
             raise RuntimeExecutionError(f"Could not resolve secret '{api_key_ref}'") from exc
 
     def _has_credentials(self, agent: Agent) -> bool:
+        if self._provider_uses_sdk_auth(agent.provider):
+            return True
         if agent.api_key_ref:
             return True
         return any(
@@ -197,6 +199,19 @@ class HermesRuntime:
                 "Z_AI_API_KEY",
             )
         )
+
+    def _provider_uses_sdk_auth(self, provider: str | None) -> bool:
+        if not provider:
+            return False
+        try:
+            from hermes_cli.auth import PROVIDER_REGISTRY
+
+            pconfig = PROVIDER_REGISTRY.get(provider)
+            auth_type = getattr(pconfig, "auth_type", None) if pconfig else None
+            return str(auth_type or "").strip().lower() == "aws_sdk"
+        except Exception:
+            pass
+        return provider == "bedrock"
 
     def _extract_tool_calls(self, messages: list[dict]) -> list[dict]:
         extracted: list[dict] = []
