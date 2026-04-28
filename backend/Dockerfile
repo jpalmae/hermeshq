@@ -25,7 +25,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt \
 RUN mkdir -p /app/hermeshq/assets/whatsapp-bridge
 COPY backend/hermeshq/assets/whatsapp-bridge/package.json /app/hermeshq/assets/whatsapp-bridge/package.json
 COPY backend/hermeshq/assets/whatsapp-bridge/package-lock.json /app/hermeshq/assets/whatsapp-bridge/package-lock.json
-RUN cd /app/hermeshq/assets/whatsapp-bridge && npm ci --no-audit --no-fund
+RUN cd /app/hermeshq/assets/whatsapp-bridge && npm ci --omit=peer --no-audit --no-fund
 
 COPY VERSION /app/VERSION
 COPY backend/hermeshq /app/hermeshq

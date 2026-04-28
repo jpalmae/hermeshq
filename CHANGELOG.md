@@ -27,6 +27,8 @@
 - native per-agent WhatsApp channels using the Hermes gateway, including bridge asset sync, QR-based pairing, runtime visibility, and shared gateway supervision compatible with multi-platform agent messaging
 - two new inference provider presets: `AWS Bedrock` using `auth_type=aws_sdk` and `OpenAI-compatible API` for generic OpenAI-style gateways and self-hosted endpoints
 - two bundled voice managed integrations enabled by default at instance level: `voice-edge` for `faster-whisper` + `edge-tts`, and `voice-local` for `faster-whisper` + Piper, both with Spanish and English presets and runtime `stt`/`tts` config generation
+- fixed `voice-local` runtime dependencies to install the actual Piper package (`piper-tts`) required by the health check and local TTS path
+- backend image now installs WhatsApp bridge dependencies with `npm ci --omit=peer` so Baileys no longer drags in `sharp` during image builds, which keeps local and production deploys from stalling in that layer
 
 ### Changed
 
