@@ -355,8 +355,29 @@ class HermesInstallationManager:
         voice_overrides = self._voice_runtime_overrides(agent)
         if voice_overrides:
             config.update(voice_overrides)
+        interaction_overrides = self._interaction_runtime_overrides(agent)
+        if interaction_overrides:
+            for section, values in interaction_overrides.items():
+                existing = config.setdefault(section, {})
+                if isinstance(existing, dict) and isinstance(values, dict):
+                    existing.update(values)
+                else:
+                    config[section] = values
         config_path = hermes_home / "config.yaml"
         config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    def _interaction_runtime_overrides(self, agent: Agent) -> dict[str, dict]:
+        overrides: dict[str, dict] = {}
+        approval_mode = (agent.approval_mode or "").strip()
+        if approval_mode:
+            overrides["approvals"] = {"mode": approval_mode}
+        tool_progress_mode = (agent.tool_progress_mode or "").strip()
+        if tool_progress_mode:
+            overrides["display"] = {"tool_progress": tool_progress_mode}
+        gateway_notifications_mode = (agent.gateway_notifications_mode or "").strip()
+        if gateway_notifications_mode:
+            overrides["gateway"] = {"notifications": gateway_notifications_mode}
+        return overrides
 
     def _whatsapp_bridge_target(self, hermes_home: Path) -> Path:
         return hermes_home / "platforms" / "whatsapp-bridge"

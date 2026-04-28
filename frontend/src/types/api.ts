@@ -89,6 +89,9 @@ export interface Agent {
   run_mode: string;
   runtime_profile: string;
   hermes_version: string | null;
+  approval_mode: string | null;
+  tool_progress_mode: string | null;
+  gateway_notifications_mode: string | null;
   model: string;
   provider: string;
   api_key_ref: string | null;

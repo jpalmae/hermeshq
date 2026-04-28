@@ -15,6 +15,9 @@ class AgentCreate(BaseModel):
     run_mode: str = "hybrid"
     runtime_profile: str = "standard"
     hermes_version: str | None = None
+    approval_mode: str | None = None
+    tool_progress_mode: str | None = None
+    gateway_notifications_mode: str | None = None
     model: str | None = None
     provider: str | None = None
     api_key_ref: str | None = None
@@ -37,6 +40,9 @@ class AgentUpdate(BaseModel):
     run_mode: str | None = None
     runtime_profile: str | None = None
     hermes_version: str | None = None
+    approval_mode: str | None = None
+    tool_progress_mode: str | None = None
+    gateway_notifications_mode: str | None = None
     model: str | None = None
     provider: str | None = None
     api_key_ref: str | None = None
@@ -65,6 +71,9 @@ class AgentRead(ORMModel):
     run_mode: str
     runtime_profile: str
     hermes_version: str | None
+    approval_mode: str | None
+    tool_progress_mode: str | None
+    gateway_notifications_mode: str | None
     model: str
     provider: str
     api_key_ref: str | None

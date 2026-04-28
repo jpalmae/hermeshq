@@ -86,6 +86,12 @@ def _run_schema_updates(sync_connection) -> None:
         sync_connection.execute(text("UPDATE agents SET runtime_profile = 'standard' WHERE runtime_profile IS NULL"))
     if "hermes_version" not in agent_columns:
         sync_connection.execute(text("ALTER TABLE agents ADD COLUMN hermes_version VARCHAR(32)"))
+    if "approval_mode" not in agent_columns:
+        sync_connection.execute(text("ALTER TABLE agents ADD COLUMN approval_mode VARCHAR(32)"))
+    if "tool_progress_mode" not in agent_columns:
+        sync_connection.execute(text("ALTER TABLE agents ADD COLUMN tool_progress_mode VARCHAR(16)"))
+    if "gateway_notifications_mode" not in agent_columns:
+        sync_connection.execute(text("ALTER TABLE agents ADD COLUMN gateway_notifications_mode VARCHAR(16)"))
     if "is_system_agent" not in agent_columns:
         sync_connection.execute(text("ALTER TABLE agents ADD COLUMN is_system_agent BOOLEAN DEFAULT FALSE"))
         sync_connection.execute(text("UPDATE agents SET is_system_agent = FALSE WHERE is_system_agent IS NULL"))

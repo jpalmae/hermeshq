@@ -22,6 +22,9 @@ const emptyForm = {
   run_mode: "hybrid",
   runtime_profile: "standard",
   hermes_version: "bundled",
+  approval_mode: "inherit",
+  tool_progress_mode: "inherit",
+  gateway_notifications_mode: "inherit",
   model: "",
   provider: "",
   api_key_ref: "",
@@ -46,6 +49,26 @@ function statusTone(status: string) {
   if (status === "stopped") return "text-[var(--text-secondary)]";
   return "text-[var(--warning)]";
 }
+
+const approvalModeOptions = [
+  { value: "inherit", labelKey: "agent.interactionModeInherit" },
+  { value: "off", labelKey: "agent.approvalModeOff" },
+  { value: "on-request", labelKey: "agent.approvalModeOnRequest" },
+  { value: "on-failure", labelKey: "agent.approvalModeOnFailure" },
+];
+
+const toolProgressModeOptions = [
+  { value: "inherit", labelKey: "agent.interactionModeInherit" },
+  { value: "on", labelKey: "agent.toolProgressModeOn" },
+  { value: "off", labelKey: "agent.toolProgressModeOff" },
+];
+
+const gatewayNotificationsModeOptions = [
+  { value: "inherit", labelKey: "agent.interactionModeInherit" },
+  { value: "all", labelKey: "agent.gatewayNotificationsModeAll" },
+  { value: "result", labelKey: "agent.gatewayNotificationsModeResult" },
+  { value: "off", labelKey: "agent.gatewayNotificationsModeOff" },
+];
 
 export function AgentsPage() {
   const currentUser = useSessionStore((state) => state.user);
@@ -118,6 +141,9 @@ export function AgentsPage() {
         node_id: current.node_id || activeNodeId,
         runtime_profile: current.runtime_profile || "standard",
         hermes_version: current.hermes_version || "bundled",
+        approval_mode: current.approval_mode || "inherit",
+        tool_progress_mode: current.tool_progress_mode || "inherit",
+        gateway_notifications_mode: current.gateway_notifications_mode || "inherit",
         model: current.model || settings?.default_model || "",
         provider: current.provider || settings?.default_provider || "",
         api_key_ref: current.api_key_ref || settings?.default_api_key_ref || "",
@@ -153,6 +179,9 @@ export function AgentsPage() {
       node_id: activeNodeId,
       runtime_profile: "standard",
       hermes_version: "bundled",
+      approval_mode: "inherit",
+      tool_progress_mode: "inherit",
+      gateway_notifications_mode: "inherit",
       model: settings?.default_model ?? "",
       provider: settings?.default_provider ?? "",
       api_key_ref: settings?.default_api_key_ref ?? "",
@@ -377,6 +406,65 @@ export function AgentsPage() {
               </p>
             </div>
           ) : null}
+
+          <section className="rounded-[1.25rem] border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] p-5">
+            <div className="border-b border-[var(--border)] pb-4">
+              <p className="panel-label">{t("agent.interactionSettings")}</p>
+              <h3 className="mt-2 text-lg text-[var(--text-display)]">{t("agent.advancedRuntimeBehavior")}</h3>
+              <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                {t("agent.advancedRuntimeBehaviorCopy")}
+              </p>
+            </div>
+            <div className="mt-4 grid gap-4">
+              <label className="panel-field">
+                <span className="panel-label">{t("agent.approvalMode")}</span>
+                <select
+                  value={form.approval_mode}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, approval_mode: event.target.value }))
+                  }
+                >
+                  {approvalModeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {t(option.labelKey)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="panel-field">
+                <span className="panel-label">{t("agent.toolProgressMode")}</span>
+                <select
+                  value={form.tool_progress_mode}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, tool_progress_mode: event.target.value }))
+                  }
+                >
+                  {toolProgressModeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {t(option.labelKey)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="panel-field">
+                <span className="panel-label">{t("agent.gatewayNotificationsMode")}</span>
+                <select
+                  value={form.gateway_notifications_mode}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, gateway_notifications_mode: event.target.value }))
+                  }
+                >
+                  {gatewayNotificationsModeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {t(option.labelKey)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </section>
 
           <label className="panel-field">
             <span className="panel-label">Provider preset</span>

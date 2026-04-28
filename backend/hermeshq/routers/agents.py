@@ -66,6 +66,9 @@ ALLOWED_AVATAR_TYPES = {
 }
 MAX_AVATAR_BYTES = 2 * 1024 * 1024
 MAX_BULK_AGENT_TARGETS = 25
+APPROVAL_MODE_OPTIONS = {"off", "on-request", "on-failure"}
+TOOL_PROGRESS_MODE_OPTIONS = {"on", "off"}
+GATEWAY_NOTIFICATIONS_MODE_OPTIONS = {"all", "result", "off"}
 
 
 def _active_agent_clause():
@@ -81,6 +84,42 @@ def _normalize_integration_configs(value: dict | None) -> dict[str, dict]:
             continue
         normalized[slug] = config if isinstance(config, dict) else {}
     return normalized
+
+
+def _normalize_optional_mode(
+    value: str | None,
+    *,
+    field_name: str,
+    allowed: set[str],
+) -> str | None:
+    normalized = (value or "").strip().lower()
+    if not normalized or normalized == "inherit":
+        return None
+    if normalized not in allowed:
+        allowed_values = ", ".join(sorted(["inherit", *allowed]))
+        raise HTTPException(status_code=400, detail=f"Invalid {field_name}. Expected one of: {allowed_values}")
+    return normalized
+
+
+def _apply_agent_runtime_behavior_settings(agent: Agent, values: dict[str, object]) -> None:
+    if "approval_mode" in values:
+        agent.approval_mode = _normalize_optional_mode(
+            values.get("approval_mode"),
+            field_name="approval_mode",
+            allowed=APPROVAL_MODE_OPTIONS,
+        )
+    if "tool_progress_mode" in values:
+        agent.tool_progress_mode = _normalize_optional_mode(
+            values.get("tool_progress_mode"),
+            field_name="tool_progress_mode",
+            allowed=TOOL_PROGRESS_MODE_OPTIONS,
+        )
+    if "gateway_notifications_mode" in values:
+        agent.gateway_notifications_mode = _normalize_optional_mode(
+            values.get("gateway_notifications_mode"),
+            field_name="gateway_notifications_mode",
+            allowed=GATEWAY_NOTIFICATIONS_MODE_OPTIONS,
+        )
 
 
 def _get_workspace_manager(request: Request) -> WorkspaceManager:
@@ -340,6 +379,9 @@ async def create_agent(
         run_mode=payload.run_mode,
         runtime_profile=normalize_runtime_profile_slug(payload.runtime_profile),
         hermes_version=hermes_version,
+        approval_mode=None,
+        tool_progress_mode=None,
+        gateway_notifications_mode=None,
         model=runtime_defaults["model"],
         provider=runtime_defaults["provider"],
         api_key_ref=runtime_defaults["api_key_ref"],
@@ -365,6 +407,14 @@ async def create_agent(
         agent.disabled_toolsets = list(payload.disabled_toolsets)
     if payload.integration_configs is not None:
         agent.integration_configs = _normalize_integration_configs(payload.integration_configs)
+    _apply_agent_runtime_behavior_settings(
+        agent,
+        {
+            "approval_mode": payload.approval_mode,
+            "tool_progress_mode": payload.tool_progress_mode,
+            "gateway_notifications_mode": payload.gateway_notifications_mode,
+        },
+    )
     _sync_agent_integration_toolsets(agent, await _load_enabled_integration_slugs(db))
     db.add(agent)
     await db.flush()
@@ -433,6 +483,9 @@ async def bootstrap_system_operator(
         existing.api_key_ref = default_api_key_ref or None
         existing.base_url = default_base_url or None
         existing.hermes_version = default_hermes_version or None
+        existing.approval_mode = None
+        existing.tool_progress_mode = None
+        existing.gateway_notifications_mode = None
         existing.is_system_agent = True
         existing.system_scope = "admin"
         existing.team_tags = ["system", "control-plane", "operations"]
@@ -461,6 +514,9 @@ async def bootstrap_system_operator(
         run_mode="hybrid",
         runtime_profile="technical",
         hermes_version=default_hermes_version or None,
+        approval_mode=None,
+        tool_progress_mode=None,
+        gateway_notifications_mode=None,
         model=default_model,
         provider=default_provider,
         api_key_ref=default_api_key_ref or None,
@@ -722,6 +778,7 @@ async def update_agent(
         setattr(agent, field, value)
     if "integration_configs" in update_data:
         agent.integration_configs = _normalize_integration_configs(update_data.get("integration_configs"))
+    _apply_agent_runtime_behavior_settings(agent, update_data)
     if runtime_profile_changed:
         _apply_runtime_profile_defaults(
             agent,
@@ -747,8 +804,14 @@ async def update_agent(
         "runtime_profile",
         "hermes_version",
         "integration_configs",
+        "approval_mode",
+        "tool_progress_mode",
+        "gateway_notifications_mode",
     }
     should_restart_gateways = bool(set(update_data).intersection(restart_gateway_fields))
+    should_reset_session = runtime_profile_changed or hermes_version_changed or bool(
+        {"approval_mode", "tool_progress_mode", "gateway_notifications_mode"}.intersection(update_data)
+    )
     if any(
         field in update_data
         for field in ("name", "friendly_name", "slug", "system_prompt", "soul_md")
@@ -761,7 +824,7 @@ async def update_agent(
         )
     await db.commit()
     await request.app.state.installation_manager.sync_agent_installation(agent)
-    if runtime_profile_changed or hermes_version_changed:
+    if should_reset_session:
         await request.app.state.pty_manager.destroy_session(agent_id)
     if should_restart_gateways:
         channel_result = await db.execute(

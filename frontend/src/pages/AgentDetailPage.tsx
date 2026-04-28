@@ -140,6 +140,26 @@ function formatHermesVersionLabel(version: string | null | undefined, detectedVe
   return detectedVersion ? `${version} (${detectedVersion})` : version;
 }
 
+const approvalModeOptions = [
+  { value: "inherit", labelKey: "agent.interactionModeInherit" },
+  { value: "off", labelKey: "agent.approvalModeOff" },
+  { value: "on-request", labelKey: "agent.approvalModeOnRequest" },
+  { value: "on-failure", labelKey: "agent.approvalModeOnFailure" },
+];
+
+const toolProgressModeOptions = [
+  { value: "inherit", labelKey: "agent.interactionModeInherit" },
+  { value: "on", labelKey: "agent.toolProgressModeOn" },
+  { value: "off", labelKey: "agent.toolProgressModeOff" },
+];
+
+const gatewayNotificationsModeOptions = [
+  { value: "inherit", labelKey: "agent.interactionModeInherit" },
+  { value: "all", labelKey: "agent.gatewayNotificationsModeAll" },
+  { value: "result", labelKey: "agent.gatewayNotificationsModeResult" },
+  { value: "off", labelKey: "agent.gatewayNotificationsModeOff" },
+];
+
 export function AgentDetailPage() {
   const { agentId } = useParams();
   const navigate = useNavigate();
@@ -178,6 +198,9 @@ export function AgentDetailPage() {
   const [systemPromptDraft, setSystemPromptDraft] = useState("");
   const [runtimeProfileDraft, setRuntimeProfileDraft] = useState("standard");
   const [hermesVersionDraft, setHermesVersionDraft] = useState("bundled");
+  const [approvalModeDraft, setApprovalModeDraft] = useState("inherit");
+  const [toolProgressModeDraft, setToolProgressModeDraft] = useState("inherit");
+  const [gatewayNotificationsModeDraft, setGatewayNotificationsModeDraft] = useState("inherit");
   const [integrationDrafts, setIntegrationDrafts] = useState<Record<string, Record<string, string>>>({});
   const [integrationTestResults, setIntegrationTestResults] = useState<
     Record<string, { success: boolean; message: string; details?: Record<string, unknown> | null }>
@@ -290,6 +313,9 @@ export function AgentDetailPage() {
     setSystemPromptDraft(agent.system_prompt ?? "");
     setRuntimeProfileDraft(agent.runtime_profile || "standard");
     setHermesVersionDraft(agent.hermes_version ?? "bundled");
+    setApprovalModeDraft(agent.approval_mode ?? "inherit");
+    setToolProgressModeDraft(agent.tool_progress_mode ?? "inherit");
+    setGatewayNotificationsModeDraft(agent.gateway_notifications_mode ?? "inherit");
     const nextIntegrationDrafts: Record<string, Record<string, string>> = {};
     for (const integration of managedIntegrations ?? []) {
       const currentConfig = (agent.integration_configs?.[integration.slug] as Record<string, unknown> | undefined) ?? {};
@@ -433,6 +459,9 @@ export function AgentDetailPage() {
       payload: {
         runtime_profile: runtimeProfileDraft,
         hermes_version: hermesVersionDraft === "bundled" ? null : hermesVersionDraft,
+        approval_mode: approvalModeDraft,
+        tool_progress_mode: toolProgressModeDraft,
+        gateway_notifications_mode: gatewayNotificationsModeDraft,
       },
     });
   }
@@ -875,6 +904,77 @@ export function AgentDetailPage() {
                             </p>
                           ) : null}
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                      <div className="border-b border-[var(--border)] pb-4">
+                        <p className="panel-label">{t("agent.interactionSettings")}</p>
+                        <h5 className="mt-2 text-base text-[var(--text-display)]">{t("agent.advancedRuntimeBehavior")}</h5>
+                        <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
+                          {t("agent.advancedRuntimeBehaviorCopy")}
+                        </p>
+                      </div>
+                      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                        <label className="panel-field">
+                          <span className="panel-label">{t("agent.approvalMode")}</span>
+                          {isAdmin ? (
+                            <select
+                              value={approvalModeDraft}
+                              onChange={(event) => setApprovalModeDraft(event.target.value)}
+                            >
+                              {approvalModeOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {t(option.labelKey)}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="rounded-2xl border border-[var(--border-visible)] bg-[color-mix(in_srgb,var(--surface)_86%,transparent)] px-4 py-3 text-sm text-[var(--text-display)]">
+                              {t(approvalModeOptions.find((option) => option.value === approvalModeDraft)?.labelKey ?? "agent.interactionModeInherit")}
+                            </div>
+                          )}
+                        </label>
+
+                        <label className="panel-field">
+                          <span className="panel-label">{t("agent.toolProgressMode")}</span>
+                          {isAdmin ? (
+                            <select
+                              value={toolProgressModeDraft}
+                              onChange={(event) => setToolProgressModeDraft(event.target.value)}
+                            >
+                              {toolProgressModeOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {t(option.labelKey)}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="rounded-2xl border border-[var(--border-visible)] bg-[color-mix(in_srgb,var(--surface)_86%,transparent)] px-4 py-3 text-sm text-[var(--text-display)]">
+                              {t(toolProgressModeOptions.find((option) => option.value === toolProgressModeDraft)?.labelKey ?? "agent.interactionModeInherit")}
+                            </div>
+                          )}
+                        </label>
+
+                        <label className="panel-field">
+                          <span className="panel-label">{t("agent.gatewayNotificationsMode")}</span>
+                          {isAdmin ? (
+                            <select
+                              value={gatewayNotificationsModeDraft}
+                              onChange={(event) => setGatewayNotificationsModeDraft(event.target.value)}
+                            >
+                              {gatewayNotificationsModeOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {t(option.labelKey)}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="rounded-2xl border border-[var(--border-visible)] bg-[color-mix(in_srgb,var(--surface)_86%,transparent)] px-4 py-3 text-sm text-[var(--text-display)]">
+                              {t(gatewayNotificationsModeOptions.find((option) => option.value === gatewayNotificationsModeDraft)?.labelKey ?? "agent.interactionModeInherit")}
+                            </div>
+                          )}
+                        </label>
                       </div>
                     </div>
 
