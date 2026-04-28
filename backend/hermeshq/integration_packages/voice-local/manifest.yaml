@@ -1,0 +1,59 @@
+slug: voice-local
+name: Voice (Local)
+description: Fully local speech stack with faster-whisper STT plus Piper-based Spanish and English text-to-speech.
+version: "0.1.0"
+standard_compatible: true
+supported_profiles:
+  - standard
+  - technical
+  - security
+required_fields: []
+fields:
+  - name: stt_enabled
+    label: Enable speech-to-text
+    kind: boolean
+    options:
+      - "true"
+      - "false"
+  - name: stt_model
+    label: Whisper model
+    kind: select
+    options:
+      - tiny
+      - base
+      - small
+      - medium
+      - large-v3
+  - name: stt_language
+    label: STT language
+    kind: select
+    options:
+      - auto
+      - es
+      - en
+  - name: voice_locale
+    label: Voice preset
+    kind: select
+    options:
+      - es
+      - en
+      - custom
+  - name: tts_enabled
+    label: Enable text-to-speech
+    kind: boolean
+    options:
+      - "true"
+      - "false"
+  - name: tts_voice
+    label: Piper voice
+    kind: text
+    placeholder: es_MX-voice or en_US-voice
+defaults:
+  stt_enabled: "true"
+  stt_model: small
+  stt_language: es
+  voice_locale: es
+  tts_enabled: "true"
+  tts_voice: es_MX-voice
+test_action: health
+env_map: {}

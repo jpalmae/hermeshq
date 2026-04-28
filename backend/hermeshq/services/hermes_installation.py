@@ -39,6 +39,16 @@ class HermesInstallationManager:
     _WHATSAPP_BRIDGE_SOURCE = Path(__file__).resolve().parents[1] / "assets" / "whatsapp-bridge"
     _CUSTOM_OPENAI_PROVIDER_KEY = "hermeshq-openai-compatible"
     _CUSTOM_OPENAI_PROVIDER_NAME = "HermesHQ OpenAI-compatible"
+    _VOICE_PRESET_DEFAULTS = {
+        "es": {
+            "edge_voice": "es-MX-JorgeNeural",
+            "local_voice": "es_MX-voice",
+        },
+        "en": {
+            "edge_voice": "en-US-GuyNeural",
+            "local_voice": "en_US-voice",
+        },
+    }
 
     def __init__(
         self,
@@ -342,6 +352,9 @@ class HermesInstallationManager:
                     "name": whatsapp_channel.home_chat_name or "Home",
                 }
             platforms["whatsapp"] = whatsapp_platform
+        voice_overrides = self._voice_runtime_overrides(agent)
+        if voice_overrides:
+            config.update(voice_overrides)
         config_path = hermes_home / "config.yaml"
         config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
 
@@ -524,7 +537,8 @@ class HermesInstallationManager:
 
     async def _build_system_prompt(self, agent: Agent, installed_skills: list[dict], app_name: str) -> str:
         roster = await self._load_agent_roster(agent)
-        return self._compose_system_prompt(agent, installed_skills, roster, app_name)
+        enabled_integrations = await self._load_enabled_integration_slugs()
+        return self._compose_system_prompt(agent, installed_skills, roster, app_name, enabled_integrations)
 
     async def _load_agent_roster(self, agent: Agent) -> list[dict]:
         async with self.session_factory() as session:
@@ -558,7 +572,14 @@ class HermesInstallationManager:
             )
         return roster
 
-    def _compose_system_prompt(self, agent: Agent, installed_skills: list[dict], roster: list[dict], app_name: str) -> str:
+    def _compose_system_prompt(
+        self,
+        agent: Agent,
+        installed_skills: list[dict],
+        roster: list[dict],
+        app_name: str,
+        enabled_integration_slugs: list[str] | None = None,
+    ) -> str:
         parts = [agent.system_prompt.strip()] if agent.system_prompt and agent.system_prompt.strip() else []
         profile = get_runtime_profile(agent.runtime_profile)
         parts.append(
@@ -608,6 +629,17 @@ class HermesInstallationManager:
                 "If asked which skills are available, do not guess. Use `skills_list` to verify installed skills. "
                 "If none are installed, say that no agent-specific skills are currently installed."
             )
+        enabled_integrations = self._describe_enabled_integrations(agent, enabled_integration_slugs or [])
+        if enabled_integrations:
+            lines = [
+                f"{app_name} enabled managed integrations for this agent:",
+            ]
+            lines.extend(f"- {item}" for item in enabled_integrations)
+            lines.append(
+                "Do not deny these capabilities when they are listed here. If a capability depends on a specific input channel "
+                "(for example audio arriving through a supported runtime/channel instead of the plain web chat box), explain that constraint explicitly."
+            )
+            parts.append("\n".join(lines))
         if roster:
             lines = [
                 f"{app_name} live roster for this instance. This is factual control-plane data, not memory.",
@@ -638,6 +670,42 @@ class HermesInstallationManager:
                 )
             parts.append("\n".join(lines))
         return "\n\n".join(part for part in parts if part).strip()
+
+    def _describe_enabled_integrations(self, agent: Agent, enabled_integration_slugs: list[str]) -> list[str]:
+        descriptions: list[str] = []
+        for slug, raw_config in (agent.integration_configs or {}).items():
+            integration = get_managed_integration(str(slug), enabled_integration_slugs, include_uninstalled=True)
+            if not integration:
+                continue
+            config = raw_config if isinstance(raw_config, dict) else {}
+            if slug == "voice-edge":
+                descriptions.append(self._voice_integration_prompt_summary("edge-tts", config))
+                continue
+            if slug == "voice-local":
+                descriptions.append(self._voice_integration_prompt_summary("Piper local TTS", config))
+                continue
+            descriptions.append(
+                f"{integration.get('name') or slug}: {integration.get('description') or 'Managed integration enabled.'}"
+            )
+        return descriptions
+
+    def _voice_integration_prompt_summary(self, tts_backend: str, config: dict) -> str:
+        stt_enabled = self._truthy_config_value(config.get("stt_enabled"), default=True)
+        tts_enabled = self._truthy_config_value(config.get("tts_enabled"), default=True)
+        stt_model = str(config.get("stt_model") or "small").strip() or "small"
+        stt_language = str(config.get("stt_language") or "es").strip().lower() or "es"
+        voice_locale = str(config.get("voice_locale") or stt_language or "es").strip().lower() or "es"
+        tts_voice = str(config.get("tts_voice") or "").strip() or (
+            self._VOICE_PRESET_DEFAULTS.get(voice_locale, self._VOICE_PRESET_DEFAULTS["es"])["local_voice"]
+            if "piper" in tts_backend.lower()
+            else self._VOICE_PRESET_DEFAULTS.get(voice_locale, self._VOICE_PRESET_DEFAULTS["es"])["edge_voice"]
+        )
+        return (
+            f"Voice runtime enabled: speech-to-text={'yes' if stt_enabled else 'no'} "
+            f"(model={stt_model}, language={stt_language}), text-to-speech={'yes' if tts_enabled else 'no'} "
+            f"(backend={tts_backend}, voice={tts_voice}). This applies to supported Hermes runtime flows and audio-capable channels; "
+            "the HermesHQ web chat itself remains text-first unless a dedicated audio input/output control is added."
+        )
 
     async def _get_instance_app_name(self) -> str:
         async with self.session_factory() as session:
@@ -804,6 +872,53 @@ class HermesInstallationManager:
         if re.fullmatch(r"[A-Za-z0-9_./:@,+-]+", value):
             return value
         return json.dumps(value)
+
+    def _truthy_config_value(self, value: object, *, default: bool = False) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _voice_runtime_overrides(self, agent: Agent) -> dict[str, dict]:
+        voice_config = self._resolve_voice_integration_config(agent)
+        if not voice_config:
+            return {}
+        locale = str(voice_config.get("voice_locale") or "es").strip().lower()
+        if locale not in self._VOICE_PRESET_DEFAULTS:
+            locale = "es"
+        stt_enabled = self._truthy_config_value(voice_config.get("stt_enabled"), default=True)
+        tts_enabled = self._truthy_config_value(voice_config.get("tts_enabled"), default=True)
+        stt_model = str(voice_config.get("stt_model") or "small").strip() or "small"
+        stt_language = str(voice_config.get("stt_language") or locale).strip().lower() or locale
+        if stt_language not in {"auto", "es", "en"}:
+            stt_language = locale
+        tts_voice = str(voice_config.get("tts_voice") or "").strip()
+        if not tts_voice:
+            package_slug = str(voice_config.get("__integration_slug") or "")
+            if package_slug == "voice-local":
+                tts_voice = self._VOICE_PRESET_DEFAULTS[locale]["local_voice"]
+            else:
+                tts_voice = self._VOICE_PRESET_DEFAULTS[locale]["edge_voice"]
+        return {
+            "stt": {
+                "enabled": stt_enabled,
+                "model": stt_model,
+                "language": stt_language,
+            },
+            "tts": {
+                "enabled": tts_enabled,
+                "voice": tts_voice,
+            },
+        }
+
+    def _resolve_voice_integration_config(self, agent: Agent) -> dict[str, object] | None:
+        configs = agent.integration_configs or {}
+        for slug in ("voice-local", "voice-edge"):
+            config = configs.get(slug)
+            if isinstance(config, dict):
+                return {"__integration_slug": slug, **config}
+        return None
 
     async def _sync_auth_store(self, agent: Agent, hermes_home: Path) -> None:
         auth_path = hermes_home / "auth.json"

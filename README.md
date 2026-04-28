@@ -235,6 +235,45 @@ Admins can:
 - enable and configure them per agent
 - run per-agent connection tests
 
+Bundled managed integrations now also include voice presets:
+
+- `voice-edge`: local STT with `faster-whisper` plus Spanish/English TTS through `edge-tts`
+- `voice-local`: local STT with `faster-whisper` plus fully local Piper TTS when `piper` is installed in the runtime
+
+When enabled on an agent, these integrations write `stt:` and `tts:` blocks directly into the agent `HERMES_HOME/config.yaml`.
+
+Typical Spanish configuration:
+
+```yaml
+stt:
+  enabled: true
+  model: small
+  language: es
+
+tts:
+  enabled: true
+  voice: es-MX-JorgeNeural
+```
+
+Typical English configuration:
+
+```yaml
+stt:
+  enabled: true
+  model: small
+  language: en
+
+tts:
+  enabled: true
+  voice: en-US-GuyNeural
+```
+
+Operational notes:
+
+- `voice-edge` is available out of the box in the HermesHQ backend image because it now includes `faster-whisper` and `edge-tts`
+- `voice-local` still requires Piper in the runtime environment; HermesHQ checks for that with `Test connection`
+- `edge-tts` does not require an API key, but it is not fully offline in the same sense as Piper
+
 HermesHQ also includes an `Integration Factory` for administrators and `HQ Operator`.
 
 - create a draft package scaffold from `Settings -> Factory`

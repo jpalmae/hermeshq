@@ -257,6 +257,7 @@ export interface ManagedIntegrationDefinition {
     kind: string;
     placeholder: string | null;
     secret_provider: string | null;
+    options: string[];
   }>;
   defaults: Record<string, string>;
   secret_provider: string | null;

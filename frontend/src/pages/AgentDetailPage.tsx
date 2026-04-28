@@ -297,7 +297,7 @@ export function AgentDetailPage() {
         integration.fields.map((field) => {
           const defaultValue = integration.defaults?.[field.name] ?? "";
           const currentValue = currentConfig[field.name];
-          return [field.name, typeof currentValue === "string" ? currentValue : defaultValue];
+          return [field.name, currentValue == null ? defaultValue : String(currentValue)];
         }),
       );
     }
@@ -1108,6 +1108,15 @@ export function AgentDetailPage() {
                         ...(secretsByProvider.get(field.secret_provider || integration.secret_provider || "__generic__") ?? []),
                         ...(((field.secret_provider || integration.secret_provider) ? secretsByProvider.get("__generic__") : []) ?? []),
                       ];
+                      const fieldValue = draft[field.name] ?? "";
+                      const updateFieldValue = (value: string) =>
+                        setIntegrationDrafts((current) => ({
+                          ...current,
+                          [integration.slug]: {
+                            ...(current[integration.slug] ?? {}),
+                            [field.name]: value,
+                          },
+                        }));
                       return (
                         <label key={field.name} className="panel-field">
                           <span className="panel-label">
@@ -1120,16 +1129,8 @@ export function AgentDetailPage() {
                           {field.kind === "secret_ref" ? (
                             isAdmin ? (
                               <select
-                                value={draft[field.name] ?? ""}
-                                onChange={(event) =>
-                                  setIntegrationDrafts((current) => ({
-                                    ...current,
-                                    [integration.slug]: {
-                                      ...(current[integration.slug] ?? {}),
-                                      [field.name]: event.target.value,
-                                    },
-                                  }))
-                                }
+                                value={fieldValue}
+                                onChange={(event) => updateFieldValue(event.target.value)}
                               >
                                 <option value="">{t("agent.none")}</option>
                                 {eligibleSecrets.map((secret) => (
@@ -1141,18 +1142,32 @@ export function AgentDetailPage() {
                             ) : (
                               <input value={draft[field.name] || t("agent.none")} readOnly />
                             )
+                          ) : field.kind === "select" ? (
+                            <select
+                              value={fieldValue || integration.defaults[field.name] || ""}
+                              onChange={(event) => updateFieldValue(event.target.value)}
+                              disabled={!isAdmin}
+                            >
+                              <option value="">{field.placeholder ?? t("agent.none")}</option>
+                              {field.options.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          ) : field.kind === "boolean" ? (
+                            <select
+                              value={fieldValue || integration.defaults[field.name] || "false"}
+                              onChange={(event) => updateFieldValue(event.target.value)}
+                              disabled={!isAdmin}
+                            >
+                              <option value="true">{t("common.yes")}</option>
+                              <option value="false">{t("common.no")}</option>
+                            </select>
                           ) : (
                             <input
-                              value={draft[field.name] ?? ""}
-                              onChange={(event) =>
-                                setIntegrationDrafts((current) => ({
-                                  ...current,
-                                  [integration.slug]: {
-                                    ...(current[integration.slug] ?? {}),
-                                    [field.name]: event.target.value,
-                                  },
-                                }))
-                              }
+                              value={fieldValue}
+                              onChange={(event) => updateFieldValue(event.target.value)}
                               readOnly={!isAdmin}
                               placeholder={field.placeholder ?? integration.defaults[field.name] ?? ""}
                             />

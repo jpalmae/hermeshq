@@ -7,6 +7,7 @@ class ManagedIntegrationFieldRead(BaseModel):
     kind: str
     placeholder: str | None = None
     secret_provider: str | None = None
+    options: list[str] = []
 
 
 class ManagedIntegrationActionRead(BaseModel):

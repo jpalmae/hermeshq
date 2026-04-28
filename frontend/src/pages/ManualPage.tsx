@@ -346,6 +346,11 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "Google Calendar además acepta `calendar_id`; si no lo completas, el valor típico es `primary`. Google Drive acepta `drive_id` opcional para shared drives, pero el health check base funciona también sin ese campo.",
           "Snyk Agent Scan requiere un secreto con `SNYK_TOKEN`. En esta fase se usa como integración de auditoría manual: `Test connection` prepara el scanner y la acción `Run skill scan` revisa las skills instaladas del agente dejando trazabilidad en `Activity stream`.",
           "Hoy estas integraciones ya soportan configuración y prueba de credenciales, pero todavía no todas exponen tools operativas de negocio. El valor actual es dejar el catálogo listo, tipado y testeable antes de agregar herramientas de uso diario.",
+          "El catálogo bundled ahora también incluye `Voice (Edge TTS)` y `Voice (Local)`. Ambas integraciones escriben bloques `stt:` y `tts:` directamente en el `config.yaml` del agente cuando las habilitas desde `Agent -> Integrations`.",
+          "`Voice (Edge TTS)` instala por defecto `faster-whisper` y `edge-tts` en la imagen backend. Sirve para transcripción local más respuesta de voz en español o inglés sin API key. Los presets típicos son `es-MX-JorgeNeural` para español y `en-US-GuyNeural` para inglés.",
+          "`Voice (Local)` usa la misma transcripción con `faster-whisper`, pero espera Piper para TTS local. HermesHQ valida si existe el módulo o binario `piper`; si no está presente, `Test connection` falla temprano con ese diagnóstico.",
+          "Para español, un flujo mínimo con `Voice (Edge TTS)` queda así: `stt_enabled=true`, `stt_model=small`, `stt_language=es`, `tts_enabled=true`, `tts_voice=es-MX-JorgeNeural`. Para inglés, cambia a `stt_language=en` y una voz como `en-US-GuyNeural`.",
+          "Si quieres detección automática de idioma en STT, usa `stt_language=auto`. Si quieres una voz fuera del preset, cambia `voice_locale` a `custom` y define `tts_voice` manualmente.",
         ],
       },
       {

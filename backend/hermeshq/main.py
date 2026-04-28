@@ -32,6 +32,10 @@ from hermeshq.services.workspace_manager import WorkspaceManager
 from hermeshq.versioning import get_app_version
 
 settings = get_settings()
+DEFAULT_ENABLED_INTEGRATION_PACKAGES = (
+    "voice-edge",
+    "voice-local",
+)
 
 
 async def bootstrap_defaults() -> None:
@@ -64,13 +68,23 @@ async def bootstrap_defaults() -> None:
             )
         settings_row = await session.get(AppSettings, "default")
         if not settings_row:
-            session.add(AppSettings(id="default"))
+            settings_row = AppSettings(id="default")
+            session.add(settings_row)
         else:
             if settings_row.default_hermes_version == "bundled":
                 settings_row.default_hermes_version = None
             normalized_default_provider = normalize_runtime_provider(settings_row.default_provider)
             if normalized_default_provider != settings_row.default_provider:
                 settings_row.default_provider = normalized_default_provider
+        enabled_packages = [
+            slug
+            for slug in (settings_row.enabled_integration_packages or [])
+            if isinstance(slug, str) and slug.strip()
+        ]
+        for slug in DEFAULT_ENABLED_INTEGRATION_PACKAGES:
+            if slug not in enabled_packages:
+                enabled_packages.append(slug)
+        settings_row.enabled_integration_packages = enabled_packages
         for payload in BUILTIN_PROVIDERS:
             provider = await session.get(ProviderDefinition, payload["slug"])
             if not provider:
