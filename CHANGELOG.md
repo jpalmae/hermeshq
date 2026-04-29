@@ -92,3 +92,7 @@
 - `Settings` now also controls a shared Hermes TUI skin, which HermesHQ propagates into each agent `HERMES_HOME` and activates through `display.skin`.
 - `Settings` now includes a provider registry where admins can edit provider names, base URLs, enabled state and default models. Agent creation and instance runtime defaults can start from those presets instead of typing provider/model/base URL/secret ref by hand.
 - The `Kimi Coding` preset was corrected to use `https://api.kimi.com/coding/v1`.
+# Unreleased
+
+- frontend builds are now protected against accidentally baking a local `VITE_API_BASE_URL` such as `http://localhost:8000/api` into production bundles
+- the frontend Dockerfile no longer defaults `VITE_API_BASE_URL` to localhost; the safe default path is the browser-side `/api` proxy

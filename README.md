@@ -404,6 +404,8 @@ If `.cloudflared.env` is present and contains `TUNNEL_TOKEN`, the restore script
 - The Docker stack uses PostgreSQL 16 and the backend connects through `asyncpg`.
 - `docker-compose.yml` reads ports, admin bootstrap credentials, PostgreSQL credentials, CORS origins, and frontend API base from `.env`.
 - The frontend falls back to the current browser hostname for API and WebSocket calls if `VITE_API_BASE_URL` is not explicitly set.
+- Production builds should normally leave `VITE_API_BASE_URL` empty so the frontend uses the safe `/api` reverse-proxy path.
+- HermesHQ now refuses frontend builds that try to bake `localhost`, `127.0.0.1`, `::1`, or `0.0.0.0` into `VITE_API_BASE_URL`. Use `ALLOW_LOCAL_API_BASE=true` only for an intentional local-only build.
 - Task execution is strict: if `hermes-agent` is missing, the agent has no valid credentials, or the provider rejects the request, the task is marked `failed`.
 - Telegram bot tokens should be attached to only one active HermesHQ instance at a time. Running the same bot in two environments causes Telegram polling conflicts.
 - UI localization affects the application chrome only. It does not rewrite backend error payloads, Hermes TUI output, or model-generated content already stored in tasks/logs.
