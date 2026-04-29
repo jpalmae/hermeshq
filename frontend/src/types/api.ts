@@ -156,6 +156,43 @@ export interface AppSettings {
   updated_at: string;
 }
 
+export interface InstanceBackupCreateRequest {
+  passphrase: string;
+  include_activity_logs: boolean;
+  include_task_history: boolean;
+  include_terminal_sessions: boolean;
+  include_messaging_sessions: boolean;
+}
+
+export interface InstanceBackupSummary {
+  schema_version: string;
+  app_version: string;
+  created_at: string;
+  source_hostname: string;
+  source_instance_root: string;
+  included_sections: string[];
+  counts: Record<string, number>;
+  options: Record<string, boolean>;
+  warnings: string[];
+  encrypted_sections: string[];
+}
+
+export interface InstanceBackupValidation {
+  valid: boolean;
+  filename: string;
+  summary: InstanceBackupSummary | null;
+  decrypted_sections: string[];
+  errors: string[];
+}
+
+export interface InstanceBackupRestoreResult {
+  restored: boolean;
+  mode: "replace" | "merge";
+  summary: InstanceBackupSummary;
+  restored_counts: Record<string, number>;
+  warnings: string[];
+}
+
 export interface HermesVersion {
   version: string;
   release_tag: string | null;

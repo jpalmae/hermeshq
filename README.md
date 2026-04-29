@@ -373,31 +373,39 @@ Important behavior:
 
 ## Backup and Restore
 
-HermesHQ includes instance-level backup and restore scripts:
+HermesHQ now has a first-class instance backup flow in `Settings -> General -> Backup & Restore`.
+
+From the UI, an admin can:
+
+- create a passphrase-encrypted backup archive
+- optionally include activity logs, task/conversation history, terminal transcripts, and messaging session stores
+- validate a backup archive before import
+- restore the archive in:
+  - `replace` mode for disaster recovery into a fresh instance
+  - `merge` mode to upsert the backup into the current instance
+
+The backup archive includes:
+
+- instance settings and branding metadata
+- provider catalog and Hermes version catalog
+- users, agent assignments, and encrypted secrets
+- agents, messaging channels, scheduled tasks, templates, and integration drafts
+- branding assets, TUI skins, agent/user assets, uploaded integration packages
+- agent workspaces and managed `HERMES_HOME` state
+
+Restore behavior:
+
+- secrets are decrypted only with the backup passphrase
+- restored agents and messaging channels are normalized back to `stopped`
+- HermesHQ then re-syncs restored agent installations
+- if managed Hermes runtime versions are in the catalog, HermesHQ attempts to reinstall them on the target server
+
+The older shell scripts still exist as a lower-level fallback:
 
 - [`scripts/backup-instance.sh`](scripts/backup-instance.sh)
 - [`scripts/restore-instance.sh`](scripts/restore-instance.sh)
 
-The backup captures:
-
-- PostgreSQL as a custom-format dump
-- the persistent Docker volume mounted at `/app/workspaces`
-- `.env` if present
-- `.cloudflared.env` if present
-
-Create a backup:
-
-```bash
-./scripts/backup-instance.sh
-```
-
-Restore from a bundle:
-
-```bash
-./scripts/restore-instance.sh ./backups/hermeshq-backup-YYYYMMDDTHHMMSSZ.tar.gz
-```
-
-If `.cloudflared.env` is present and contains `TUNNEL_TOKEN`, the restore script also restarts `cloudflared`.
+Those scripts capture PostgreSQL, `/app/workspaces`, `.env`, and `.cloudflared.env` for Docker-first server migration scenarios.
 
 ## Operational Notes
 

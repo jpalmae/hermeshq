@@ -2,6 +2,11 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useAgents, useBootstrapSystemOperator } from "../api/agents";
 import {
+  useCreateInstanceBackup,
+  useRestoreInstanceBackup,
+  useValidateInstanceBackup,
+} from "../api/backup";
+import {
   useCreateHermesVersion,
   useCreateHermesVersionFromUpstream,
   useDeleteHermesVersionCatalogEntry,
@@ -44,6 +49,7 @@ import { useCreateTemplate, useTemplates } from "../api/templates";
 import { useI18n } from "../lib/i18n";
 import { applyProviderPreset, findMatchingProvider } from "../lib/providers";
 import { useSessionStore } from "../stores/sessionStore";
+import type { InstanceBackupSummary } from "../types/api";
 
 type SettingsTab = "general" | "runtime" | "providers" | "integrations" | "factory" | "hermesVersions" | "secrets" | "templates";
 
@@ -79,6 +85,9 @@ export function SettingsPage() {
   const deleteFavicon = useDeleteBrandAsset("favicon");
   const uploadTuiSkin = useUploadTuiSkin();
   const deleteTuiSkin = useDeleteTuiSkin();
+  const createInstanceBackup = useCreateInstanceBackup();
+  const validateInstanceBackup = useValidateInstanceBackup();
+  const restoreInstanceBackup = useRestoreInstanceBackup();
   const uploadIntegrationPackage = useUploadIntegrationPackage();
   const installIntegrationPackage = useInstallIntegrationPackage();
   const uninstallIntegrationPackage = useUninstallIntegrationPackage();
@@ -134,6 +143,16 @@ export function SettingsPage() {
   const [draftNotes, setDraftNotes] = useState("");
   const [draftEditorContent, setDraftEditorContent] = useState("");
   const [newDraftFilePath, setNewDraftFilePath] = useState("");
+  const [backupPassphrase, setBackupPassphrase] = useState("");
+  const [backupIncludeActivityLogs, setBackupIncludeActivityLogs] = useState(false);
+  const [backupIncludeTaskHistory, setBackupIncludeTaskHistory] = useState(false);
+  const [backupIncludeTerminalSessions, setBackupIncludeTerminalSessions] = useState(false);
+  const [backupIncludeMessagingSessions, setBackupIncludeMessagingSessions] = useState(false);
+  const [backupImportFile, setBackupImportFile] = useState<File | null>(null);
+  const [backupImportPassphrase, setBackupImportPassphrase] = useState("");
+  const [backupRestoreMode, setBackupRestoreMode] = useState<"replace" | "merge">("replace");
+  const [lastBackupFilename, setLastBackupFilename] = useState<string | null>(null);
+  const [lastBackupDownloadUrl, setLastBackupDownloadUrl] = useState<string | null>(null);
   const { data: upstreamHermesVersions, isFetching: upstreamHermesVersionsLoading } = useUpstreamHermesVersions(
     Boolean(isAdmin && activeTab === "hermesVersions"),
     upstreamRefreshToken,
@@ -269,6 +288,14 @@ export function SettingsPage() {
       setDraftEditorContent("");
     }
   }, [selectedDraftFile, selectedDraftPath]);
+
+  useEffect(() => {
+    return () => {
+      if (lastBackupDownloadUrl) {
+        window.URL.revokeObjectURL(lastBackupDownloadUrl);
+      }
+    };
+  }, [lastBackupDownloadUrl]);
 
   const selectedDefaultProvider = useMemo(
     () => enabledProviders.find((provider) => provider.slug === selectedDefaultProviderSlug) ?? null,
@@ -510,6 +537,87 @@ export function SettingsPage() {
     });
   }
 
+  async function runBackupCreate() {
+    try {
+      const result = await createInstanceBackup.mutateAsync({
+        passphrase: backupPassphrase,
+        include_activity_logs: backupIncludeActivityLogs,
+        include_task_history: backupIncludeTaskHistory,
+        include_terminal_sessions: backupIncludeTerminalSessions,
+        include_messaging_sessions: backupIncludeMessagingSessions,
+      });
+      if (lastBackupDownloadUrl) {
+        window.URL.revokeObjectURL(lastBackupDownloadUrl);
+      }
+      setLastBackupFilename(result.filename);
+      setLastBackupDownloadUrl(window.URL.createObjectURL(result.blob));
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Backup creation failed");
+    }
+  }
+
+  async function runBackupValidation() {
+    if (!backupImportFile) {
+      window.alert("Select a backup file first.");
+      return;
+    }
+    await validateInstanceBackup.mutateAsync({
+      file: backupImportFile,
+      passphrase: backupImportPassphrase || undefined,
+    });
+  }
+
+  async function runBackupRestore() {
+    if (!backupImportFile) {
+      window.alert("Select a backup file first.");
+      return;
+    }
+    const confirmed = window.confirm(
+      backupRestoreMode === "replace"
+        ? "Replace the current instance state with this backup?"
+        : "Merge this backup into the current instance state?",
+    );
+    if (!confirmed) {
+      return;
+    }
+    await restoreInstanceBackup.mutateAsync({
+      file: backupImportFile,
+      passphrase: backupImportPassphrase,
+      mode: backupRestoreMode,
+    });
+  }
+
+  function renderBackupSummary(summary: InstanceBackupSummary | null | undefined) {
+    if (!summary) {
+      return null;
+    }
+    const countEntries = Object.entries(summary.counts ?? {}).sort((a, b) => a[0].localeCompare(b[0]));
+    return (
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/50 p-4">
+        <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.22em] text-[var(--text-secondary)]">
+          <span>Schema {summary.schema_version}</span>
+          <span>App {summary.app_version}</span>
+          <span>{summary.source_hostname}</span>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          {countEntries.map(([key, value]) => (
+            <div key={key} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-panel)] px-4 py-3">
+              <p className="panel-label">{key.replaceAll("_", " ")}</p>
+              <p className="mt-1 text-lg text-[var(--text-display)]">{value}</p>
+            </div>
+          ))}
+        </div>
+        {summary.warnings.length ? (
+          <div className="mt-4 space-y-2 text-sm text-[var(--warning)]">
+            {summary.warnings.map((warning) => (
+              <p key={warning}>{warning}</p>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   const logoUrl = resolveAssetUrl(settings?.logo_url);
   const faviconUrl = resolveAssetUrl(settings?.favicon_url);
 
@@ -526,6 +634,7 @@ export function SettingsPage() {
   }
 
   const renderGeneralTab = () => (
+    <>
     <section className="grid gap-6 xl:grid-cols-2">
       <form className="panel-frame p-6" onSubmit={submitBranding}>
         <p className="panel-label">{t("settings.branding")}</p>
@@ -709,6 +818,155 @@ export function SettingsPage() {
         </div>
       </section>
     </section>
+    <section className="mt-6 grid gap-6 xl:grid-cols-2">
+      <section className="panel-frame p-6">
+        <p className="panel-label">Backup</p>
+        <h2 className="mt-2 text-2xl text-[var(--text-display)]">Create instance backup</h2>
+        <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+          Export the operational state of this HermesHQ instance into a portable archive. Secrets are encrypted with the passphrase you provide here.
+        </p>
+        <div className="mt-6 space-y-4">
+          <label className="panel-field">
+            <span className="panel-label">Backup passphrase</span>
+            <input
+              type="password"
+              value={backupPassphrase}
+              onChange={(event) => setBackupPassphrase(event.target.value)}
+              placeholder="Required to encrypt secrets"
+            />
+          </label>
+          <label className="panel-field">
+            <span className="panel-label">Optional history</span>
+            <div className="backup-option-list">
+              <label className="backup-option">
+                <input type="checkbox" checked={backupIncludeActivityLogs} onChange={(event) => setBackupIncludeActivityLogs(event.target.checked)} />
+                <span className="backup-option-copy">Include activity logs</span>
+              </label>
+              <label className="backup-option">
+                <input type="checkbox" checked={backupIncludeTaskHistory} onChange={(event) => setBackupIncludeTaskHistory(event.target.checked)} />
+                <span className="backup-option-copy">Include task, conversation and inter-agent message history</span>
+              </label>
+              <label className="backup-option">
+                <input type="checkbox" checked={backupIncludeTerminalSessions} onChange={(event) => setBackupIncludeTerminalSessions(event.target.checked)} />
+                <span className="backup-option-copy">Include terminal transcripts</span>
+              </label>
+              <label className="backup-option">
+                <input type="checkbox" checked={backupIncludeMessagingSessions} onChange={(event) => setBackupIncludeMessagingSessions(event.target.checked)} />
+                <span className="backup-option-copy">Include messaging session stores</span>
+              </label>
+            </div>
+          </label>
+          <button
+            type="button"
+            className="panel-button-primary w-full"
+            onClick={() => void runBackupCreate()}
+            disabled={createInstanceBackup.isPending || backupPassphrase.trim().length < 8}
+          >
+            {createInstanceBackup.isPending ? "Creating backup..." : "Create backup"}
+          </button>
+          <p className="text-xs leading-6 text-[var(--text-secondary)]">
+            The archive includes app settings, providers, users, secrets, agents, messaging channels, schedules, templates, integration drafts, branding assets, user and agent assets, uploaded integration packages, and agent workspaces.
+          </p>
+          {lastBackupFilename ? (
+            <div className="space-y-2 text-xs leading-6 text-[var(--success)]">
+              <p>
+                Backup prepared as <strong>{lastBackupFilename}</strong>.
+              </p>
+              {lastBackupDownloadUrl ? (
+                <a
+                  className="inline-flex items-center text-[var(--accent)] underline underline-offset-4"
+                  href={lastBackupDownloadUrl}
+                  download={lastBackupFilename}
+                >
+                  Download again
+                </a>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="panel-frame p-6">
+        <p className="panel-label">Restore</p>
+        <h2 className="mt-2 text-2xl text-[var(--text-display)]">Validate or restore backup</h2>
+        <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+          Validate a backup archive before restoring it. Use <strong>replace</strong> for disaster recovery into a fresh instance, or <strong>merge</strong> to upsert data into the current instance.
+        </p>
+        <div className="mt-6 space-y-4">
+          <label className="panel-field">
+            <span className="panel-label">Backup archive</span>
+            <input type="file" accept=".zip,application/zip" onChange={(event) => setBackupImportFile(event.target.files?.[0] ?? null)} />
+          </label>
+          <label className="panel-field">
+            <span className="panel-label">Passphrase</span>
+            <input
+              type="password"
+              value={backupImportPassphrase}
+              onChange={(event) => setBackupImportPassphrase(event.target.value)}
+              placeholder="Required to decrypt secrets"
+            />
+          </label>
+          <label className="panel-field">
+            <span className="panel-label">Restore mode</span>
+            <select value={backupRestoreMode} onChange={(event) => setBackupRestoreMode(event.target.value as "replace" | "merge")}>
+              <option value="replace">Replace current instance</option>
+              <option value="merge">Merge into current instance</option>
+            </select>
+          </label>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              className="panel-button-secondary"
+              onClick={() => void runBackupValidation()}
+              disabled={validateInstanceBackup.isPending || !backupImportFile}
+            >
+              {validateInstanceBackup.isPending ? "Validating..." : "Validate backup"}
+            </button>
+            <button
+              type="button"
+              className="panel-button-primary"
+              onClick={() => void runBackupRestore()}
+              disabled={restoreInstanceBackup.isPending || !backupImportFile || backupImportPassphrase.trim().length < 8}
+            >
+              {restoreInstanceBackup.isPending ? "Restoring..." : "Restore backup"}
+            </button>
+          </div>
+          {validateInstanceBackup.data ? (
+            <div className="space-y-4">
+              <div className={`rounded-2xl border px-4 py-3 text-sm ${validateInstanceBackup.data.valid ? "border-[var(--success)]/30 text-[var(--text-display)]" : "border-[var(--danger)]/30 text-[var(--danger)]"}`}>
+                {validateInstanceBackup.data.valid
+                  ? `Backup ${validateInstanceBackup.data.filename} is valid.`
+                  : `Backup ${validateInstanceBackup.data.filename} failed validation.`}
+              </div>
+              {validateInstanceBackup.data.errors.length ? (
+                <div className="space-y-2 text-sm text-[var(--danger)]">
+                  {validateInstanceBackup.data.errors.map((error) => (
+                    <p key={error}>{error}</p>
+                  ))}
+                </div>
+              ) : null}
+              {renderBackupSummary(validateInstanceBackup.data.summary)}
+            </div>
+          ) : null}
+          {restoreInstanceBackup.data ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-[var(--success)]/30 px-4 py-3 text-sm text-[var(--text-display)]">
+                Restore completed in {restoreInstanceBackup.data.mode} mode.
+              </div>
+              {renderBackupSummary(restoreInstanceBackup.data.summary)}
+              {restoreInstanceBackup.data.warnings.length ? (
+                <div className="space-y-2 text-sm text-[var(--warning)]">
+                  {restoreInstanceBackup.data.warnings.map((warning) => (
+                    <p key={warning}>{warning}</p>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </section>
+    </section>
+    </>
   );
 
   const renderRuntimeTab = () => (

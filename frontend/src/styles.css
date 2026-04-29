@@ -325,6 +325,25 @@
     gap: 0.45rem;
   }
 
+  .backup-option-list {
+    display: grid;
+    gap: 0.9rem;
+  }
+
+  .backup-option {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    column-gap: 0.85rem;
+    cursor: pointer;
+  }
+
+  .backup-option-copy {
+    font-size: 0.95rem;
+    line-height: 1.45;
+    color: var(--text-display);
+  }
+
   .panel-button-primary,
   .panel-button-secondary {
     min-height: 44px;

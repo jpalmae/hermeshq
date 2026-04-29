@@ -1,8 +1,9 @@
-from hermeshq.routers import agents, auth, comms, dashboard, hermes_versions, integration_factory, integration_packages, internal_agents, internal_control, logs, managed_integrations, messaging_channels, nodes, providers, runtime_ledger, runtime_profiles, scheduled_tasks, secrets, settings, skills, tasks, templates, terminal_sessions, users
+from hermeshq.routers import agents, auth, backup, comms, dashboard, hermes_versions, integration_factory, integration_packages, internal_agents, internal_control, logs, managed_integrations, messaging_channels, nodes, providers, runtime_ledger, runtime_profiles, scheduled_tasks, secrets, settings, skills, tasks, templates, terminal_sessions, users
 
 __all__ = [
     "agents",
     "auth",
+    "backup",
     "comms",
     "dashboard",
     "hermes_versions",

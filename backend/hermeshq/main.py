@@ -14,7 +14,7 @@ from hermeshq.core.events import EventBroker
 from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
 from hermeshq.database import AsyncSessionLocal, init_database
 from hermeshq.models import ActivityLog, Agent, AppSettings, Node, ProviderDefinition, TerminalSession, User
-from hermeshq.routers import agents, auth, comms, dashboard, hermes_versions, integration_factory, integration_packages, internal_agents, internal_control, logs, managed_integrations, messaging_channels, nodes, providers, runtime_ledger, runtime_profiles, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, terminal_sessions, users
+from hermeshq.routers import agents, auth, backup, comms, dashboard, hermes_versions, integration_factory, integration_packages, internal_agents, internal_control, logs, managed_integrations, messaging_channels, nodes, providers, runtime_ledger, runtime_profiles, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, terminal_sessions, users
 from hermeshq.schemas.common import HealthResponse
 from hermeshq.services.agent_identity import derive_agent_identity, slugify_agent_value
 from hermeshq.services.agent_supervisor import AgentSupervisor
@@ -23,6 +23,7 @@ from hermeshq.services.hermes_installation import HermesInstallationManager
 from hermeshq.services.hermes_runtime import HermesRuntime
 from hermeshq.services.gateway_supervisor import GatewaySupervisor
 from hermeshq.services.hermes_version_manager import HermesVersionManager
+from hermeshq.services.instance_backup import InstanceBackupService
 from hermeshq.services.pty_manager import PTYManager
 from hermeshq.services.provider_catalog import BUILTIN_PROVIDERS, normalize_runtime_provider, seed_provider_defaults
 from hermeshq.services.runtime_profiles import normalize_runtime_profile_slug, terminal_allowed_for_profile
@@ -140,6 +141,7 @@ async def lifespan(app: FastAPI):
     app.state.secret_vault = SecretVault(settings.fernet_key or settings.jwt_secret)
     app.state.hermes_version_manager = HermesVersionManager(AsyncSessionLocal)
     await app.state.hermes_version_manager.ensure_default_catalog_entries()
+    app.state.instance_backup_service = InstanceBackupService(AsyncSessionLocal)
     app.state.installation_manager = HermesInstallationManager(
         AsyncSessionLocal,
         app.state.secret_vault,
@@ -256,6 +258,7 @@ app.include_router(internal_agents.router, prefix=settings.api_prefix)
 app.include_router(internal_control.router, prefix=settings.api_prefix)
 app.include_router(secrets.router, prefix=settings.api_prefix)
 app.include_router(settings_router.router, prefix=settings.api_prefix)
+app.include_router(backup.router, prefix=settings.api_prefix)
 app.include_router(skills.router, prefix=settings.api_prefix)
 app.include_router(messaging_channels.router, prefix=settings.api_prefix)
 app.include_router(templates.router, prefix=settings.api_prefix)
