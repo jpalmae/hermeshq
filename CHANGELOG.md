@@ -63,6 +63,7 @@
 - documented that a Telegram bot token must be active in only one HermesHQ instance at a time to avoid polling conflicts
 - fixed HermesHQ WhatsApp startup so the bundled bridge assets, bridge port, and runtime config no longer depend on missing files inside the upstream `hermes-agent` wheel
 - fixed WhatsApp QR pairing in HermesHQ so the UI now renders a real visual QR from the bridge output instead of depending only on ASCII text rendering in the browser
+- fixed the backend image build path for the WhatsApp bridge by resolving Baileys from the published npm package and normalizing remaining git dependencies to `git+https`, so remote Docker builds no longer stall on GitHub SSH
 
 ## 2026-04-03
 
