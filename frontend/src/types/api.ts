@@ -186,11 +186,17 @@ export interface InstanceBackupValidation {
 }
 
 export interface InstanceBackupRestoreResult {
-  restored: boolean;
+  id: string;
+  status: "queued" | "running" | "succeeded" | "failed";
   mode: "replace" | "merge";
-  summary: InstanceBackupSummary;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  current_step: string | null;
+  summary: InstanceBackupSummary | null;
   restored_counts: Record<string, number>;
   warnings: string[];
+  error: string | null;
 }
 
 export interface HermesVersion {

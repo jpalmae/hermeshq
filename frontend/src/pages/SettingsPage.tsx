@@ -1,9 +1,11 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useAgents, useBootstrapSystemOperator } from "../api/agents";
 import {
   useCreateInstanceBackup,
   useRestoreInstanceBackup,
+  useRestoreInstanceBackupJob,
   useValidateInstanceBackup,
 } from "../api/backup";
 import {
@@ -56,6 +58,7 @@ type SettingsTab = "general" | "runtime" | "providers" | "integrations" | "facto
 const SETTINGS_TAB_STORAGE_KEY = "hermeshq.settings.activeTab";
 
 export function SettingsPage() {
+  const queryClient = useQueryClient();
   const currentUser = useSessionStore((state) => state.user);
   const isAdmin = currentUser?.role === "admin";
   const { t } = useI18n();
@@ -151,8 +154,10 @@ export function SettingsPage() {
   const [backupImportFile, setBackupImportFile] = useState<File | null>(null);
   const [backupImportPassphrase, setBackupImportPassphrase] = useState("");
   const [backupRestoreMode, setBackupRestoreMode] = useState<"replace" | "merge">("replace");
+  const [activeRestoreJobId, setActiveRestoreJobId] = useState<string | null>(null);
   const [lastBackupFilename, setLastBackupFilename] = useState<string | null>(null);
   const [lastBackupDownloadUrl, setLastBackupDownloadUrl] = useState<string | null>(null);
+  const { data: restoreJob } = useRestoreInstanceBackupJob(activeRestoreJobId);
   const { data: upstreamHermesVersions, isFetching: upstreamHermesVersionsLoading } = useUpstreamHermesVersions(
     Boolean(isAdmin && activeTab === "hermesVersions"),
     upstreamRefreshToken,
@@ -230,6 +235,24 @@ export function SettingsPage() {
     }
     window.localStorage.setItem(SETTINGS_TAB_STORAGE_KEY, activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (restoreJob?.status !== "succeeded") {
+      return;
+    }
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["settings"] }),
+      queryClient.invalidateQueries({ queryKey: ["branding", "public"] }),
+      queryClient.invalidateQueries({ queryKey: ["agents"] }),
+      queryClient.invalidateQueries({ queryKey: ["users"] }),
+      queryClient.invalidateQueries({ queryKey: ["secrets"] }),
+      queryClient.invalidateQueries({ queryKey: ["providers"] }),
+      queryClient.invalidateQueries({ queryKey: ["hermes-versions"] }),
+      queryClient.invalidateQueries({ queryKey: ["integration-packages"] }),
+      queryClient.invalidateQueries({ queryKey: ["integration-drafts"] }),
+      queryClient.invalidateQueries({ queryKey: ["templates"] }),
+    ]);
+  }, [queryClient, restoreJob?.id, restoreJob?.status]);
 
   const enabledProviders = useMemo(
     () => (providers ?? []).filter((provider) => provider.enabled),
@@ -580,11 +603,12 @@ export function SettingsPage() {
     if (!confirmed) {
       return;
     }
-    await restoreInstanceBackup.mutateAsync({
+    const job = await restoreInstanceBackup.mutateAsync({
       file: backupImportFile,
       passphrase: backupImportPassphrase,
       mode: backupRestoreMode,
     });
+    setActiveRestoreJobId(job.id);
   }
 
   function renderBackupSummary(summary: InstanceBackupSummary | null | undefined) {
@@ -926,9 +950,17 @@ export function SettingsPage() {
               type="button"
               className="panel-button-primary"
               onClick={() => void runBackupRestore()}
-              disabled={restoreInstanceBackup.isPending || !backupImportFile || backupImportPassphrase.trim().length < 8}
+              disabled={
+                restoreInstanceBackup.isPending ||
+                restoreJob?.status === "queued" ||
+                restoreJob?.status === "running" ||
+                !backupImportFile ||
+                backupImportPassphrase.trim().length < 8
+              }
             >
-              {restoreInstanceBackup.isPending ? "Restoring..." : "Restore backup"}
+              {restoreInstanceBackup.isPending || restoreJob?.status === "queued" || restoreJob?.status === "running"
+                ? "Restoring..."
+                : "Restore backup"}
             </button>
           </div>
           {validateInstanceBackup.data ? (
@@ -948,15 +980,44 @@ export function SettingsPage() {
               {renderBackupSummary(validateInstanceBackup.data.summary)}
             </div>
           ) : null}
-          {restoreInstanceBackup.data ? (
+          {restoreJob ? (
             <div className="space-y-4">
-              <div className="rounded-2xl border border-[var(--success)]/30 px-4 py-3 text-sm text-[var(--text-display)]">
-                Restore completed in {restoreInstanceBackup.data.mode} mode.
+              <div
+                className={`rounded-2xl border px-4 py-3 text-sm ${
+                  restoreJob.status === "failed"
+                    ? "border-[var(--danger)]/30 text-[var(--danger)]"
+                    : restoreJob.status === "succeeded"
+                      ? "border-[var(--success)]/30 text-[var(--text-display)]"
+                      : "border-[var(--accent)]/30 text-[var(--text-display)]"
+                }`}
+              >
+                {restoreJob.status === "queued"
+                  ? `Restore job queued (${restoreJob.mode}).`
+                  : restoreJob.status === "running"
+                    ? `Restore running (${restoreJob.mode}).`
+                    : restoreJob.status === "succeeded"
+                      ? `Restore completed in ${restoreJob.mode} mode.`
+                      : `Restore failed in ${restoreJob.mode} mode.`}
               </div>
-              {renderBackupSummary(restoreInstanceBackup.data.summary)}
-              {restoreInstanceBackup.data.warnings.length ? (
+              <div className="space-y-1 text-sm text-[var(--text-secondary)]">
+                <p>
+                  <strong>Status:</strong> {restoreJob.status}
+                </p>
+                {restoreJob.current_step ? (
+                  <p>
+                    <strong>Current step:</strong> {restoreJob.current_step}
+                  </p>
+                ) : null}
+                {restoreJob.error ? (
+                  <p className="text-[var(--danger)]">
+                    <strong>Error:</strong> {restoreJob.error}
+                  </p>
+                ) : null}
+              </div>
+              {renderBackupSummary(restoreJob.summary)}
+              {restoreJob.warnings.length ? (
                 <div className="space-y-2 text-sm text-[var(--warning)]">
-                  {restoreInstanceBackup.data.warnings.map((warning) => (
+                  {restoreJob.warnings.map((warning) => (
                     <p key={warning}>{warning}</p>
                   ))}
                 </div>

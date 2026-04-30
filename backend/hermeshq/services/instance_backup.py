@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import base64
+import asyncio
+import contextlib
 import json
 import os
 import shutil
 import socket
 import tempfile
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
@@ -39,6 +42,7 @@ from hermeshq.models.terminal_session import TerminalSession
 from hermeshq.models.user import User
 from hermeshq.schemas.backup import (
     InstanceBackupCreateRequest,
+    InstanceBackupRestoreJobRead,
     InstanceBackupRestoreRead,
     InstanceBackupSummary,
     InstanceBackupValidationRead,
@@ -60,6 +64,21 @@ class RestorePayload:
     secret_rows: list[dict[str, Any]]
     extracted_root: Path
     workspace_map: dict[str, dict[str, str]]
+
+
+@dataclass
+class RestoreJobState:
+    id: str
+    mode: str
+    status: str = "queued"
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    current_step: str | None = None
+    summary: InstanceBackupSummary | None = None
+    restored_counts: dict[str, int] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    error: str | None = None
 
 
 class InstanceBackupService:
@@ -88,6 +107,8 @@ class InstanceBackupService:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self.session_factory = session_factory
         self.settings = get_settings()
+        self._restore_jobs: dict[str, RestoreJobState] = {}
+        self._restore_lock = asyncio.Lock()
 
     async def create_backup_archive(self, payload: InstanceBackupCreateRequest) -> tuple[Path, str, InstanceBackupSummary]:
         if not payload.passphrase.strip():
@@ -200,6 +221,105 @@ class InstanceBackupService:
             )
         finally:
             shutil.rmtree(payload.extracted_root, ignore_errors=True)
+
+    async def start_restore_job(
+        self,
+        archive_path: Path,
+        passphrase: str,
+        mode: str,
+        app_state,
+    ) -> InstanceBackupRestoreJobRead:
+        if mode not in {"replace", "merge"}:
+            raise InstanceBackupError("Restore mode must be 'replace' or 'merge'")
+        if any(job.status in {"queued", "running"} for job in self._restore_jobs.values()):
+            raise InstanceBackupError("Another restore is already running")
+        restore_dir = self.settings.workspaces_root / "_backups" / "_restore_jobs"
+        restore_dir.mkdir(parents=True, exist_ok=True)
+        preserved_archive = Path(
+            tempfile.NamedTemporaryFile(
+                prefix="hermeshq-restore-job-",
+                suffix=archive_path.suffix or ".zip",
+                dir=restore_dir,
+                delete=False,
+            ).name
+        )
+        shutil.copy2(archive_path, preserved_archive)
+        job = RestoreJobState(id=str(uuid4()), mode=mode)
+        self._restore_jobs[job.id] = job
+        asyncio.create_task(self._run_restore_job(job.id, preserved_archive, passphrase, mode, app_state))
+        return self._serialize_restore_job(job)
+
+    def get_restore_job(self, job_id: str) -> InstanceBackupRestoreJobRead:
+        job = self._restore_jobs.get(job_id)
+        if not job:
+            raise InstanceBackupError(f"Restore job '{job_id}' was not found")
+        return self._serialize_restore_job(job)
+
+    async def _run_restore_job(
+        self,
+        job_id: str,
+        archive_path: Path,
+        passphrase: str,
+        mode: str,
+        app_state,
+    ) -> None:
+        job = self._restore_jobs[job_id]
+        try:
+            async with self._restore_lock:
+                job.status = "running"
+                job.started_at = datetime.now(timezone.utc)
+                job.current_step = "Loading backup archive"
+                payload = await self._load_restore_payload(archive_path, passphrase)
+                job.summary = payload.summary
+                try:
+                    async with self.session_factory() as session:
+                        job.current_step = "Restoring database"
+                        if mode == "replace":
+                            await self._clear_existing_state(session, payload.summary.options)
+                        job.restored_counts = await self._restore_database(session, payload, mode)
+                        await session.commit()
+                        job.current_step = "Normalizing runtime state"
+                        await self._normalize_runtime_state(session)
+                        await session.commit()
+                    job.current_step = "Restoring files"
+                    self._restore_file_roots(payload, mode)
+                    job.current_step = "Rehydrating Hermes runtimes and agents"
+                    job.warnings = await self._post_restore_sync(
+                        app_state,
+                        progress_callback=lambda step: self._update_restore_job_step(job_id, step),
+                    )
+                    job.status = "succeeded"
+                    job.current_step = "Restore completed"
+                finally:
+                    shutil.rmtree(payload.extracted_root, ignore_errors=True)
+        except Exception as exc:
+            job.status = "failed"
+            job.error = str(exc)
+            job.current_step = "Restore failed"
+        finally:
+            job.completed_at = datetime.now(timezone.utc)
+            with contextlib.suppress(Exception):
+                archive_path.unlink(missing_ok=True)
+
+    def _update_restore_job_step(self, job_id: str, step: str) -> None:
+        job = self._restore_jobs.get(job_id)
+        if job:
+            job.current_step = step
+
+    def _serialize_restore_job(self, job: RestoreJobState) -> InstanceBackupRestoreJobRead:
+        return InstanceBackupRestoreJobRead(
+            id=job.id,
+            status=job.status,
+            mode=job.mode,  # type: ignore[arg-type]
+            created_at=job.created_at,
+            started_at=job.started_at,
+            completed_at=job.completed_at,
+            current_step=job.current_step,
+            summary=job.summary,
+            restored_counts=job.restored_counts,
+            warnings=job.warnings,
+            error=job.error,
+        )
 
     async def _collect_database_rows(self, payload: InstanceBackupCreateRequest) -> dict[str, list[dict[str, Any]]]:
         async with self.session_factory() as session:
@@ -495,10 +615,12 @@ class InstanceBackupService:
                     continue
                 self._restore_directory(item, self.settings.workspaces_root / item.name, mode)
 
-    async def _post_restore_sync(self, app_state) -> list[str]:
+    async def _post_restore_sync(self, app_state, progress_callback=None) -> list[str]:
         warnings: list[str] = []
         pty_manager = getattr(app_state, "pty_manager", None)
         if pty_manager is not None:
+            if progress_callback:
+                progress_callback("Closing active terminal sessions")
             for agent_id in list(pty_manager.sessions.keys()):
                 await pty_manager.destroy_session(agent_id)
 
@@ -510,6 +632,8 @@ class InstanceBackupService:
                 if version.version == "bundled" or not version.release_tag:
                     continue
                 try:
+                    if progress_callback:
+                        progress_callback(f"Installing Hermes runtime {version.version}")
                     await hermes_version_manager.install_version(version.version)
                 except Exception as exc:
                     warnings.append(f"Failed to install Hermes runtime '{version.version}': {exc}")
@@ -520,6 +644,8 @@ class InstanceBackupService:
                 agents = (await session.execute(select(Agent).where(Agent.is_archived.is_(False)))).scalars().all()
             for agent in agents:
                 try:
+                    if progress_callback:
+                        progress_callback(f"Syncing restored agent {agent.slug}")
                     await installation_manager.sync_agent_installation(agent)
                 except Exception as exc:
                     warnings.append(f"Failed to sync restored agent '{agent.slug}': {exc}")

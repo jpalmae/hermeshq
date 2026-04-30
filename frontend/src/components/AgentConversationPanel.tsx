@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "../lib/i18n";
 import type { Task } from "../types/api";
@@ -105,11 +105,25 @@ export function AgentConversationPanel({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (disabled || !draftPrompt.trim()) {
+    if (disabled || isSubmitting || !draftPrompt.trim()) {
       return;
     }
     await onSubmit(draftPrompt.trim());
     setDraftPrompt("");
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) {
+      return;
+    }
+    if (event.nativeEvent.isComposing) {
+      return;
+    }
+    event.preventDefault();
+    if (disabled || isSubmitting || !draftPrompt.trim()) {
+      return;
+    }
+    event.currentTarget.form?.requestSubmit();
   }
 
   return (
@@ -186,6 +200,7 @@ export function AgentConversationPanel({
             rows={4}
             value={draftPrompt}
             onChange={(event) => setDraftPrompt(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
             placeholder={t("agent.messagePlaceholder")}
             disabled={disabled}
           />

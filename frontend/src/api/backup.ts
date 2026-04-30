@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "./client";
 import type {
@@ -63,7 +63,6 @@ export function useValidateInstanceBackup() {
 }
 
 export function useRestoreInstanceBackup() {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
       file,
@@ -83,19 +82,20 @@ export function useRestoreInstanceBackup() {
       });
       return data;
     },
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["settings"] }),
-        queryClient.invalidateQueries({ queryKey: ["branding", "public"] }),
-        queryClient.invalidateQueries({ queryKey: ["agents"] }),
-        queryClient.invalidateQueries({ queryKey: ["users"] }),
-        queryClient.invalidateQueries({ queryKey: ["secrets"] }),
-        queryClient.invalidateQueries({ queryKey: ["providers"] }),
-        queryClient.invalidateQueries({ queryKey: ["hermes-versions"] }),
-        queryClient.invalidateQueries({ queryKey: ["integration-packages"] }),
-        queryClient.invalidateQueries({ queryKey: ["integration-drafts"] }),
-        queryClient.invalidateQueries({ queryKey: ["templates"] }),
-      ]);
+  });
+}
+
+export function useRestoreInstanceBackupJob(jobId: string | null) {
+  return useQuery<InstanceBackupRestoreResult>({
+    queryKey: ["backup-restore-job", jobId],
+    enabled: Boolean(jobId),
+    queryFn: async () => {
+      const { data } = await apiClient.get<InstanceBackupRestoreResult>(`/backup/restore-jobs/${jobId}`);
+      return data;
+    },
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "queued" || status === "running" ? 1500 : false;
     },
   });
 }

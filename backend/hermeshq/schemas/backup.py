@@ -40,3 +40,16 @@ class InstanceBackupRestoreRead(BaseModel):
     restored_counts: dict[str, int]
     warnings: list[str] = Field(default_factory=list)
 
+
+class InstanceBackupRestoreJobRead(BaseModel):
+    id: str
+    status: Literal["queued", "running", "succeeded", "failed"]
+    mode: Literal["replace", "merge"]
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    current_step: str | None = None
+    summary: InstanceBackupSummary | None = None
+    restored_counts: dict[str, int] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    error: str | None = None
