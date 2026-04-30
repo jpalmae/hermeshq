@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Install script revision: 2026-04-10
+# Install script revision: 2026-04-30
 
 REPO_URL="${REPO_URL:-https://github.com/jpalmae/hermeshq.git}"
 BRANCH="${BRANCH:-main}"
@@ -118,6 +118,29 @@ compose() {
     fi
   else
     fail "Docker Compose is required"
+  fi
+}
+
+adopt_existing_docker_context() {
+  if [ ! -f "$INSTALL_DIR/docker-compose.yml" ]; then
+    return
+  fi
+
+  local current_ids sudo_ids
+  current_ids="$( (cd "$INSTALL_DIR" && compose ps -q 2>/dev/null) || true )"
+  if [ -n "$current_ids" ]; then
+    return
+  fi
+
+  if [ "$(id -u)" -eq 0 ] || ! command -v sudo >/dev/null 2>&1; then
+    return
+  fi
+
+  sudo_ids="$(sudo -n docker compose -f "$INSTALL_DIR/docker-compose.yml" ps -q 2>/dev/null || true)"
+  if [ -n "$sudo_ids" ]; then
+    printf 'Detected an existing HermesHQ stack managed by sudo Docker. Reusing sudo for this update.\n'
+    DOCKER_PREFIX=(sudo)
+    USED_SUDO_DOCKER=1
   fi
 }
 
@@ -296,6 +319,7 @@ main() {
 
   ensure_docker_installed
   configure_docker_access
+  adopt_existing_docker_context
   compose version >/dev/null 2>&1
 
   local install_host archive_url src_root existing_env preserve_cloudflared_env
@@ -326,7 +350,11 @@ main() {
   printf 'Downloading HermesHQ from %s\n' "$archive_url"
   curl -fsSL "$archive_url" -o "$TMP_DIR/hermeshq.tar.gz"
   mkdir -p "$TMP_DIR/src"
-  tar -xzf "$TMP_DIR/hermeshq.tar.gz" -C "$TMP_DIR/src"
+  if tar --version 2>/dev/null | grep -q 'GNU tar'; then
+    tar --warning=no-timestamp -xzf "$TMP_DIR/hermeshq.tar.gz" -C "$TMP_DIR/src"
+  else
+    tar -xzf "$TMP_DIR/hermeshq.tar.gz" -C "$TMP_DIR/src"
+  fi
   src_root="$(find "$TMP_DIR/src" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
   [ -n "$src_root" ] || fail "Failed to extract repository archive"
 

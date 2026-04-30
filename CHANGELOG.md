@@ -57,6 +57,7 @@
 
 - fixed instance backup export so JSON columns mapped to names like `metadata_json` are serialized through the ORM attribute instead of leaking SQLAlchemy internals such as `MetaData`
 - fixed the `Backup & Restore` UI so optional-history checkboxes align correctly and successful backup creation leaves a visible fallback `Download again` link when the browser does not start the ZIP download automatically
+- fixed `install.sh` updates on hosts where an existing HermesHQ stack was started with `sudo docker` while the current shell also has access to a separate non-sudo Docker context; the installer now reuses the Docker context that already owns the running stack and suppresses noisy future-timestamp warnings from GitHub archives
 - increased the Hermes runtime subprocess output limit to reduce false `failed` tasks caused by oversized final result lines
 - fixed installer temp directory cleanup so the one-line install flow no longer ends with `tmp_dir: unbound variable`
 - fixed the admin password reset flow so it no longer depends on the backend image already containing a new helper file
