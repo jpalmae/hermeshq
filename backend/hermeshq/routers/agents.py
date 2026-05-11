@@ -22,7 +22,7 @@ from hermeshq.routers.agents_managed import router as managed_router
 
 from fastapi import APIRouter
 
-router = APIRouter(prefix="/agents", tags=["agents"])
+router = APIRouter(tags=["agents"])
 
 router.include_router(crud_router)
 router.include_router(runtime_router)
