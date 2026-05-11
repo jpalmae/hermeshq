@@ -244,27 +244,13 @@ export function SettingsPage() {
             />
           )}
           {activeTab === "runtime" && (
-            <RuntimeTab
-              settings={settings}
-              updateSettings={updateSettings}
-              agents={agents}
-              bootstrapSystemOperator={bootstrapSystemOperator}
-              runtimeCapabilityOverview={runtimeCapabilityOverview}
-            />
+            <RuntimeTab />
           )}
           {activeTab === "providers" && (
-            <ProvidersTab
-              providers={providers}
-              updateProvider={updateProvider}
-            />
+            <ProvidersTab />
           )}
           {activeTab === "integrations" && (
-            <IntegrationsTab
-              integrationPackages={integrationPackages}
-              uploadIntegrationPackage={uploadIntegrationPackage}
-              installIntegrationPackage={installIntegrationPackage}
-              uninstallIntegrationPackage={uninstallIntegrationPackage}
-            />
+            <IntegrationsTab />
           )}
           {activeTab === "factory" && (
             <FactoryTab
@@ -303,16 +289,10 @@ export function SettingsPage() {
             />
           )}
           {activeTab === "secrets" && (
-            <SecretsTab
-              secrets={secrets}
-              createSecret={createSecret}
-            />
+            <SecretsTab />
           )}
           {activeTab === "templates" && (
-            <TemplatesTab
-              templates={templates}
-              createTemplate={createTemplate}
-            />
+            <TemplatesTab />
           )}
         </Suspense>
       </div>

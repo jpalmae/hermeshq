@@ -279,3 +279,4 @@ export function RuntimeTab() {
     </section>
   );
 }
+export default RuntimeTab;

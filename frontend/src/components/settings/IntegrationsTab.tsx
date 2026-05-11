@@ -103,3 +103,4 @@ export function IntegrationsTab() {
     </section>
   );
 }
+export default IntegrationsTab;

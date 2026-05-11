@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent, useMemo } from "react";
 import { useI18n } from "../../lib/i18n";
-import { resolveAssetUrl } from "../../apiBase";
+import { resolveAssetUrl } from "../../api/settings";
 
 interface InstanceBackupSummary {
   schema_version: string;
@@ -363,3 +363,4 @@ export default function GeneralTab({
     </section>
     </>
   );
+}

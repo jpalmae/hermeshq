@@ -74,3 +74,4 @@ export function SecretsTab() {
     </section>
   );
 }
+export default SecretsTab;

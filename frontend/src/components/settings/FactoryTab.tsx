@@ -66,7 +66,7 @@ export default function FactoryTab({
     setDraftMetaDescription(selectedDraft.description);
     setDraftMetaVersion(selectedDraft.version);
     setDraftNotes(selectedDraft.notes ?? "");
-    if (!selectedDraftPath || !selectedDraft.files.some((file) => file.path === selectedDraftPath)) {
+    if (!selectedDraftPath || !selectedDraft.files.some((file: { path: string }) => file.path === selectedDraftPath)) {
       setSelectedDraftPath(selectedDraft.files[0]?.path ?? null);
     }
   }, [selectedDraft, selectedDraftPath]);
@@ -301,7 +301,7 @@ export default function FactoryTab({
                   <div className="mt-4 border-t border-[var(--border)] pt-4">
                     <p className="panel-label">{t("settings.integrationDraftValidation")}</p>
                     <div className="mt-3 space-y-2">
-                      {selectedDraft.last_validation.checks.map((check, index) => (
+                      {selectedDraft.last_validation.checks.map((check: { status: string; message: string; code?: string; level?: string; path?: string }, index: number) => (
                         <div key={`${check.code}-${index}`} className="rounded-xl border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-secondary)]">
                           <p className="font-mono text-xs uppercase tracking-[0.08em] text-[var(--text-disabled)]">{check.level} / {check.code}</p>
                           <p className="mt-1">{check.message}</p>
@@ -321,7 +321,7 @@ export default function FactoryTab({
                   <p className="text-xs uppercase tracking-[0.08em] text-[var(--text-disabled)]">{selectedDraft.files.length}</p>
                 </div>
                 <div className="mt-4 space-y-2">
-                  {selectedDraft.files.map((file) => (
+                  {selectedDraft.files.map((file: { path: string; name: string; size?: number }) => (
                     <button
                       key={file.path}
                       type="button"
