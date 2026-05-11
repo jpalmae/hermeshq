@@ -2,6 +2,66 @@
 
 ## Unreleased
 
+## 2026-05-11
+
+### Added
+
+- shared avatar service (`services/avatar.py`) eliminating duplicated upload/validation/deletion logic across auth, agents and users routers
+- WebSocket reconnection with exponential backoff (1s → 30s), heartbeat (30s ping/10s pong timeout), and first-message token authentication (`{"type":"auth"}`)
+- JWT httpOnly cookie authentication alongside Bearer token — login and OIDC callback set `hermeshq_token` cookie; new `POST /auth/logout` endpoint clears it
+- OIDC ID token signature verification using JWKS cache (1h TTL) with issuer, audience and expiry validation
+- Argon2 password hashing with pbkdf2_sha256 backward-compatible fallback
+- Alembic database migration framework replacing ad-hoc SQL schema updates, with automatic legacy fallback
+- SQLAlchemy connection pooling (`pool_size=10`, `max_overflow=20`, `pool_pre_ping=True`)
+- Code-split settings tabs — `SettingsPage` refactored from 2165 to 321 lines with `React.lazy()` + `Suspense` for 9 independent tab components
+- Parameterized `ChannelForm` component eliminating ~60% code duplication between Telegram and WhatsApp configuration panels
+- Centralized `AgentFactory` service for agent creation logic shared between direct and template-based creation
+- Pydantic schemas (`AgentModeUpdate`, `AgentTemplateOverrides`) for previously untyped `dict` endpoints
+- i18n namespaced translations — 16 modules per locale (en/es) replacing single 1266-line monolithic file
+- Dynamic `.font-display` CSS class: Doto dots typography for all themes, Space Grotesk for sixmanager themes
+- Comprehensive test plan document (`docs/TEST_PLAN.md`) with 213 test cases across 14 categories
+- Backend `.dockerignore` to reduce Docker build context size
+
+### Changed
+
+- **Backend Dockerfile**: multi-stage build (builder + runtime), runs as non-root `appuser` (UID 1000)
+- **docker-compose.yml**: PostgreSQL port closed to host, explicit internal network, `unless-stopped` restart policy, JSON file logging (10m/3 files), backend resource limits (1G RAM / 1 CPU), `no-new-privileges:true` on all services
+- **nginx.conf**: security headers (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy), gzip compression, static asset caching (1 year immutable), proxy timeouts (300s API / 3600s WebSocket)
+- **SettingsPage.tsx**: 2165 → 321 lines, 9 lazy-loaded tab components
+- **agents.py router**: 1230 → ~100 lines, split into 7 focused sub-routers (CRUD, runtime, avatar, workspace, bulk, template, managed)
+- **AgentMessagingPanel.tsx**: ~1100 → 441 lines via shared `ChannelForm` component
+- **Frontend HTTP client**: 30s timeout, `withCredentials: true` for cookie support
+- **Safe localStorage access** in `sessionStore` and `uiStore` — no more crashes in Safari private browsing
+- **hermes-agent** dependency pinned to `v2026.5.7` for reproducible builds
+- **CSP `font-src`** updated to allow Google Fonts (Doto typeface loading)
+- Health endpoint available at both `/health` (direct) and `/api/health` (nginx proxy)
+
+### Fixed
+
+- fixed agent start/stop returning 500 due to missing `Agent` model import in `agents_runtime.py` sub-router
+- fixed Hermes Versions tab showing empty upstream releases — hook was disconnected from refresh button after SettingsPage split
+- fixed `git ls-remote` failure in production — `git` was only in builder stage, not runtime
+- fixed Doto dots font not loading — CSP `font-src` was blocking Google Fonts downloads
+- fixed agent list returning 404 — double `/agents` prefix in sub-routers after refactor
+- fixed `localStorage` writes during drag operations — debounced to 300ms with cleanup
+- fixed form race conditions in messaging panel — `isDirty` ref prevents refetch from overwriting user edits
+- fixed TypeScript type narrowing — removed `| string` from `auth_source` and `auth_mode` union types
+- fixed backend Dockerfile missing `git` in runtime stage for Hermes version upstream queries
+- fixed rate limiting nginx directives referencing undefined zones (commented out with setup instructions)
+- fixed missing `default export` on settings tab components for React.lazy loading
+
+### Security
+
+- Backend container runs as non-root `appuser` with `no-new-privileges`
+- PostgreSQL no longer exposed to host network
+- JWT tokens set as httpOnly cookies with `SameSite=Lax`
+- OIDC ID tokens now verified with JWKS signature validation
+- Argon2 password hashing (backward compatible with pbkdf2_sha256)
+- Nginx security headers: CSP, X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, Permissions-Policy
+- WebSocket token moved from query parameter to first-message auth (no longer in server logs)
+
+## 2026-05-11 (pre-release)
+
 ### Added
 
 - a new selectable `enterprise` theme for both instance default branding and per-user override, alongside the existing `dark`, `light`, and `system` options

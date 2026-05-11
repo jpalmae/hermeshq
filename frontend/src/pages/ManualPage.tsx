@@ -379,6 +379,24 @@ const manualContent: Record<"en" | "es", ManualContent> = {
         ],
       },
       {
+        id: "security",
+        eyebrow: "Seguridad",
+        title: "Seguridad y protección de la instancia",
+        summary:
+          "HermesHQ incluye múltiples capas de seguridad para proteger tu instancia y los datos de tus agentes.",
+        bullets: [
+          "Los contenedores de backend y base de datos corren como usuario sin privilegios (`appuser`) con `no-new-privileges` habilitado.",
+          "PostgreSQL no expone su puerto al host; solo es accesible dentro de la red interna de Docker.",
+          "Los tokens JWT se almacenan en cookies httpOnly con `SameSite=Lax`, protegiendo contra ataques XSS.",
+          "Los tokens OIDC se verifican con firma JWKS, validando issuer, audience y expiry.",
+          "Las contraseñas se hashean con Argon2 (compatible con sesiones existentes de pbkdf2_sha256).",
+          "Nginx aplica headers de seguridad: Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, Referrer-Policy y Permissions-Policy.",
+          "El WebSocket autentica con un mensaje de auth en vez de query parameter, evitando que el token aparezca en logs del servidor.",
+          "Los backups se encriptan con passphrase AES. Usa `Settings -> General -> Backup & Restore` para crear y restaurar.",
+          "Para mayor protección, configura rate limiting en Nginx (las directivas están preparadas, solo necesitas activarlas en el bloque `http` global).",
+        ],
+      },
+      {
         id: "tips",
         eyebrow: "Buenas practicas",
         title: "Consejos de uso y soporte",
@@ -744,6 +762,24 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "Validation does not run live business logic or external credential checks; it focuses on structure and syntax. Real credential testing still belongs to the published integration on a specific agent through `Test connection`.",
           "Publishing does not auto-enable the integration for every agent. Publication installs it into the instance catalog; each agent must still be explicitly authorized and configured.",
           "If the published integration needs changes, you do not have to recreate it from scratch. Return to the draft, edit files, validate again, and republish.",
+        ],
+      },
+      {
+        id: "security",
+        eyebrow: "Security",
+        title: "Instance security and protection",
+        summary:
+          "HermesHQ includes multiple security layers to protect your instance and agent data.",
+        bullets: [
+          "Backend and database containers run as an unprivileged user (`appuser`) with `no-new-privileges` enabled.",
+          "PostgreSQL does not expose its port to the host; it is only accessible within the internal Docker network.",
+          "JWT tokens are stored in httpOnly cookies with `SameSite=Lax`, protecting against XSS attacks.",
+          "OIDC tokens are verified with JWKS signature validation, checking issuer, audience and expiry.",
+          "Passwords are hashed with Argon2 (backward compatible with existing pbkdf2_sha256 sessions).",
+          "Nginx enforces security headers: Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, Referrer-Policy and Permissions-Policy.",
+          "WebSocket authenticates with an auth message instead of a query parameter, preventing the token from appearing in server logs.",
+          "Backups are encrypted with AES passphrase. Use `Settings -> General -> Backup & Restore` to create and restore.",
+          "For additional protection, configure rate limiting in Nginx (directives are prepared; just activate them in the global `http` block).",
         ],
       },
       {
