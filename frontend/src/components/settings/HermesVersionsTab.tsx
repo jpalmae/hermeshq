@@ -1,29 +1,21 @@
 import { useState, useEffect } from "react";
 import { useI18n } from "../../lib/i18n";
+import {
+  useUpstreamHermesVersions,
+  useCreateHermesVersionFromUpstream,
+  useCreateHermesVersion,
+  useUpdateHermesVersion,
+  useInstallHermesVersion,
+  useUninstallHermesVersion,
+  useDeleteHermesVersionCatalogEntry,
+} from "../../api/hermesVersions";
+import type { HermesVersion } from "../../types/api";
 
 interface HermesVersionsTabProps {
-  hermesVersions: any[] | undefined;
-  createHermesVersion: any;
-  updateHermesVersion: any;
-  installHermesVersion: any;
-  uninstallHermesVersion: any;
-  deleteHermesVersionCatalogEntry: any;
-  upstreamHermesVersions: any[] | undefined;
-  upstreamHermesVersionsLoading: boolean;
-  createHermesVersionFromUpstream: any;
+  hermesVersions: HermesVersion[] | undefined;
 }
 
-export default function HermesVersionsTab({
-  hermesVersions,
-  createHermesVersion,
-  updateHermesVersion,
-  installHermesVersion,
-  uninstallHermesVersion,
-  deleteHermesVersionCatalogEntry,
-  upstreamHermesVersions,
-  upstreamHermesVersionsLoading,
-  createHermesVersionFromUpstream,
-}: HermesVersionsTabProps) {
+export default function HermesVersionsTab({ hermesVersions }: HermesVersionsTabProps) {
   const { t } = useI18n();
 
   const [newHermesVersion, setNewHermesVersion] = useState("");
@@ -33,6 +25,17 @@ export default function HermesVersionsTab({
     Record<string, { release_tag: string; description: string }>
   >({});
   const [upstreamRefreshToken, setUpstreamRefreshToken] = useState(0);
+
+  /* ── hooks (self-contained, no longer depend on parent state) ── */
+  const { data: upstreamHermesVersions, isFetching: upstreamHermesVersionsLoading } =
+    useUpstreamHermesVersions(true, upstreamRefreshToken);
+
+  const createHermesVersion = useCreateHermesVersion();
+  const updateHermesVersion = useUpdateHermesVersion();
+  const installHermesVersion = useInstallHermesVersion();
+  const uninstallHermesVersion = useUninstallHermesVersion();
+  const deleteHermesVersionCatalogEntry = useDeleteHermesVersionCatalogEntry();
+  const createHermesVersionFromUpstream = useCreateHermesVersionFromUpstream();
 
   useEffect(() => {
     setHermesVersionDrafts(
@@ -116,8 +119,8 @@ export default function HermesVersionsTab({
                     <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
                       {release.detected_version ? `Detected package version ${release.detected_version}` : "Package version could not be derived yet."}
                     </p>
-                    <p className="mt-2 font-mono text-xs text-[var(--text-disabled)]">{release.commit_sha.slice(0, 12)}</p>
-                    {release.catalog_versions.length ? (
+                    <p className="mt-2 font-mono text-xs text-[var(--text-disabled)]">{release.commit_sha?.slice(0, 12)}</p>
+                    {release.catalog_versions?.length ? (
                       <p className="mt-2 text-xs uppercase tracking-[0.08em] text-[var(--text-disabled)]">
                         In catalog as {release.catalog_versions.join(", ")}
                       </p>

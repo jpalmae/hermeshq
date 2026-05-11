@@ -10,13 +10,7 @@ import {
 } from "../api/backup";
 import {
   useCreateHermesVersion,
-  useCreateHermesVersionFromUpstream,
-  useDeleteHermesVersionCatalogEntry,
   useHermesVersions,
-  useInstallHermesVersion,
-  useUpstreamHermesVersions,
-  useUninstallHermesVersion,
-  useUpdateHermesVersion,
 } from "../api/hermesVersions";
 import {
   useInstallIntegrationPackage,
@@ -104,12 +98,6 @@ export function SettingsPage() {
   const createSecret = useCreateSecret();
   const createTemplate = useCreateTemplate();
   const updateSettings = useUpdateSettings();
-  const createHermesVersion = useCreateHermesVersion();
-  const createHermesVersionFromUpstream = useCreateHermesVersionFromUpstream();
-  const installHermesVersion = useInstallHermesVersion();
-  const updateHermesVersion = useUpdateHermesVersion();
-  const uninstallHermesVersion = useUninstallHermesVersion();
-  const deleteHermesVersionCatalogEntry = useDeleteHermesVersionCatalogEntry();
   const uploadLogo = useUploadBrandAsset("logo");
   const uploadFavicon = useUploadBrandAsset("favicon");
   const deleteLogo = useDeleteBrandAsset("logo");
@@ -135,12 +123,6 @@ export function SettingsPage() {
 
   /* ─── Tab state ─── */
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
-  const [upstreamRefreshToken, setUpstreamRefreshToken] = useState(0);
-
-  const { data: upstreamHermesVersions, isFetching: upstreamHermesVersionsLoading } = useUpstreamHermesVersions(
-    Boolean(isAdmin && activeTab === "hermesVersions"),
-    upstreamRefreshToken,
-  );
 
   /* ─── Restore job polling ─── */
   const [activeRestoreJobId, setActiveRestoreJobId] = useState<string | null>(null);
@@ -278,14 +260,6 @@ export function SettingsPage() {
           {activeTab === "hermesVersions" && (
             <HermesVersionsTab
               hermesVersions={hermesVersions}
-              createHermesVersion={createHermesVersion}
-              updateHermesVersion={updateHermesVersion}
-              installHermesVersion={installHermesVersion}
-              uninstallHermesVersion={uninstallHermesVersion}
-              deleteHermesVersionCatalogEntry={deleteHermesVersionCatalogEntry}
-              upstreamHermesVersions={upstreamHermesVersions}
-              upstreamHermesVersionsLoading={upstreamHermesVersionsLoading}
-              createHermesVersionFromUpstream={createHermesVersionFromUpstream}
             />
           )}
           {activeTab === "secrets" && (
