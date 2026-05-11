@@ -34,6 +34,7 @@
     color-mix(in srgb, var(--surface) 98%, transparent);
   --org-card-background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent), var(--surface-raised);
   --org-icon-background: rgba(255, 255, 255, 0.06);
+  --font-display: "Doto", "Space Mono", monospace;
 }
 
 :root[data-theme="light"] {
@@ -69,6 +70,7 @@
     color-mix(in srgb, var(--surface) 98%, rgba(255, 255, 255, 0.4));
   --org-card-background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.4)), var(--surface-raised);
   --org-icon-background: rgba(23, 20, 18, 0.06);
+  --font-display: "Doto", "Space Mono", monospace;
 }
 
 :root[data-theme="enterprise"] {
@@ -104,6 +106,7 @@
     color-mix(in srgb, var(--surface) 98%, transparent);
   --org-card-background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent), var(--surface-raised);
   --org-icon-background: rgba(99, 163, 255, 0.08);
+  --font-display: "Doto", "Space Mono", monospace;
 }
 
 :root[data-theme="enterprise"][data-brand-theme="sixmanager"] {
@@ -1407,4 +1410,13 @@
     text-transform: uppercase;
     cursor: ns-resize;
   }
+}
+
+/* ── Dynamic font-display ───────────────────────────────────────────────
+   Override Tailwind's static .font-display utility so it respects the
+   --font-display CSS variable. Sixmanager themes set --font-display to
+   "Space Grotesk" while all other themes inherit "Doto" (dots font).
+*/
+.font-display {
+  font-family: var(--font-display);
 }
