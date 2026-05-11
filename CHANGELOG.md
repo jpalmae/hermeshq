@@ -27,6 +27,7 @@
 - Telegram chat traceability into agent `Activity stream` by persisting inbound and outbound gateway messages as `channel.telegram.*` events
 - native per-agent WhatsApp channels using the Hermes gateway, including bridge asset sync, QR-based pairing, runtime visibility, and shared gateway supervision compatible with multi-platform agent messaging
 - two new inference provider presets: `AWS Bedrock` using `auth_type=aws_sdk` and `OpenAI-compatible API` for generic OpenAI-style gateways and self-hosted endpoints
+- enterprise MCP access for exposing authorized HermesHQ agents to external AI clients, including scoped credentials, per-agent allowlists, expiry, revocation, audit events, the `/mcp` JSON-RPC endpoint, and a `scripts/hermeshq-mcp-stdio.py` bridge for Claude Code, Codex and other stdio MCP clients
 - two bundled voice managed integrations enabled by default at instance level: `voice-edge` for `faster-whisper` + `edge-tts`, and `voice-local` for `faster-whisper` + Piper, both with Spanish and English presets and runtime `stt`/`tts` config generation
 - fixed `voice-local` runtime dependencies to install the actual Piper package (`piper-tts`) required by the health check and local TTS path
 - backend image now installs WhatsApp bridge dependencies with `npm ci --omit=peer` so Baileys no longer drags in `sharp` during image builds, which keeps local and production deploys from stalling in that layer

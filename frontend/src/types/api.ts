@@ -53,6 +53,27 @@ export interface ActivityLogPage {
   next_before_id: string | null;
 }
 
+export interface McpAccessToken {
+  id: string;
+  name: string;
+  description: string | null;
+  client_name: string | null;
+  token_prefix: string;
+  created_by_user_id: string | null;
+  allowed_agent_ids: string[];
+  scopes: string[];
+  is_active: boolean;
+  expires_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface McpAccessTokenCreateResult {
+  token: string;
+  access: McpAccessToken;
+}
+
 export interface Secret {
   id: string;
   name: string;

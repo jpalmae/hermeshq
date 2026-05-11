@@ -12,59 +12,22 @@ from hermeshq.models.agent import Agent
 from hermeshq.models.agent_assignment import AgentAssignment
 from hermeshq.models.user import User
 from hermeshq.schemas.user_management import UserCreate, UserManagedRead, UserUpdate
+from hermeshq.services.avatar import (
+    build_avatar_path as _build_avatar_path_shared,
+    delete_avatar_files as _delete_avatar_files_shared,
+    validate_and_save_avatar,
+    resolve_media_type,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
-ALLOWED_AVATAR_TYPES = {
-    "image/png": ".png",
-    "image/jpeg": ".jpg",
-    "image/webp": ".webp",
-}
-MAX_AVATAR_BYTES = 2 * 1024 * 1024
 
 
-def _get_user_assets_root() -> Path:
-    root = Path(get_settings().user_assets_root)
-    root.mkdir(parents=True, exist_ok=True)
-    return root
-
-
-def _build_avatar_dir(user_id: str) -> Path:
-    return _get_user_assets_root() / user_id
+def _user_avatar_base() -> Path:
+    return Path(get_settings().user_assets_root)
 
 
 def _build_avatar_path(user: User) -> Path | None:
-    if not user.avatar_filename:
-        return None
-    return _build_avatar_dir(user.id) / user.avatar_filename
-
-
-def _delete_avatar_files(user_id: str) -> None:
-    avatar_dir = _build_avatar_dir(user_id)
-    if not avatar_dir.exists():
-        return
-    for path in sorted(avatar_dir.rglob("*"), reverse=True):
-        if path.is_file() or path.is_symlink():
-            path.unlink()
-        elif path.is_dir():
-            path.rmdir()
-    avatar_dir.rmdir()
-
-
-def _serialize_user(request: Request, user: User, assigned_agent_ids: list[str]) -> UserManagedRead:
-    avatar_url = None
-    if user.avatar_filename:
-        version = int(user.updated_at.timestamp()) if user.updated_at else 0
-        avatar_url = f"/api/users/{user.id}/avatar?v={version}"
-    return UserManagedRead(
-        id=user.id,
-        username=user.username,
-        display_name=user.display_name,
-        role=user.role,
-        is_active=user.is_active,
-        assigned_agent_ids=assigned_agent_ids,
-        avatar_url=avatar_url,
-        has_avatar=bool(user.avatar_filename),
-    )
+    return _build_avatar_path_shared(_user_avatar_base(), user.id, user.avatar_filename)
 
 
 async def _load_assigned_agent_ids(db: AsyncSession, user_id: str) -> list[str]:
@@ -98,6 +61,23 @@ async def _sync_assignments(
                 assigned_by=assigned_by,
             )
         )
+
+
+def _serialize_user(request: Request, user: User, assigned_agent_ids: list[str]) -> UserManagedRead:
+    avatar_url = None
+    if user.avatar_filename:
+        version = int(user.updated_at.timestamp()) if user.updated_at else 0
+        avatar_url = f"/api/users/{user.id}/avatar?v={version}"
+    return UserManagedRead(
+        id=user.id,
+        username=user.username,
+        display_name=user.display_name,
+        role=user.role,
+        is_active=user.is_active,
+        assigned_agent_ids=assigned_agent_ids,
+        avatar_url=avatar_url,
+        has_avatar=bool(user.avatar_filename),
+    )
 
 
 async def _to_read(request: Request, db: AsyncSession, user: User) -> UserManagedRead:
@@ -181,7 +161,7 @@ async def delete_user(
         raise HTTPException(status_code=404, detail="User not found")
     if user.username == current_user.username:
         raise HTTPException(status_code=400, detail="You cannot delete the current admin session")
-    _delete_avatar_files(user_id)
+    _delete_avatar_files_shared(_user_avatar_base(), user_id)
     await db.delete(user)
     await db.commit()
 
@@ -194,13 +174,7 @@ async def get_user_avatar(user_id: str, db: AsyncSession = Depends(get_db_sessio
     avatar_path = _build_avatar_path(user)
     if not avatar_path or not avatar_path.exists():
         raise HTTPException(status_code=404, detail="Avatar not found")
-    media_type = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".webp": "image/webp",
-    }.get(avatar_path.suffix.lower(), "application/octet-stream")
-    return FileResponse(avatar_path, media_type=media_type)
+    return FileResponse(avatar_path, media_type=resolve_media_type(avatar_path))
 
 
 @router.post("/{user_id}/avatar", response_model=UserManagedRead)
@@ -214,22 +188,7 @@ async def upload_user_avatar(
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if file.content_type not in ALLOWED_AVATAR_TYPES:
-        raise HTTPException(status_code=400, detail="Unsupported avatar type. Use PNG, JPG or WEBP.")
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Avatar file is empty")
-    if len(content) > MAX_AVATAR_BYTES:
-        raise HTTPException(status_code=400, detail="Avatar exceeds 2 MB limit")
-    avatar_dir = _build_avatar_dir(user_id)
-    avatar_dir.mkdir(parents=True, exist_ok=True)
-    for existing in avatar_dir.iterdir():
-        if existing.is_file() or existing.is_symlink():
-            existing.unlink()
-    extension = ALLOWED_AVATAR_TYPES[file.content_type]
-    filename = f"avatar{extension}"
-    (avatar_dir / filename).write_bytes(content)
-    user.avatar_filename = filename
+    user.avatar_filename = await validate_and_save_avatar(_user_avatar_base(), user_id, file)
     await db.commit()
     await db.refresh(user)
     return await _to_read(request, db, user)
@@ -245,7 +204,7 @@ async def delete_user_avatar(
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    _delete_avatar_files(user_id)
+    _delete_avatar_files_shared(_user_avatar_base(), user_id)
     user.avatar_filename = None
     await db.commit()
     await db.refresh(user)

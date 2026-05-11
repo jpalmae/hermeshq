@@ -14,6 +14,7 @@ It keeps Hermes as the real execution engine, then adds the operational layer ar
 - task dispatch, schedules, runtime ledger, and activity stream
 - hierarchy-aware inter-agent delegation
 - per-agent Telegram and WhatsApp channels
+- enterprise MCP access for Claude Code, Codex, Claude Desktop and other external AI clients
 - provider presets, secrets vault, runtime profiles, and managed integrations, including AWS Bedrock and generic OpenAI-compatible endpoints
 
 Project landing page: [jpalmae.github.io/hermeshq](https://jpalmae.github.io/hermeshq/)  
@@ -43,6 +44,7 @@ HermesHQ uses that same Hermes runtime underneath, but wraps it in a control pla
 - task dispatch, schedules, and runtime ledger
 - inter-agent comms and hierarchy-aware delegation
 - per-agent Telegram and WhatsApp channels
+- enterprise MCP credentials for exposing selected agents to external AI clients
 - provider presets, secrets vault, and managed integrations, including AWS Bedrock and generic OpenAI-compatible endpoints
 - runtime profiles and capability visibility
 
@@ -108,6 +110,7 @@ Hermes works well as a local runtime. HermesHQ adds the things teams usually nee
 - delegate result callbacks back to the parent agent
 - per-agent Telegram and WhatsApp channels with activity traceability
 - assigned-agent scope for non-admin users
+- enterprise MCP access with scoped credentials, per-agent allowlists, revocation, expiry and audit logs
 
 ### Configuration and Governance
 
@@ -119,6 +122,25 @@ Hermes works well as a local runtime. HermesHQ adds the things teams usually nee
 - secrets vault
 - editable provider registry and presets, including AWS Bedrock (`aws_sdk`) and OpenAI-compatible API endpoints
 - managed integration package catalog with install/uninstall and per-agent tests
+
+### Enterprise MCP Access
+
+Admins can expose selected HermesHQ agents to MCP-capable clients without giving those clients full platform access.
+
+1. Open `Settings -> External access`.
+2. Create an MCP credential, select the allowed agents, choose scopes, and optionally set expiry.
+3. Copy the token shown once.
+4. Point the client to the HermesHQ MCP endpoint `/mcp` with `Authorization: Bearer <token>`.
+
+For stdio-only clients such as some Claude Code or Codex setups, use the bridge script:
+
+```bash
+HERMESHQ_URL=https://your-hermeshq.example.com \
+HERMESHQ_MCP_TOKEN=hq_mcp_xxx \
+python3 scripts/hermeshq-mcp-stdio.py
+```
+
+The initial MCP toolset includes `list_agents`, `invoke_agent`, and `get_agent_task`.
 
 ### UX
 

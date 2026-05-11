@@ -1,0 +1,25 @@
+const ns: Record<string, string> = {
+  "dashboard.primaryReadout": "Lectura principal",
+  "dashboard.activeAgentsLive": "agentes activos en vivo",
+  "dashboard.operator": "Operador",
+  "dashboard.fleet": "Flota",
+  "dashboard.queue": "Cola",
+  "dashboard.tasks": "Tareas",
+  "dashboard.liveFeed": "Feed en vivo",
+  "dashboard.runtimeStream": "Flujo de runtime",
+  "dashboard.lines": "{count} líneas",
+  "dashboard.awaitingRuntimeOutput": "Esperando salida del runtime",
+  "dashboard.eventStreamIdle": "[CARGANDO] stream de eventos inactivo",
+  "dashboard.agentMap": "Mapa de agentes",
+  "dashboard.dependencyCanvas": "Lienzo de dependencias",
+  "dashboard.openAgentStudio": "Abrir estudio de agentes",
+  "dashboard.agents": "Agentes",
+  "dashboard.currentFleet": "Flota actual",
+  "dashboard.openAgents": "Abrir agentes",
+  "dashboard.model": "Modelo",
+  "dashboard.status": "Estado",
+  "dashboard.recentActivity": "Actividad reciente",
+  "dashboard.noMessage": "Sin mensaje",
+};
+
+export default ns;

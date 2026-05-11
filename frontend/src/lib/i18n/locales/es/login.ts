@@ -1,0 +1,25 @@
+const ns: Record<string, string> = {
+  "login.instanceBranding": "Branding de instancia",
+  "login.globalIdentity": "Identidad global de esta superficie de control Hermes.",
+  "login.fleetStatus": "Estado de flota",
+  "login.heroDescription": "{appName} es la superficie industrial para orquestar agentes Hermes autónomos en tareas operativas de larga duración.",
+  "login.primary": "Primario",
+  "login.secondary": "Secundario",
+  "login.tertiary": "Terciario",
+  "login.fleetControl": "Control de flota",
+  "login.taskVisibility": "Visibilidad de tareas",
+  "login.operationalTelemetry": "Telemetría operativa",
+  "login.operatorAccess": "Acceso de operador",
+  "login.authenticate": "Ingresar a {appName}",
+  "login.username": "Usuario",
+  "login.password": "Contraseña",
+  "login.invalidCredentials": "Credenciales inválidas",
+  "login.enterpriseAccess": "Acceso enterprise",
+  "login.localOperatorAccess": "Acceso local de operador",
+  "login.continueWithProvider": "Continuar con {provider}",
+  "login.notConfigured": "No configurado",
+  "login.useLocalAdminLogin": "Usar login local de admin",
+  "login.enterControlSurface": "Entrar a la consola",
+};
+
+export default ns;

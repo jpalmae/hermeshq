@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import contextlib
+import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,11 +11,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from hermeshq.config import get_settings
-from hermeshq.core.events import EventBroker
+from hermeshq.core.events import EventBroker, EventSubscription
 from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
 from hermeshq.database import AsyncSessionLocal, init_database
 from hermeshq.models import ActivityLog, Agent, AppSettings, Node, ProviderDefinition, TerminalSession, User
-from hermeshq.routers import agents, auth, backup, comms, dashboard, hermes_versions, integration_factory, integration_packages, internal_agents, internal_control, logs, managed_integrations, messaging_channels, nodes, providers, runtime_ledger, runtime_profiles, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, terminal_sessions, users
+from hermeshq.routers import agents, auth, backup, comms, dashboard, hermes_versions, integration_factory, integration_packages, internal_agents, internal_control, logs, managed_integrations, mcp_access, mcp_server, messaging_channels, nodes, providers, runtime_ledger, runtime_profiles, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, terminal_sessions, users
 from hermeshq.schemas.common import HealthResponse
 from hermeshq.services.agent_identity import derive_agent_identity, slugify_agent_value
 from hermeshq.services.agent_supervisor import AgentSupervisor
@@ -249,6 +250,7 @@ app.include_router(runtime_profiles.router, prefix=settings.api_prefix)
 app.include_router(integration_factory.router, prefix=settings.api_prefix)
 app.include_router(integration_packages.router, prefix=settings.api_prefix)
 app.include_router(managed_integrations.router, prefix=settings.api_prefix)
+app.include_router(mcp_access.router, prefix=settings.api_prefix)
 app.include_router(agents.router, prefix=settings.api_prefix)
 app.include_router(tasks.router, prefix=settings.api_prefix)
 app.include_router(runtime_ledger.router, prefix=settings.api_prefix)
@@ -266,6 +268,7 @@ app.include_router(logs.router, prefix=settings.api_prefix)
 app.include_router(terminal_sessions.router, prefix=settings.api_prefix)
 app.include_router(scheduled_tasks.router, prefix=settings.api_prefix)
 app.include_router(users.router, prefix=settings.api_prefix)
+app.include_router(mcp_server.router)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -276,16 +279,51 @@ async def health() -> HealthResponse:
 @app.websocket("/ws/stream")
 async def stream(websocket: WebSocket) -> None:
     broker: EventBroker = app.state.event_broker
+
+    # --- Authentication: support both query-param (legacy) and first-message auth ---
+    token: str | None = websocket.query_params.get("token")
+
+    if not token:
+        # Accept the connection provisionally and wait for an auth message.
+        await websocket.accept()
+        try:
+            raw = await asyncio.wait_for(websocket.receive_text(), timeout=10)
+            payload = json.loads(raw)
+            if payload.get("type") == "auth":
+                token = payload.get("token")
+        except Exception:
+            await websocket.close(code=4401)
+            return
+
     async with AsyncSessionLocal() as session:
-        user = await get_websocket_user(websocket, session)
-        if not user:
+        from hermeshq.core.security import decode_access_token_subject, get_user_by_subject
+        subject, subject_kind = decode_access_token_subject(token or "")
+        user = await get_user_by_subject(session, subject, subject_kind)
+        if not user or not user.is_active:
             await websocket.close(code=4401)
             return
         accessible_agent_ids = await get_accessible_agent_ids(session, user)
-    await broker.connect(websocket, is_admin=is_admin(user), agent_ids=accessible_agent_ids)
+
+    # If we already accepted (message-based auth), don't accept again.
+    if websocket.client_state.name == "CONNECTED":
+        broker._connections[websocket] = EventSubscription(
+            websocket=websocket,
+            is_admin=is_admin(user),
+            agent_ids=set(accessible_agent_ids),
+        )
+    else:
+        await broker.connect(websocket, is_admin=is_admin(user), agent_ids=accessible_agent_ids)
+
+    # Handle pong responses for heartbeat
     try:
         while True:
-            await websocket.receive_text()
+            msg = await websocket.receive_text()
+            try:
+                data = json.loads(msg)
+                if data.get("type") == "pong":
+                    continue
+            except Exception:
+                pass
     except WebSocketDisconnect:
         broker.disconnect(websocket)
 

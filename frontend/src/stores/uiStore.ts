@@ -8,19 +8,35 @@ interface UIState {
   setMobileNavOpen: (value: boolean) => void;
 }
 
-const storedSidebarState = window.localStorage.getItem("hermeshq.sidebarCollapsed");
+function safeReadLocalStorage(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeWriteLocalStorage(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Silently ignore in private browsing mode (Safari, etc.)
+  }
+}
+
+const storedSidebarState = safeReadLocalStorage("hermeshq.sidebarCollapsed");
 
 export const useUIStore = create<UIState>((set) => ({
   sidebarCollapsed: storedSidebarState === "true",
   mobileNavOpen: false,
   setSidebarCollapsed: (value) => {
-    window.localStorage.setItem("hermeshq.sidebarCollapsed", String(value));
+    safeWriteLocalStorage("hermeshq.sidebarCollapsed", String(value));
     set({ sidebarCollapsed: value });
   },
   toggleSidebar: () =>
     set((state) => {
       const next = !state.sidebarCollapsed;
-      window.localStorage.setItem("hermeshq.sidebarCollapsed", String(next));
+      safeWriteLocalStorage("hermeshq.sidebarCollapsed", String(next));
       return { sidebarCollapsed: next };
     }),
   setMobileNavOpen: (value) => set({ mobileNavOpen: value }),

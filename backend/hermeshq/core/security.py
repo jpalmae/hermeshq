@@ -2,7 +2,7 @@ import hashlib
 import hmac
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, HTTPException, Query, WebSocket, status
+from fastapi import Cookie, Depends, HTTPException, Query, WebSocket, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -90,10 +90,20 @@ async def get_user_by_subject(db: AsyncSession, subject: str | None, subject_kin
     return result.scalar_one_or_none()
 
 
+async def _resolve_token_from_request(
+    bearer_token: str | None = None,
+    cookie_token: str | None = None,
+) -> str:
+    """Return the first available token from Authorization header or cookie."""
+    return bearer_token or cookie_token or ""
+
+
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    bearer_token: str = Depends(oauth2_scheme),
+    cookie_token: str | None = Cookie(default=None, alias="hermeshq_token"),
     db: AsyncSession = Depends(get_db_session),
 ) -> User:
+    token = bearer_token or cookie_token or ""
     credentials_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid authentication credentials",

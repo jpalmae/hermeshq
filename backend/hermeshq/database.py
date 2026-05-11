@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncGenerator
 
 from sqlalchemy import inspect, text
@@ -6,9 +7,20 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from hermeshq.config import get_settings
 from hermeshq.models.base import Base
 
+logger = logging.getLogger(__name__)
+
 settings = get_settings()
 
-engine = create_async_engine(settings.database_url, future=True, echo=False)
+engine = create_async_engine(
+    settings.database_url,
+    future=True,
+    echo=False,
+    pool_size=10,
+    max_overflow=20,
+    pool_timeout=30,
+    pool_recycle=1800,
+    pool_pre_ping=True,
+)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
@@ -17,10 +29,42 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+async def _run_alembic_migrations() -> None:
+    """Run Alembic migrations if available. Returns True on success."""
+    try:
+        from alembic import command as alembic_command
+        from alembic.config import Config as AlembicConfig
+
+        alembic_cfg = AlembicConfig("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
+
+        def _run_upgrade() -> None:
+            alembic_command.upgrade(alembic_cfg, "head")
+
+        import asyncio
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _run_upgrade)
+        logger.info("Alembic migrations applied successfully")
+    except Exception:
+        logger.warning("Alembic migrations not available, falling back to legacy schema updates", exc_info=True)
+
+
 async def init_database() -> None:
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-        await connection.run_sync(_run_schema_updates)
+    # Try Alembic first; fall back to legacy schema bootstrap
+    alembic_ok = False
+    try:
+        from pathlib import Path
+        alembic_ini = Path("alembic.ini")
+        if alembic_ini.exists():
+            await _run_alembic_migrations()
+            alembic_ok = True
+    except Exception:
+        logger.warning("Alembic not available, using legacy schema bootstrap")
+
+    if not alembic_ok:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+            await connection.run_sync(_run_schema_updates)
 
 
 def _run_schema_updates(sync_connection) -> None:
@@ -264,6 +308,34 @@ def _run_schema_updates(sync_connection) -> None:
         sync_connection.execute(text("CREATE INDEX ix_integration_drafts_slug ON integration_drafts(slug)"))
         sync_connection.execute(text("CREATE INDEX ix_integration_drafts_template ON integration_drafts(template)"))
         sync_connection.execute(text("CREATE INDEX ix_integration_drafts_status ON integration_drafts(status)"))
+    if not inspector.has_table("mcp_access_tokens"):
+        sync_connection.execute(
+            text(
+                """
+                CREATE TABLE mcp_access_tokens (
+                    id VARCHAR(36) PRIMARY KEY,
+                    name VARCHAR(128) NOT NULL,
+                    description TEXT NULL,
+                    client_name VARCHAR(128) NULL,
+                    token_prefix VARCHAR(24) NOT NULL,
+                    token_hash VARCHAR(128) NOT NULL UNIQUE,
+                    created_by_user_id VARCHAR(36) NULL REFERENCES users(id) ON DELETE SET NULL,
+                    allowed_agent_ids JSON NOT NULL DEFAULT '[]'::json,
+                    scopes JSON NOT NULL DEFAULT '[]'::json,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    expires_at TIMESTAMP WITH TIME ZONE NULL,
+                    last_used_at TIMESTAMP WITH TIME ZONE NULL,
+                    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        sync_connection.execute(text("CREATE INDEX ix_mcp_access_tokens_name ON mcp_access_tokens(name)"))
+        sync_connection.execute(text("CREATE INDEX ix_mcp_access_tokens_token_prefix ON mcp_access_tokens(token_prefix)"))
+        sync_connection.execute(text("CREATE INDEX ix_mcp_access_tokens_created_by_user_id ON mcp_access_tokens(created_by_user_id)"))
+        sync_connection.execute(text("CREATE INDEX ix_mcp_access_tokens_is_active ON mcp_access_tokens(is_active)"))
+        sync_connection.execute(text("CREATE INDEX ix_mcp_access_tokens_expires_at ON mcp_access_tokens(expires_at)"))
     task_columns = {column["name"] for column in inspector.get_columns("tasks")}
     if "board_column" not in task_columns:
         sync_connection.execute(text("ALTER TABLE tasks ADD COLUMN board_column VARCHAR(32)"))

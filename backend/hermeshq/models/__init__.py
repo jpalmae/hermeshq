@@ -8,6 +8,7 @@ from hermeshq.models.hermes_version import HermesVersion
 from hermeshq.models.integration_draft import IntegrationDraft
 from hermeshq.models.message import AgentMessage
 from hermeshq.models.messaging_channel import MessagingChannel
+from hermeshq.models.mcp_access import McpAccessToken
 from hermeshq.models.node import Node
 from hermeshq.models.provider import ProviderDefinition
 from hermeshq.models.scheduled_task import ScheduledTask
@@ -29,6 +30,7 @@ __all__ = [
     "HermesVersion",
     "IntegrationDraft",
     "MessagingChannel",
+    "McpAccessToken",
     "Node",
     "ProviderDefinition",
     "ScheduledTask",

@@ -11,11 +11,16 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - hermeshq_postgres:/var/lib/postgresql/data
-    restart: always
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - internal
 
   backend:
     build:
@@ -56,7 +61,22 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
-    restart: always
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - internal
+      - default
 
   frontend:
     build:
@@ -69,8 +89,20 @@ services:
       - backend
     ports:
       - "${FRONTEND_PORT:-3420}:80"
-    restart: always
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - default
 
 volumes:
   hermeshq_postgres:
   hermeshq_workspaces:
+
+networks:
+  internal:
+    internal: true
+  default:

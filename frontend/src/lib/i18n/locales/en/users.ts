@@ -1,0 +1,26 @@
+const ns: Record<string, string> = {
+  "users.users": "Users",
+  "users.createOperator": "Create operator",
+  "users.createCopy": "Admins can create instance users and pre-assign the agents they are allowed to manage.",
+  "users.displayName": "Display name",
+  "users.role": "Role",
+  "users.assignedAgents": "Assigned agents",
+  "users.activeAccount": "Active account",
+  "users.create": "Create user",
+  "users.created": "User created.",
+  "users.directory": "Directory",
+  "users.accessRegistry": "Access registry",
+  "users.accounts": "{count} accounts",
+  "users.saveDisplayName": "Save display name",
+  "users.displayNameUpdated": "Display name updated.",
+  "users.icon": "Operator icon",
+  "users.uploadIcon": "Upload icon",
+  "users.removeIcon": "Remove icon",
+  "users.deleteUser": "Delete user",
+  "users.deleteConfirm": "Delete user \"{username}\"?",
+  "users.passwordHint": "Minimum 8 characters / 1 uppercase / 1 number / 1 special",
+  "users.adminOnly": "User management is restricted to admins. Standard users can only operate agents assigned to them.",
+  "users.save": "Save",
+};
+
+export default ns;

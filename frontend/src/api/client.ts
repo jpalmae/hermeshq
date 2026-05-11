@@ -8,6 +8,7 @@ const baseURL = resolveApiBase();
 
 export const apiClient = axios.create({
   baseURL,
+  timeout: 30_000, // 30 second timeout for all requests
 });
 
 apiClient.interceptors.request.use((config) => {
@@ -15,6 +16,8 @@ apiClient.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // Include cookies (for httpOnly auth cookie support)
+  config.withCredentials = true;
   return config;
 });
 

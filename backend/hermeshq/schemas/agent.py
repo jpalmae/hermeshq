@@ -127,3 +127,54 @@ class AgentBulkOperationResult(ORMModel):
     submitted_agent_ids: list[str]
     skipped_agents: list[AgentBulkOperationSkipped]
     task_ids: list[str] = Field(default_factory=list)
+
+
+class AgentModeUpdate(BaseModel):
+    """Payload for setting an agent's run mode."""
+
+    mode: str = Field(
+        ...,
+        description="The run mode for the agent. Must be one of: headless, interactive, hybrid",
+    )
+
+
+class AgentTemplateOverrides(BaseModel):
+    """Optional overrides applied when creating an agent from a template.
+
+    All fields default to ``None`` so the body can be empty (``{}``) and the
+    template config is used as-is.  Any provided values override the
+    corresponding template fields.
+    """
+
+    node_id: str | None = None
+    name: str | None = None
+    friendly_name: str | None = None
+    slug: str | None = None
+    description: str | None = None
+    run_mode: str | None = None
+    runtime_profile: str | None = None
+    hermes_version: str | None = None
+    approval_mode: str | None = None
+    tool_progress_mode: str | None = None
+    gateway_notifications_mode: str | None = None
+    model: str | None = None
+    provider: str | None = None
+    api_key_ref: str | None = None
+    base_url: str | None = None
+    system_prompt: str | None = None
+    soul_md: str | None = None
+    enabled_toolsets: list[str] | None = None
+    disabled_toolsets: list[str] | None = None
+    skills: list[str] | None = None
+    integration_configs: dict[str, dict] | None = None
+    team_tags: list[str] | None = None
+    supervisor_agent_id: str | None = None
+
+
+class WorkspaceFileWrite(BaseModel):
+    """Payload for writing content to an agent workspace file."""
+
+    content: str = Field(
+        default="",
+        description="The file content to write",
+    )
