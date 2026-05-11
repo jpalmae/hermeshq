@@ -129,7 +129,10 @@ class PTYManager:
         )
 
     async def attach(self, session: PTYSession, websocket: WebSocket) -> None:
-        await websocket.accept()
+        # Defensive: only accept if not already in CONNECTED state.
+        # Starlette/uvicorn may auto-accept in some error-handling paths.
+        if websocket.client_state.name != "CONNECTED":
+            await websocket.accept()
         session.connections.add(websocket)
         await websocket.send_json(
             {"type": "connected", "cols": session.cols, "rows": session.rows, "mode": session.mode}
