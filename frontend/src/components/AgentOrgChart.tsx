@@ -175,15 +175,18 @@ export function AgentOrgChart({
   );
 
   useEffect(() => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
+    const timer = window.setTimeout(() => {
+      window.localStorage.setItem(
+        STORAGE_KEY,
         JSON.stringify({
           positions: mergedPositions,
           height,
           zoom,
           nodeScale,
         }),
-    );
+      );
+    }, 300);
+    return () => window.clearTimeout(timer);
   }, [mergedPositions, height, zoom, nodeScale]);
 
   useEffect(() => {

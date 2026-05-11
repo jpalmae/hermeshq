@@ -26,7 +26,7 @@ WORKDIR /app
 COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --prefix=/install -r /app/requirements.txt \
     && pip install --no-cache-dir --prefix=/install \
-       git+https://github.com/NousResearch/hermes-agent.git
+       git+https://github.com/NousResearch/hermes-agent.git@v2026.5.7
 
 # --- Node.js dependencies (whatsapp-bridge) ---
 RUN mkdir -p /app/hermeshq/assets/whatsapp-bridge

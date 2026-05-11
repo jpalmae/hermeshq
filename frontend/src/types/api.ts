@@ -6,7 +6,7 @@ export interface User {
   username: string;
   email: string | null;
   display_name: string;
-  auth_source: "local" | "oidc" | string;
+  auth_source: "local" | "oidc";
   role: "admin" | "user";
   is_active: boolean;
   theme_preference: "default" | "dark" | "light" | "system" | "enterprise" | "sixmanager" | "sixmanager-light";
@@ -23,7 +23,7 @@ export interface AuthProvider {
 }
 
 export interface AuthProvidersResponse {
-  auth_mode: "local" | "hybrid" | "oidc" | string;
+  auth_mode: "local" | "hybrid" | "oidc";
   local_login_enabled: boolean;
   oidc_enabled: boolean;
   providers: AuthProvider[];

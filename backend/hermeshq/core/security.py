@@ -16,7 +16,7 @@ from hermeshq.models.agent_assignment import AgentAssignment
 from hermeshq.models.user import User
 
 settings = get_settings()
-pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+pwd_context = CryptContext(schemes=["argon2", "pbkdf2_sha256"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 ROLE_ADMIN = "admin"
 ROLE_USER = "user"

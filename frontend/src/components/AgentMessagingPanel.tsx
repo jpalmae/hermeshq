@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 
 import {
@@ -188,6 +188,8 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
   const startChannel = useMessagingChannelAction("start");
   const stopChannel = useMessagingChannelAction("stop");
   const [submitErrors, setSubmitErrors] = useState<Record<string, string | null>>({});
+  const telegramDirtyRef = useRef(false);
+  const whatsappDirtyRef = useRef(false);
   const [telegramForm, setTelegramForm] = useState<ChannelFormState>(defaultFormState);
   const [whatsappForm, setWhatsappForm] = useState<ChannelFormState>(defaultFormState);
   const [selectedPlatform, setSelectedPlatform] = useState<"telegram" | "whatsapp">("telegram");
@@ -198,7 +200,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
 
   // Sync form state from server data
   useEffect(() => {
-    if (!telegram) {
+    if (!telegram || telegramDirtyRef.current) {
       return;
     }
     setTelegramForm({
@@ -215,7 +217,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
   }, [telegram]);
 
   useEffect(() => {
-    if (!whatsapp) {
+    if (!whatsapp || whatsappDirtyRef.current) {
       return;
     }
     setWhatsappForm({
@@ -281,6 +283,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
           unauthorized_dm_behavior: telegramForm.unauthorized_dm_behavior,
         },
       });
+      telegramDirtyRef.current = false;
     } catch (error) {
       setSubmitErrors((current) => ({
         ...current,
@@ -307,6 +310,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
           },
         },
       });
+      whatsappDirtyRef.current = false;
     } catch (error) {
       setSubmitErrors((current) => ({
         ...current,
@@ -359,7 +363,9 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
   const activeConfig = { ...PLATFORM_CONFIGS[selectedPlatform] };
   activeConfig.copy = isActive ? t("agent.telegramCopy") : t("agent.whatsappCopy");
   const activeForm = isActive ? telegramForm : whatsappForm;
-  const activeSetForm = isActive ? setTelegramForm : setWhatsappForm;
+  const activeSetForm = isActive 
+    ? (update: React.SetStateAction<ChannelFormState>) => { telegramDirtyRef.current = true; setTelegramForm(update); }
+    : (update: React.SetStateAction<ChannelFormState>) => { whatsappDirtyRef.current = true; setWhatsappForm(update); };
   const activeRuntime = isActive ? telegramRuntime : whatsappRuntime;
   const activeStatus = isActive ? telegramStatus : whatsappStatus;
   const activeLogs = isActive ? telegramLogs : whatsappLogs;
