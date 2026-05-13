@@ -509,22 +509,52 @@ async def oidc_login(request: Request, provider: str | None = None, db: AsyncSes
 
 
 @router.get("/oidc/logout", include_in_schema=False)
-async def oidc_logout(request: Request) -> RedirectResponse:
+async def oidc_logout(
+    request: Request,
+    provider: str | None = None,
+    db: AsyncSession = Depends(get_db_session),
+) -> RedirectResponse:
+    # Clear auth cookie
+    resp_kwargs = {"auth_error": None}
+
+    # --- DB-provider social logout ---
+    if provider:
+        try:
+            from hermeshq.services import oidc_provider as oidc_svc
+            db_provider = await oidc_svc.get_provider_by_slug(db, provider)
+            if db_provider:
+                social_url = oidc_svc.get_logout_url(db_provider, _build_oidc_post_logout_redirect_uri(request))
+                if social_url:
+                    redirect = RedirectResponse(url=social_url, status_code=status.HTTP_302_FOUND)
+                    _clear_auth_cookie(redirect)
+                    return redirect
+        except Exception:
+            pass
+
+    # --- Legacy env-based logout ---
     if not _oidc_enabled():
-        return RedirectResponse(_build_frontend_redirect(request), status_code=status.HTTP_302_FOUND)
+        redirect = RedirectResponse(_build_frontend_redirect(request, **resp_kwargs), status_code=status.HTTP_302_FOUND)
+        _clear_auth_cookie(redirect)
+        return redirect
     try:
         discovery = await _fetch_oidc_discovery()
         end_session_endpoint = _translate_oidc_browser_endpoint(discovery.get("end_session_endpoint"))
         if not end_session_endpoint:
-            return RedirectResponse(_build_frontend_redirect(request), status_code=status.HTTP_302_FOUND)
+            redirect = RedirectResponse(_build_frontend_redirect(request, **resp_kwargs), status_code=status.HTTP_302_FOUND)
+            _clear_auth_cookie(redirect)
+            return redirect
         params = urlencode(
             {
                 "post_logout_redirect_uri": _build_oidc_post_logout_redirect_uri(request),
             }
         )
-        return RedirectResponse(url=f"{end_session_endpoint}?{params}", status_code=status.HTTP_302_FOUND)
+        redirect = RedirectResponse(url=f"{end_session_endpoint}?{params}", status_code=status.HTTP_302_FOUND)
+        _clear_auth_cookie(redirect)
+        return redirect
     except Exception:  # noqa: BLE001
-        return RedirectResponse(_build_frontend_redirect(request), status_code=status.HTTP_302_FOUND)
+        redirect = RedirectResponse(_build_frontend_redirect(request, **resp_kwargs), status_code=status.HTTP_302_FOUND)
+        _clear_auth_cookie(redirect)
+        return redirect
 
 
 @router.get("/oidc/callback", name="oidc_callback", include_in_schema=False)

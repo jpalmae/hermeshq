@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 2026-05-13
+
+### Added
+- **Multi-Provider OIDC Authentication** — Direct Google and Microsoft 365 login without Authentik
+  - New `oidc_providers` database table for dynamic provider management
+  - Admin UI: Settings → Authentication tab to configure providers (client_id, secret, discovery URL)
+  - Google and Microsoft preset buttons for quick setup
+  - Provider-specific OIDC state (CSRF protection per provider)
+  - Social logout: Google/Microsoft sessions properly terminated on HermesHQ logout
+  - Auto-provision users from OIDC claims with configurable allowed domains
+  - Backward compatible: existing Authentik/env-based flow still works
+- **OIDC Admin API** — CRUD endpoints at `/api/oidc-providers` (admin only)
+- **Authentication tab in Settings** — Manage OIDC providers from the UI
+
+### Changed
+- Login page always shows Google and Microsoft buttons (enterprise appearance)
+- OIDC state token now includes provider slug for cross-provider CSRF protection
+- `oidc_logout` endpoint accepts `?provider=` parameter for social logout
+- `auth/providers` endpoint now includes DB-configured providers alongside env providers
+
+### Security
+- Provider-specific state validation prevents cross-provider CSRF attacks
+- OIDC admin endpoints require admin role
+- Client secrets stored encrypted in database
+
 ## 2026-05-11
 
 ### Added
