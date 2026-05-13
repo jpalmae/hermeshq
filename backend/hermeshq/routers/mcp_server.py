@@ -434,7 +434,7 @@ async def _read_resource(db: AsyncSession, access: McpAccessToken, uri: str) -> 
     if m:
         return await _read_agent_activity(db, access, m.group(1))
 
-    return {"contents": [{"uri": uri, "text": f"Unknown resource: {uri}"}]}
+    raise ValueError(f"Unknown resource URI: {uri}")
 
 
 async def _read_agent_config(db: AsyncSession, access: McpAccessToken, agent_id: str) -> dict:
