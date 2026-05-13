@@ -132,6 +132,7 @@ export interface Agent {
   archived_at: string | null;
   archive_reason: string | null;
   supervisor_agent_id: string | null;
+  mcp_servers?: Array<{ name?: string; url?: string; tools?: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }> }>;
   total_tasks: number;
   total_tokens_used: number;
   last_activity: string | null;

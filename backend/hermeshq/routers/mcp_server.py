@@ -224,6 +224,10 @@ async def _call_tool(
     if name == "get_agent_task":
         return await _handle_get_agent_task(db, access, arguments)
 
+    # Per-agent MCP tools (agent__{slug}__{tool_name})
+    if name.startswith("agent__"):
+        return await _handle_per_agent_tool(db, access, name, arguments)
+
     return _tool_text_result(f"Unknown tool: {name}", {"error": "unknown_tool", "tool": name})
 
 
@@ -364,8 +368,302 @@ async def _handle_get_agent_task(db: AsyncSession, access: McpAccessToken, argum
     return _tool_text_result(task.response or task.error_message or f"Task status: {task.status}", payload)
 
 # ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+
+async def _list_resources(db: AsyncSession, access: McpAccessToken) -> list[dict]:
+    """Return static resources available to this token."""
+    agents, _ = await _list_allowed_agents(db, access)
+    resources: list[dict] = []
+    for agent in agents:
+        label = _agent_label(agent)
+        resources.append({
+            "uri": f"hermeshq://agent/{agent.id}/config",
+            "name": f"{label} — Configuration",
+            "description": f"Runtime configuration for agent {label}.",
+            "mimeType": "application/json",
+        })
+        resources.append({
+            "uri": f"hermeshq://agent/{agent.id}/recent-tasks",
+            "name": f"{label} — Recent Tasks",
+            "description": f"Last 20 tasks for agent {label}.",
+            "mimeType": "application/json",
+        })
+    return resources
+
+
+async def _list_resource_templates(db: AsyncSession, access: McpAccessToken) -> list[dict]:
+    """Return parameterised resource templates."""
+    return [
+        {
+            "uriTemplate": "hermeshq://task/{taskId}",
+            "name": "Task by ID",
+            "description": "Read a specific task's status, response and metadata.",
+            "mimeType": "application/json",
+        },
+        {
+            "uriTemplate": "hermeshq://agent/{agentId}/activity",
+            "name": "Agent Activity Log",
+            "description": "Recent activity log entries for an agent.",
+            "mimeType": "application/json",
+        },
+    ]
+
+
+async def _read_resource(db: AsyncSession, access: McpAccessToken, uri: str) -> dict:
+    """Dispatch a resource read by URI pattern."""
+    import re as _re
+
+    # Static: agent config
+    m = _re.match(r"^hermeshq://agent/([^/]+)/config$", uri)
+    if m:
+        return await _read_agent_config(db, access, m.group(1))
+
+    # Static: agent recent tasks
+    m = _re.match(r"^hermeshq://agent/([^/]+)/recent-tasks$", uri)
+    if m:
+        return await _read_agent_recent_tasks(db, access, m.group(1))
+
+    # Template: task by id
+    m = _re.match(r"^hermeshq://task/([^/]+)$", uri)
+    if m:
+        return await _read_task_resource(db, access, m.group(1))
+
+    # Template: agent activity
+    m = _re.match(r"^hermeshq://agent/([^/]+)/activity$", uri)
+    if m:
+        return await _read_agent_activity(db, access, m.group(1))
+
+    return {"contents": [{"uri": uri, "text": f"Unknown resource: {uri}"}]}
+
+
+async def _read_agent_config(db: AsyncSession, access: McpAccessToken, agent_id: str) -> dict:
+    ensure_mcp_agent_allowed(access, agent_id)
+    agent = await db.get(Agent, agent_id)
+    if not agent or agent.is_archived:
+        return {"contents": [{"uri": f"hermeshq://agent/{agent_id}/config", "text": "Agent not found."}]}
+    config = {
+        "id": agent.id, "slug": agent.slug, "name": _agent_label(agent),
+        "description": agent.description, "status": agent.status,
+        "runtime_profile": agent.runtime_profile,
+        "can_receive_tasks": agent.can_receive_tasks,
+        "mcp_servers": agent.mcp_servers or [],
+    }
+    return {"contents": [{"uri": f"hermeshq://agent/{agent_id}/config", "mimeType": "application/json", "text": json.dumps(config, default=str)}]}
+
+
+async def _read_agent_recent_tasks(db: AsyncSession, access: McpAccessToken, agent_id: str) -> dict:
+    ensure_mcp_agent_allowed(access, agent_id)
+    rows = (await db.execute(
+        select(Task).where(Task.agent_id == agent_id).order_by(Task.queued_at.desc()).limit(20)
+    )).scalars().all()
+    tasks = [
+        {"id": t.id, "title": t.title, "status": t.status, "response": t.response,
+         "queued_at": t.queued_at.isoformat() if t.queued_at else None,
+         "completed_at": t.completed_at.isoformat() if t.completed_at else None}
+        for t in rows
+    ]
+    return {"contents": [{"uri": f"hermeshq://agent/{agent_id}/recent-tasks", "mimeType": "application/json", "text": json.dumps(tasks, default=str)}]}
+
+
+async def _read_task_resource(db: AsyncSession, access: McpAccessToken, task_id: str) -> dict:
+    task = await db.get(Task, task_id)
+    if not task:
+        return {"contents": [{"uri": f"hermeshq://task/{task_id}", "text": "Task not found."}]}
+    ensure_mcp_agent_allowed(access, task.agent_id)
+    data = {
+        "id": task.id, "agent_id": task.agent_id, "title": task.title,
+        "status": task.status, "prompt": task.prompt, "response": task.response,
+        "error_message": task.error_message, "priority": task.priority,
+        "iterations": task.iterations, "tokens_used": task.tokens_used,
+        "queued_at": task.queued_at.isoformat() if task.queued_at else None,
+        "started_at": task.started_at.isoformat() if task.started_at else None,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+    }
+    return {"contents": [{"uri": f"hermeshq://task/{task_id}", "mimeType": "application/json", "text": json.dumps(data, default=str)}]}
+
+
+async def _read_agent_activity(db: AsyncSession, access: McpAccessToken, agent_id: str) -> dict:
+    ensure_mcp_agent_allowed(access, agent_id)
+    rows = (await db.execute(
+        select(ActivityLog).where(ActivityLog.agent_id == agent_id).order_by(ActivityLog.created_at.desc()).limit(50)
+    )).scalars().all()
+    logs = [
+        {"event_type": r.event_type, "severity": r.severity, "message": r.message,
+         "created_at": r.created_at.isoformat() if r.created_at else None, "details": r.details}
+        for r in rows
+    ]
+    return {"contents": [{"uri": f"hermeshq://agent/{agent_id}/activity", "mimeType": "application/json", "text": json.dumps(logs, default=str)}]}
+
+# ---------------------------------------------------------------------------
+# Prompts
+# ---------------------------------------------------------------------------
+
+_BUILTIN_PROMPTS: list[dict] = [
+    {
+        "name": "summarize_agent",
+        "description": "Summarize an agent's current state and recent activity.",
+        "arguments": [
+            {"name": "agent_id", "description": "The HermesHQ agent ID.", "required": True},
+        ],
+    },
+    {
+        "name": "debug_task_failure",
+        "description": "Analyze a failed task and suggest remediation steps.",
+        "arguments": [
+            {"name": "task_id", "description": "The failed task ID.", "required": True},
+        ],
+    },
+    {
+        "name": "invoke_with_context",
+        "description": "Invoke an agent with additional context from recent tasks and activity.",
+        "arguments": [
+            {"name": "agent_id", "description": "The HermesHQ agent ID.", "required": True},
+            {"name": "prompt", "description": "The instruction to send.", "required": True},
+        ],
+    },
+]
+
+
+async def _list_prompts(db: AsyncSession, access: McpAccessToken) -> list[dict]:
+    agents, _ = await _list_allowed_agents(db, access)
+    prompts = list(_BUILTIN_PROMPTS)
+    for agent in agents:
+        label = _agent_label(agent)
+        prompts.append({
+            "name": f"chat_{agent.slug or agent.id[:8]}",
+            "description": f"Start a focused conversation with {label}.",
+            "arguments": [
+                {"name": "message", "description": "The message to send.", "required": True},
+            ],
+        })
+    return prompts
+
+
+async def _get_prompt(db: AsyncSession, access: McpAccessToken, name: str, arguments: dict) -> dict:
+    if name == "summarize_agent":
+        agent_id = str(arguments.get("agent_id") or "")
+        ensure_mcp_agent_allowed(access, agent_id)
+        agent = await db.get(Agent, agent_id)
+        label = _agent_label(agent) if agent else agent_id
+        return {"description": f"Summary of {label}", "messages": [
+            {"role": "user", "content": {"type": "text", "text": (
+                f"Please summarize the current state of the HermesHQ agent '{label}' (id: {agent_id}). "
+                f"Include its status, runtime profile, and any recent task outcomes. "
+                f"Use the list_agents and get_agent_task tools to gather information."
+            )}},
+        ]}
+
+    if name == "debug_task_failure":
+        task_id = str(arguments.get("task_id") or "")
+        return {"description": f"Debug task {task_id}", "messages": [
+            {"role": "user", "content": {"type": "text", "text": (
+                f"Analyze the failed HermesHQ task {task_id}. "
+                f"1) Read the task details with get_agent_task. "
+                f"2) Identify the error and root cause. "
+                f"3) Suggest specific remediation steps."
+            )}},
+        ]}
+
+    if name == "invoke_with_context":
+        agent_id = str(arguments.get("agent_id") or "")
+        prompt = str(arguments.get("prompt") or "")
+        ensure_mcp_agent_allowed(access, agent_id)
+        return {"description": f"Invoke with context", "messages": [
+            {"role": "user", "content": {"type": "text", "text": (
+                f"Gather context about HermesHQ agent {agent_id} using the available resources and tools, "
+                f"then invoke the agent with the following instruction:\n\n{prompt}"
+            )}},
+        ]}
+
+    # Dynamic per-agent chat prompt
+    if name.startswith("chat_"):
+        message = str(arguments.get("message") or "")
+        return {"description": f"Chat prompt", "messages": [
+            {"role": "user", "content": {"type": "text", "text": message}},
+        ]}
+
+    return {"description": "Unknown prompt", "messages": [
+        {"role": "user", "content": {"type": "text", "text": f"Unknown prompt: {name}"}},
+    ]}
+
+# ---------------------------------------------------------------------------
+# Per-Agent MCP — dynamic tools from agent.mcp_servers
+# ---------------------------------------------------------------------------
+
+async def _per_agent_tools(db: AsyncSession, access: McpAccessToken) -> list[dict]:
+    """Generate MCP tool definitions from each agent's ``mcp_servers`` config."""
+    agents, _ = await _list_allowed_agents(db, access)
+    tools: list[dict] = []
+    for agent in agents:
+        for srv in (agent.mcp_servers or []):
+            srv_name = srv.get("name") or srv.get("url", "unknown")
+            for tool_def in srv.get("tools", []):
+                tools.append({
+                    "name": f"agent__{agent.slug or agent.id[:8]}__{tool_def.get('name', srv_name)}",
+                    "description": tool_def.get("description", f"Tool from {srv_name} via {_agent_label(agent)}"),
+                    "inputSchema": tool_def.get("inputSchema", {"type": "object", "properties": {}}),
+                })
+    return tools
+
+# ---------------------------------------------------------------------------
 # POST /mcp  — JSON-RPC 2.0 handler
 # ---------------------------------------------------------------------------
+
+
+async def _handle_per_agent_tool(db: AsyncSession, access: McpAccessToken, name: str, arguments: dict) -> dict:
+    """Dispatch a per-agent MCP tool call. Pattern: ``agent__{slug}__{tool}``"""
+    parts = name.split("__", 2)
+    if len(parts) < 3:
+        return _tool_text_result(f"Invalid per-agent tool name: {name}", {"error": "invalid_tool"})
+    slug_or_prefix = parts[1]
+    tool_name = parts[2]
+
+    # Find agent by slug prefix
+    agents, _ = await _list_allowed_agents(db, access)
+    matched: Agent | None = None
+    for a in agents:
+        if (a.slug or a.id[:8]) == slug_or_prefix:
+            matched = a
+            break
+    if not matched:
+        return _tool_text_result(f"Agent not found for tool {name}", {"error": "agent_not_found"})
+
+    ensure_mcp_agent_allowed(access, matched.id)
+    ensure_mcp_scope(access, "agents:invoke")
+
+    # Find the tool definition in the agent's mcp_servers
+    for srv in (matched.mcp_servers or []):
+        for tdef in srv.get("tools", []):
+            if tdef.get("name") == tool_name:
+                # Build a prompt that instructs the agent to use this tool
+                tool_prompt = (
+                    f"[MCP Tool Call: {tool_name}]\n"
+                    f"Description: {tdef.get('description', 'N/A')}\n"
+                    f"Arguments: {json.dumps(arguments)}\n\n"
+                    f"Execute this tool on behalf of the external caller."
+                )
+                task = Task(
+                    agent_id=matched.id,
+                    title=f"MCP: {tool_name}",
+                    prompt=tool_prompt,
+                    priority=5,
+                    board_column="inbox",
+                    board_order=next_board_order(),
+                    status="queued",
+                )
+                db.add(task)
+                await db.commit()
+                await db.refresh(task)
+                return _tool_text_result(
+                    f"Tool '{tool_name}' dispatched to {_agent_label(matched)}.",
+                    {"task_id": task.id, "agent_id": matched.id, "status": "queued", "completed": False},
+                )
+
+    return _tool_text_result(f"Tool '{tool_name}' not found in agent's MCP servers.", {"error": "tool_not_found"})
+
+
+
 
 @router.post("/mcp")
 async def mcp_http_endpoint(
@@ -394,6 +692,8 @@ async def mcp_http_endpoint(
                 "serverInfo": {"name": "HermesHQ Enterprise MCP", "version": get_app_version()},
                 "capabilities": {
                     "tools": {},
+                    "resources": {},
+                    "prompts": {},
                     "streaming": {},
                 },
             }
@@ -402,8 +702,9 @@ async def mcp_http_endpoint(
 
         if method == "tools/list":
             ensure_mcp_scope(access, "agents:list")
+            per_agent = await _per_agent_tools(db, access)
             await db.commit()
-            return JSONResponse(_jsonrpc_result(request_id, {"tools": _tools_definition()}))
+            return JSONResponse(_jsonrpc_result(request_id, {"tools": _tools_definition() + per_agent}))
 
         if method == "tools/call":
             tool_name = str(params.get("name") or "")
@@ -411,8 +712,36 @@ async def mcp_http_endpoint(
             result = await _call_tool(request=request, db=db, access=access, name=tool_name, arguments=arguments)
             return JSONResponse(_jsonrpc_result(request_id, result))
 
-        await db.commit()
-        return JSONResponse(_jsonrpc_error(request_id, -32601, f"Method not found: {method}"))
+        # ── Resources ─────────────────────────────────────────────────────
+        if method == "resources/list":
+            ensure_mcp_scope(access, "agents:list")
+            resources = await _list_resources(db, access)
+            await db.commit()
+            return JSONResponse(_jsonrpc_result(request_id, {"resources": resources}))
+
+        if method == "resources/templates/list":
+            ensure_mcp_scope(access, "agents:list")
+            templates = await _list_resource_templates(db, access)
+            await db.commit()
+            return JSONResponse(_jsonrpc_result(request_id, {"resourceTemplates": templates}))
+
+        if method == "resources/read":
+            uri = str(params.get("uri") or "")
+            result = await _read_resource(db, access, uri)
+            return JSONResponse(_jsonrpc_result(request_id, result))
+
+        # ── Prompts ───────────────────────────────────────────────────────
+        if method == "prompts/list":
+            ensure_mcp_scope(access, "agents:list")
+            prompts = await _list_prompts(db, access)
+            await db.commit()
+            return JSONResponse(_jsonrpc_result(request_id, {"prompts": prompts}))
+
+        if method == "prompts/get":
+            prompt_name = str(params.get("name") or "")
+            arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+            result = await _get_prompt(db, access, prompt_name, arguments)
+            return JSONResponse(_jsonrpc_result(request_id, result))
 
     except Exception as exc:
         await db.rollback()

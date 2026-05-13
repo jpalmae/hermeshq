@@ -56,6 +56,7 @@ class AgentUpdate(BaseModel):
     team_tags: list[str] | None = None
     status: str | None = None
     supervisor_agent_id: str | None = None
+    mcp_servers: list[dict] | None = None
 
 
 class AgentRead(ORMModel):
@@ -93,6 +94,7 @@ class AgentRead(ORMModel):
     archived_at: datetime | None
     archive_reason: str | None
     supervisor_agent_id: str | None
+    mcp_servers: list[dict] | None = None
     total_tasks: int
     total_tokens_used: int
     last_activity: datetime | None
