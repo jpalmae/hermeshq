@@ -34,7 +34,6 @@
     color-mix(in srgb, var(--surface) 98%, transparent);
   --org-card-background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent), var(--surface-raised);
   --org-icon-background: rgba(255, 255, 255, 0.06);
-  --font-display: "Doto", "Space Mono", monospace;
 }
 
 :root[data-theme="light"] {
@@ -70,7 +69,6 @@
     color-mix(in srgb, var(--surface) 98%, rgba(255, 255, 255, 0.4));
   --org-card-background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.4)), var(--surface-raised);
   --org-icon-background: rgba(23, 20, 18, 0.06);
-  --font-display: "Doto", "Space Mono", monospace;
 }
 
 :root[data-theme="enterprise"] {
@@ -106,7 +104,6 @@
     color-mix(in srgb, var(--surface) 98%, transparent);
   --org-card-background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent), var(--surface-raised);
   --org-icon-background: rgba(99, 163, 255, 0.08);
-  --font-display: "Doto", "Space Mono", monospace;
 }
 
 :root[data-theme="enterprise"][data-brand-theme="sixmanager"] {
@@ -146,42 +143,37 @@
 }
 
 :root[data-theme="light"][data-brand-theme="sixmanager-light"] {
-  --black: #f5f7fa;
-  --surface: #fbfcfe;
+  --black: #edf4fb;
+  --surface: #f5faff;
   --surface-raised: #ffffff;
-  --border: rgba(37, 46, 90, 0.12);
-  --border-visible: rgba(37, 46, 90, 0.2);
-  --text-disabled: rgba(37, 46, 90, 0.46);
-  --text-secondary: rgba(37, 46, 90, 0.78);
-  --text-primary: #252e5a;
-  --text-display: #252e5a;
-  --accent: #4689c8;
-  --accent-subtle: rgba(70, 137, 200, 0.12);
+  --border: #cddbf0;
+  --border-visible: #a8bfde;
+  --text-disabled: #7f94b1;
+  --text-secondary: #556b87;
+  --text-primary: #18324d;
+  --text-display: #0d233a;
+  --accent: #2f7dff;
+  --accent-subtle: rgba(47, 125, 255, 0.12);
   --success: #2f8f6b;
   --warning: #bf841f;
-  --interactive: #252e5a;
-  --selection: rgba(70, 137, 200, 0.16);
-  --overlay: rgba(37, 46, 90, 0.12);
-  --contrast-muted: rgba(245, 247, 250, 0.82);
-  --brand-strong: #252e5a;
-  --brand-hover: #7fc4ff;
-  --brand-surface-tint: color-mix(in srgb, var(--accent) 8%, #ffffff);
+  --interactive: #2a6ff0;
+  --selection: rgba(47, 125, 255, 0.16);
+  --overlay: rgba(13, 35, 58, 0.14);
+  --contrast-muted: rgba(237, 244, 251, 0.8);
   --app-background:
-    radial-gradient(circle at top left, rgba(70, 137, 200, 0.14), transparent 22rem),
-    radial-gradient(circle at bottom right, rgba(70, 137, 200, 0.08), transparent 18rem),
-    linear-gradient(180deg, #eef3f9 0%, #f5f7fa 56%, #ffffff 100%);
-  --panel-background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(251, 252, 254, 0.96)),
-    var(--brand-surface-tint);
+    radial-gradient(circle at top right, rgba(47, 125, 255, 0.12), transparent 24rem),
+    radial-gradient(circle at bottom left, rgba(81, 175, 255, 0.1), transparent 20rem),
+    linear-gradient(180deg, #f7fbff 0%, #edf4fb 100%);
+  --panel-background: color-mix(in srgb, var(--surface) 94%, rgba(255, 255, 255, 0.78));
   --terminal-background:
-    radial-gradient(circle at top right, rgba(70, 137, 200, 0.12), transparent 18rem),
-    #f3f7fc;
+    radial-gradient(circle at top right, rgba(47, 125, 255, 0.08), transparent 18rem),
+    #f3f8fe;
   --org-grid:
-    linear-gradient(rgba(37, 46, 90, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(37, 46, 90, 0.05) 1px, transparent 1px),
+    linear-gradient(rgba(24, 50, 77, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(24, 50, 77, 0.05) 1px, transparent 1px),
     color-mix(in srgb, var(--surface) 98%, rgba(255, 255, 255, 0.5));
-  --org-card-background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(246, 249, 252, 0.94)), var(--surface-raised);
-  --org-icon-background: rgba(70, 137, 200, 0.1);
+  --org-card-background: linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.54)), var(--surface-raised);
+  --org-icon-background: rgba(47, 125, 255, 0.08);
   --font-display: "Space Grotesk", "DM Sans", system-ui, sans-serif;
   --font-sans: "Space Grotesk", "DM Sans", system-ui, sans-serif;
 }
@@ -318,6 +310,30 @@
     color: var(--text-secondary);
   }
 
+  .app-shell-sidebar .panel-label {
+    font-size: 0.7rem !important;
+    letter-spacing: 0.1em !important;
+  }
+
+  .app-shell-sidebar-toggle {
+    border-radius: 999px !important;
+    min-height: 0 !important;
+    height: 32px !important;
+    width: 32px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .app-shell-mobile-menu-btn {
+    border-radius: 0 !important;
+    min-height: 0 !important;
+    height: 36px !important;
+    width: 36px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
   :root[data-theme="enterprise"] .panel-label {
     color: color-mix(in srgb, var(--text-secondary) 92%, white 6%);
     font-size: 0.68rem;
@@ -433,21 +449,8 @@
     padding-bottom: 1.5rem;
   }
 
-  :root[data-theme="enterprise"] .app-shell-sidebar {
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 18%),
-      linear-gradient(180deg, rgba(79, 140, 255, 0.04), transparent 42%),
-      var(--panel-background);
-  }
-
-  :root[data-theme="enterprise"] .app-shell-brand {
-    border-bottom: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
-    padding-bottom: 1rem;
-  }
-
   :root[data-theme="enterprise"] .app-shell-nav-link {
     border-bottom-color: color-mix(in srgb, var(--border) 85%, transparent);
-    padding-inline: 0.4rem;
     transition:
       color 160ms ease-out,
       border-color 160ms ease-out,
@@ -461,18 +464,6 @@
     transform: translateX(2px);
   }
 
-  :root[data-theme="enterprise"] .app-shell-sidebar-toggle {
-    border-radius: 0.8rem;
-    min-width: 2.6rem;
-  }
-
-  :root[data-theme="enterprise"] .app-shell-operator {
-    border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent);
-    border-radius: 0.9rem;
-    padding: 0.7rem 0.85rem;
-  }
-
   :root[data-theme="enterprise"] .app-shell-main {
     padding-top: 0.15rem;
   }
@@ -483,6 +474,76 @@
       var(--panel-background);
   }
 
+  /* ─── Brand separator — todos los temas ─── */
+  .app-shell-brand {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 1rem;
+  }
+
+  /* ─── Sidebar — transparente en todos los temas ─── */
+  .app-shell-sidebar {
+    background: transparent;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-visible) transparent;
+  }
+
+  .app-shell-sidebar::-webkit-scrollbar {
+    width: 3px;
+  }
+
+  .app-shell-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .app-shell-sidebar::-webkit-scrollbar-thumb {
+    background: var(--border-visible);
+    border-radius: 999px;
+  }
+
+  .app-shell-sidebar::-webkit-scrollbar-thumb:hover {
+    background: var(--text-disabled);
+  }
+
+  /* ─── Operator card — sin estilos de tema en sidebar ─── */
+  .app-shell-sidebar .app-shell-operator {
+    border: none !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  /* ─── Selects del sidebar — estilo simple línea inferior en todos los temas ─── */
+  .app-shell-sidebar select {
+    border-radius: 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--border) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    background-image: none !important;
+    padding: 0 0 0.4rem !important;
+    appearance: auto !important;
+    font-family: var(--font-mono) !important;
+  }
+
+  /* ─── Botón sign out del sidebar — sin border-radius en todos los temas ─── */
+  .app-shell-sidebar .panel-button-secondary {
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* ─── Nav icons — blanco en temas oscuros, negro en temas claros ─── */
+  .app-shell-nav-icon {
+    filter: brightness(0) invert(1);
+    transition: filter 160ms ease, opacity 160ms ease;
+  }
+
+  :root[data-theme="light"] .app-shell-nav-icon {
+    filter: brightness(0);
+  }
+
+  /* ─── Dashboard ─── */
   :root[data-theme="enterprise"] .dashboard-page {
     gap: 1.5rem;
   }
@@ -529,10 +590,10 @@
     border-radius: 0.95rem;
     background: rgba(255, 255, 255, 0.015);
     padding: 0.9rem 1rem;
-  }
-
-  :root[data-theme="enterprise"] .dashboard-metric-stack {
-    grid-template-columns: 1fr !important;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
   }
 
   :root[data-theme="enterprise"] .dashboard-metric-chip {
@@ -540,6 +601,10 @@
     align-items: baseline;
     justify-content: space-between;
     gap: 1rem;
+  }
+
+  :root[data-theme="enterprise"] .dashboard-metric-stack {
+    grid-template-columns: 1fr !important;
   }
 
   :root[data-theme="enterprise"] .dashboard-feed-row,
@@ -801,8 +866,7 @@
 
   :root[data-theme="enterprise"] input[type="checkbox"]:checked {
     border-color: color-mix(in srgb, var(--interactive) 78%, white 8%);
-    background:
-      linear-gradient(180deg, #6ba2ff 0%, #4f8cff 100%);
+    background: linear-gradient(180deg, #6ba2ff 0%, #4f8cff 100%);
     box-shadow:
       0 0 0 3px color-mix(in srgb, var(--interactive) 16%, transparent),
       inset 0 1px 0 rgba(255, 255, 255, 0.14);
@@ -953,9 +1017,9 @@
 
   :root[data-theme="light"][data-brand-theme="sixmanager-light"] .login-page {
     background:
-      radial-gradient(circle at top left, rgba(70, 137, 200, 0.18), transparent 22rem),
-      radial-gradient(circle at bottom right, rgba(70, 137, 200, 0.1), transparent 18rem),
-      linear-gradient(180deg, #edf3fa 0%, #f5f7fa 58%, #ffffff 100%);
+      radial-gradient(circle at top right, rgba(47, 125, 255, 0.16), transparent 22rem),
+      radial-gradient(circle at bottom left, rgba(81, 175, 255, 0.12), transparent 18rem),
+      linear-gradient(180deg, #f8fbff 0%, #edf4fb 100%);
   }
 
   :root[data-theme="enterprise"] .login-hero {
@@ -973,7 +1037,6 @@
 
   :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .login-hero,
   :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .login-access-card,
-  :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .app-shell-sidebar,
   :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .settings-shell,
   :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .manual-sidebar {
     border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
@@ -984,16 +1047,15 @@
 
   :root[data-theme="light"][data-brand-theme="sixmanager-light"] .login-hero,
   :root[data-theme="light"][data-brand-theme="sixmanager-light"] .login-access-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .app-shell-sidebar,
   :root[data-theme="light"][data-brand-theme="sixmanager-light"] .settings-shell,
   :root[data-theme="light"][data-brand-theme="sixmanager-light"] .manual-sidebar {
-    border-color: color-mix(in srgb, var(--brand-strong) 12%, var(--border));
+    border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
     box-shadow:
-      0 18px 38px rgba(37, 46, 90, 0.1),
-      inset 0 1px 0 rgba(255, 255, 255, 0.62);
+      0 18px 38px rgba(27, 70, 119, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.55);
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 249, 252, 0.94)),
-      linear-gradient(180deg, rgba(70, 137, 200, 0.06), transparent 65%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.58)),
+      linear-gradient(180deg, rgba(47, 125, 255, 0.06), transparent 65%),
       color-mix(in srgb, var(--surface) 95%, rgba(255, 255, 255, 0.7));
     backdrop-filter: blur(14px);
   }
@@ -1018,7 +1080,7 @@
   :root[data-theme="light"][data-brand-theme="sixmanager-light"] .login-hero::after,
   :root[data-theme="light"][data-brand-theme="sixmanager-light"] .settings-shell::after {
     background:
-      radial-gradient(circle at top right, rgba(70, 137, 200, 0.2), transparent 30%),
+      radial-gradient(circle at top right, rgba(47, 125, 255, 0.18), transparent 30%),
       linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.22));
   }
 
@@ -1029,9 +1091,8 @@
 
   :root[data-theme="light"][data-brand-theme="sixmanager-light"] .panel-button-primary,
   :root[data-theme="light"][data-brand-theme="sixmanager-light"] input[type="checkbox"]:checked {
-    background: linear-gradient(180deg, #314576 0%, #4689c8 100%);
-    color: #f5f7fa;
-    box-shadow: 0 12px 26px rgba(70, 137, 200, 0.16);
+    background: linear-gradient(135deg, #3e88ff 0%, #2f7dff 52%, #4bb6ff 100%);
+    color: #f8fbff;
   }
 
   :root[data-theme="enterprise"][data-brand-theme="sixmanager"] .app-shell-nav-link:hover,
@@ -1044,148 +1105,8 @@
   :root[data-theme="light"][data-brand-theme="sixmanager-light"] .app-shell-nav-link:hover,
   :root[data-theme="light"][data-brand-theme="sixmanager-light"] .settings-tab-button.is-active,
   :root[data-theme="light"][data-brand-theme="sixmanager-light"] .manual-sidebar-link:hover {
-    border-color: color-mix(in srgb, var(--brand-strong) 16%, var(--border));
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    color: var(--brand-strong);
-  }
-
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .panel-frame,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .dashboard-readout-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .dashboard-feed-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .dashboard-map-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .dashboard-fleet-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .dashboard-activity-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .tasks-composer,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .tasks-board,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .agent-hero,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .agent-config,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .agent-section,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .agent-integration-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .comms-router-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .comms-routing-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .comms-topology-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .comms-history-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .users-create-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .users-directory-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .nodes-page,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .account-profile-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .account-security-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .manual-quickstart,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .manual-section,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .manual-image {
-    border-color: var(--border);
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 249, 252, 0.94)),
-      linear-gradient(180deg, rgba(70, 137, 200, 0.04), transparent 24%),
-      var(--panel-background);
-    box-shadow:
-      0 12px 28px rgba(37, 46, 90, 0.08),
-      inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  }
-
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .dashboard-metric-chip,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .dashboard-readout-cell,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .agent-hero-metric,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .users-role-pill,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .nodes-status-pill,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .account-role-pill,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .dashboard-status-badge,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .dashboard-agent-status,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .agent-status-pill,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .tasks-card-badge,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .agent-capability-badge {
-    border-color: color-mix(in srgb, var(--brand-strong) 12%, var(--border));
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(237, 243, 250, 0.94)),
-      color-mix(in srgb, var(--accent) 7%, white);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
-    color: var(--brand-strong);
-  }
-
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .dashboard-glance-pill,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .dashboard-agent-chip {
-    border-color: color-mix(in srgb, var(--brand-strong) 12%, var(--border));
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(237, 243, 250, 0.9)),
-      color-mix(in srgb, var(--accent) 6%, white);
-    color: var(--brand-strong);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
-  }
-
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .tasks-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .comms-node-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .comms-edge-card,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .agents-bulk-bar {
-    border-color: color-mix(in srgb, var(--brand-strong) 12%, var(--border));
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 249, 252, 0.95)),
-      color-mix(in srgb, var(--accent) 5%, white);
-    box-shadow:
-      0 12px 28px rgba(37, 46, 90, 0.08),
-      inset 0 1px 0 rgba(255, 255, 255, 0.68);
-  }
-
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .users-row:hover,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .nodes-row:hover,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .dashboard-agent-row:hover,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .agents-row:hover {
-    background: color-mix(in srgb, var(--accent) 6%, white);
-  }
-
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .agents-row.is-selected {
-    border-color: color-mix(in srgb, var(--brand-strong) 18%, var(--border-visible));
-    background:
-      linear-gradient(90deg, rgba(70, 137, 200, 0.18), rgba(70, 137, 200, 0.05) 24%, transparent 60%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 249, 252, 0.94));
-    box-shadow:
-      0 12px 24px rgba(37, 46, 90, 0.08),
-      inset 3px 0 0 var(--accent);
-  }
-
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .settings-tab-button.is-active {
-    box-shadow:
-      0 12px 24px rgba(37, 46, 90, 0.08),
-      inset 0 1px 0 rgba(255, 255, 255, 0.66);
-  }
-
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .panel-button-secondary,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .login-provider-button {
-    border-color: color-mix(in srgb, var(--brand-strong) 12%, var(--border));
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(246, 249, 252, 0.88)),
-      color-mix(in srgb, var(--accent) 4%, white);
-    color: var(--brand-strong);
-  }
-
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .panel-button-secondary:hover,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .login-provider-button:hover:not(:disabled) {
-    border-color: color-mix(in srgb, var(--accent) 44%, var(--border-visible));
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(237, 243, 250, 0.94)),
-      color-mix(in srgb, var(--accent) 8%, white);
-  }
-
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .panel-field input,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .panel-field textarea,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] .panel-field select,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] input,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] textarea,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] select {
-    border-color: color-mix(in srgb, var(--brand-strong) 10%, var(--border));
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(246, 249, 252, 0.9)),
-      color-mix(in srgb, var(--accent) 2%, white);
-    color: var(--text-primary);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
-  }
-
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] input:focus,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] textarea:focus,
-  :root[data-theme="light"][data-brand-theme="sixmanager-light"] select:focus {
-    border-color: color-mix(in srgb, var(--accent) 68%, white 8%);
-    box-shadow:
-      0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent),
-      inset 0 1px 0 rgba(255, 255, 255, 0.74);
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
   }
 
   .panel-button-secondary:hover,
@@ -1305,7 +1226,6 @@
   }
 
   .org-map-card {
-    position: relative;
     position: absolute;
     border: 1px solid var(--border);
     border-radius: 1.25rem;
@@ -1410,13 +1330,66 @@
     text-transform: uppercase;
     cursor: ns-resize;
   }
-}
+  /* Custom scrollbar styles for manual sidebar */
+  .manual-sidebar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-visible) transparent;
+  }
 
-/* ── Dynamic font-display ───────────────────────────────────────────────
-   Override Tailwind's static .font-display utility so it respects the
-   --font-display CSS variable. Sixmanager themes set --font-display to
-   "Space Grotesk" while all other themes inherit "Doto" (dots font).
-*/
-.font-display {
-  font-family: var(--font-display);
+  .manual-sidebar::-webkit-scrollbar {
+    width: 3px;
+  }
+
+  .manual-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .manual-sidebar::-webkit-scrollbar-thumb {
+    background: var(--border-visible);
+    border-radius: 999px;
+  }
+
+  .manual-sidebar::-webkit-scrollbar-thumb:hover {
+    background: var(--text-disabled);
+  }
+
+  .manual-page {
+    overflow: visible !important;
+  }
+
+  .manual-page > section {
+    overflow: visible !important;
+  }
+
+  .app-shell-main {
+    overflow: visible;
+  }
+
+  .manual-section,
+  .manual-quickstart {
+    scroll-margin-top: 2rem;
+  }
+
+  /* ─── Select options — colores correctos según tema ─── */
+  select option {
+    background: var(--surface-raised);
+    color: var(--text-primary);
+  }
+  .tasks-composer .panel-field {
+    font-size: 0.875rem; /* text-sm */
+  }
+
+  .tasks-composer input,
+  .tasks-composer select,
+  .tasks-composer textarea {
+    font-size: 0.875rem;
+  }
+
+  .tasks-composer .panel-label {
+    font-size: 0.7rem;
+  }
+
+  .font-display {
+    font-family: var(--font-display);
+  }
 }
