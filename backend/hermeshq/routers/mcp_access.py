@@ -154,3 +154,50 @@ async def revoke_mcp_access_token(
     )
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/access-tokens/{access_token_id}/rotate", response_model=McpAccessTokenCreateResult)
+async def rotate_mcp_access_token(
+    access_token_id: str,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db_session),
+) -> McpAccessTokenCreateResult:
+    """Rotate an MCP access token — generates a new secret while keeping the same config.
+
+    The old token is immediately invalidated. The new token inherits all
+    scopes, agent permissions, and settings. The expiration is extended by
+    the same duration if the token hasn't expired yet.
+    """
+    access = await db.get(McpAccessToken, access_token_id)
+    if not access:
+        raise HTTPException(status_code=404, detail="MCP access token not found")
+
+    # Generate new token
+    new_raw_token = generate_mcp_token()
+    access.token_prefix = token_display_prefix(new_raw_token)
+    access.token_hash = hash_mcp_token(new_raw_token)
+
+    # Extend expiration if applicable
+    if access.expires_at:
+        from datetime import timedelta
+
+        remaining = access.expires_at - datetime.now(timezone.utc)
+        if remaining.total_seconds() > 0:
+            access.expires_at = datetime.now(timezone.utc) + remaining
+        else:
+            # Already expired — give 30 days
+            access.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+
+    await _log_mcp_admin_event(
+        db,
+        "mcp.access_token.rotated",
+        current_user=current_user,
+        access=access,
+        message=f"MCP access token rotated: {access.name}",
+    )
+    await db.commit()
+    await db.refresh(access)
+    return McpAccessTokenCreateResult(
+        token=new_raw_token,
+        access=McpAccessTokenRead.model_validate(access),
+    )

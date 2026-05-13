@@ -55,3 +55,19 @@ export function useRevokeMcpAccessToken() {
     },
   });
 }
+
+export function useRotateMcpAccessToken() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (tokenId: string) => {
+      const { data } = await apiClient.post<{ token: string; access: McpAccessToken }>(
+        `/mcp-access/access-tokens/${tokenId}/rotate`,
+      );
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["mcp-access-tokens"] });
+      await queryClient.invalidateQueries({ queryKey: ["logs"] });
+    },
+  });
+}

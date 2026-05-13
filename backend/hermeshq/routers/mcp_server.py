@@ -30,6 +30,7 @@ from hermeshq.services.mcp_access import (
     ensure_mcp_agent_allowed,
     ensure_mcp_scope,
 )
+from hermeshq.services.mcp_analytics import McpAnalytics
 from hermeshq.services.mcp_rate_limiter import McpRateLimiter
 from hermeshq.services.task_board import next_board_order, runtime_status_to_board_column
 from hermeshq.versioning import get_app_version
@@ -40,6 +41,7 @@ router = APIRouter(tags=["mcp"])
 # Per-token rate limiter (60 requests / 60 s by default)
 # ---------------------------------------------------------------------------
 _rate_limiter = McpRateLimiter(max_requests=60, window_seconds=60)
+_analytics = McpAnalytics()
 
 # ---------------------------------------------------------------------------
 # JSON-RPC 2.0 helpers
@@ -685,6 +687,8 @@ async def mcp_http_endpoint(
     # Rate limiting
     await _rate_limiter.check(access.id)
 
+    t0 = time.monotonic()
+    is_error = False
     try:
         if method == "initialize":
             result = {
@@ -698,53 +702,75 @@ async def mcp_http_endpoint(
                 },
             }
             await db.commit()
-            return JSONResponse(_jsonrpc_result(request_id, result))
+            resp = JSONResponse(_jsonrpc_result(request_id, result))
+            _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000)
+            return resp
 
         if method == "tools/list":
             ensure_mcp_scope(access, "agents:list")
             per_agent = await _per_agent_tools(db, access)
             await db.commit()
-            return JSONResponse(_jsonrpc_result(request_id, {"tools": _tools_definition() + per_agent}))
+            resp = JSONResponse(_jsonrpc_result(request_id, {"tools": _tools_definition() + per_agent}))
+            _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000)
+            return resp
 
         if method == "tools/call":
             tool_name = str(params.get("name") or "")
             arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
             result = await _call_tool(request=request, db=db, access=access, name=tool_name, arguments=arguments)
-            return JSONResponse(_jsonrpc_result(request_id, result))
+            resp = JSONResponse(_jsonrpc_result(request_id, result))
+            _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000)
+            return resp
 
         # ── Resources ─────────────────────────────────────────────────────
         if method == "resources/list":
             ensure_mcp_scope(access, "agents:list")
             resources = await _list_resources(db, access)
             await db.commit()
-            return JSONResponse(_jsonrpc_result(request_id, {"resources": resources}))
+            resp = JSONResponse(_jsonrpc_result(request_id, {"resources": resources}))
+            _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000)
+            return resp
 
         if method == "resources/templates/list":
             ensure_mcp_scope(access, "agents:list")
             templates = await _list_resource_templates(db, access)
             await db.commit()
-            return JSONResponse(_jsonrpc_result(request_id, {"resourceTemplates": templates}))
+            resp = JSONResponse(_jsonrpc_result(request_id, {"resourceTemplates": templates}))
+            _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000)
+            return resp
 
         if method == "resources/read":
             uri = str(params.get("uri") or "")
             result = await _read_resource(db, access, uri)
-            return JSONResponse(_jsonrpc_result(request_id, result))
+            resp = JSONResponse(_jsonrpc_result(request_id, result))
+            _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000)
+            return resp
 
         # ── Prompts ───────────────────────────────────────────────────────
         if method == "prompts/list":
             ensure_mcp_scope(access, "agents:list")
             prompts = await _list_prompts(db, access)
             await db.commit()
-            return JSONResponse(_jsonrpc_result(request_id, {"prompts": prompts}))
+            resp = JSONResponse(_jsonrpc_result(request_id, {"prompts": prompts}))
+            _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000)
+            return resp
 
         if method == "prompts/get":
             prompt_name = str(params.get("name") or "")
             arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
             result = await _get_prompt(db, access, prompt_name, arguments)
-            return JSONResponse(_jsonrpc_result(request_id, result))
+            resp = JSONResponse(_jsonrpc_result(request_id, result))
+            _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000)
+            return resp
+
+        # Unknown method
+        _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000)
+        await db.commit()
+        return JSONResponse(_jsonrpc_error(request_id, -32601, f"Method not found: {method}"))
 
     except Exception as exc:
         await db.rollback()
+        _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000, error=True)
         return JSONResponse(_jsonrpc_error(request_id, -32000, str(exc)), status_code=200)
 
 # ---------------------------------------------------------------------------
@@ -788,3 +814,69 @@ async def mcp_sse_endpoint(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /mcp/health  — Health check + live analytics
+# ---------------------------------------------------------------------------
+
+@router.get("/mcp/health")
+async def mcp_health() -> dict:
+    """MCP server health check with live analytics."""
+    return {
+        "status": "ok",
+        "version": get_app_version(),
+        "rate_limiter": {
+            "max_requests": _rate_limiter._max_requests,
+            "window_seconds": _rate_limiter._window_seconds,
+        },
+        "analytics": _analytics.global_stats(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /mcp/analytics  — Detailed usage analytics
+# ---------------------------------------------------------------------------
+
+@router.get("/mcp/analytics")
+async def mcp_analytics_endpoint(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    hours: int = Query(default=24, ge=1, le=720),
+    token_id: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Detailed MCP usage analytics. Requires admin JWT or MCP bearer token."""
+    from hermeshq.core.security import decode_access_token_subject, get_user_by_subject
+
+    # Try JWT auth first, then MCP token
+    try:
+        auth_header = authorization or ""
+        if not auth_header.startswith("Bearer "):
+            raise ValueError("Missing Bearer token")
+        token = auth_header[7:]
+        if token.count(".") == 2:
+            # JWT — verify it's an active admin user
+            subject, kind = decode_access_token_subject(token)
+            if not subject:
+                raise ValueError("Invalid JWT")
+            user = await get_user_by_subject(db, subject, kind)
+            if not user or not user.is_active or user.role != "admin":
+                raise ValueError("Not admin")
+        else:
+            # MCP token
+            await authenticate_mcp_token(db, authorization)
+    except Exception:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    result: dict[str, Any] = {
+        "live": _analytics.global_stats(),
+        "top_tokens": _analytics.top_tokens(limit=10),
+    }
+
+    if token_id:
+        result["token_detail"] = _analytics.token_stats(token_id)
+
+    result["persistent"] = await McpAnalytics.persistent_stats(db, hours=hours)
+
+    return JSONResponse(result)
