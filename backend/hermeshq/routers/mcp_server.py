@@ -42,6 +42,7 @@ router = APIRouter(tags=["mcp"])
 # ---------------------------------------------------------------------------
 _rate_limiter = McpRateLimiter(max_requests=60, window_seconds=60)
 _analytics = McpAnalytics()
+_log_levels: dict[str, str] = {}  # token_id → logging level
 
 # ---------------------------------------------------------------------------
 # JSON-RPC 2.0 helpers
@@ -699,6 +700,7 @@ async def mcp_http_endpoint(
                     "resources": {},
                     "prompts": {},
                     "streaming": {},
+                    "logging": {},
                 },
             }
             await db.commit()
@@ -763,7 +765,17 @@ async def mcp_http_endpoint(
             _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000)
             return resp
 
-        # Unknown method
+        # ── logging/setLevel ──────────────────────────────────────────
+        if method == "logging/setLevel":
+            level = str(params.get("level", "info")).upper()
+            _log_levels[access.id] = level
+            result: Any = {}
+            resp = JSONResponse(_jsonrpc_result(request_id, result))
+            _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000)
+            await db.commit()
+            return resp
+
+        # ── Unknown method ───────────────────────────────────────────
         _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000)
         await db.commit()
         return JSONResponse(_jsonrpc_error(request_id, -32601, f"Method not found: {method}"))
