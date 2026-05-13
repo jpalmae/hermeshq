@@ -60,14 +60,15 @@ const ExternalAccessTab = lazy(() => import("../components/settings/ExternalAcce
 const HermesVersionsTab = lazy(() => import("../components/settings/HermesVersionsTab").then((m) => ({ default: m.default })));
 const SecretsTab = lazy(() => import("../components/settings/SecretsTab").then((m) => ({ default: m.default })));
 const TemplatesTab = lazy(() => import("../components/settings/TemplatesTab").then((m) => ({ default: m.default })));
+const AuthenticationTab = lazy(() => import("../components/settings/AuthenticationTab").then((m) => ({ default: m.AuthenticationTab })));
 
-type SettingsTab = "general" | "runtime" | "providers" | "integrations" | "factory" | "externalAccess" | "hermesVersions" | "secrets" | "templates";
+type SettingsTab = "general" | "runtime" | "providers" | "integrations" | "factory" | "externalAccess" | "hermesVersions" | "secrets" | "templates" | "authentication";
 
 const SETTINGS_TAB_STORAGE_KEY = "hermeshq.settings.activeTab";
 
 const ALL_TABS: SettingsTab[] = [
   "general", "runtime", "providers", "integrations",
-  "factory", "externalAccess", "hermesVersions", "secrets", "templates",
+  "factory", "externalAccess", "hermesVersions", "secrets", "templates", "authentication",
 ];
 
 function LoadingFallback() {
@@ -158,6 +159,7 @@ export function SettingsPage() {
     { id: "hermesVersions", label: t("settings.tabHermesVersions"), copy: t("settings.tabHermesVersionsCopy") },
     { id: "secrets", label: t("settings.tabSecrets"), copy: t("settings.tabSecretsCopy") },
     { id: "templates", label: t("settings.tabTemplates"), copy: t("settings.tabTemplatesCopy") },
+    { id: "authentication", label: "Authentication", copy: "Configure enterprise OIDC providers (Google, Microsoft 365) for single sign-on." },
   ];
 
   const activeTabMeta = settingsTabs.find((tab) => tab.id === activeTab) ?? settingsTabs[0];
@@ -267,6 +269,9 @@ export function SettingsPage() {
           )}
           {activeTab === "templates" && (
             <TemplatesTab />
+          )}
+          {activeTab === "authentication" && isAdmin && (
+            <AuthenticationTab />
           )}
         </Suspense>
       </div>

@@ -145,7 +145,20 @@ def _get_oidc_provider_login_url(provider_slug: str | None) -> str | None:
 
 
 def _get_public_oidc_provider_slugs() -> list[str]:
-    return list(PUBLIC_ENTERPRISE_PROVIDERS)
+    """Return provider slugs from env config. Always includes google + microsoft for UI display."""
+    env_slugs = [s.strip().lower() for s in (get_settings().oidc_visible_providers or "").split(",") if s.strip()]
+    # Always include google + microsoft for enterprise look
+    for slug in ("google", "microsoft"):
+        if slug not in env_slugs:
+            env_slugs.append(slug)
+    return env_slugs
+
+
+async def _get_db_providers(db: AsyncSession) -> list:
+    """Get enabled providers from the database."""
+    from hermeshq.models.oidc_provider import OidcProvider
+    result = await db.execute(select(OidcProvider).where(OidcProvider.enabled.is_(True)).order_by(OidcProvider.name))
+    return list(result.scalars().all())
 
 
 def _get_oidc_provider_label(slug: str) -> str:
@@ -387,22 +400,46 @@ async def _extract_id_token_claims(token_response: dict) -> dict:
 
 
 @router.get("/providers", response_model=AuthProvidersResponse)
-async def auth_providers() -> AuthProvidersResponse:
+async def auth_providers(db: AsyncSession = Depends(get_db_session)) -> AuthProvidersResponse:
     auth_mode = _get_auth_mode()
     providers: list[AuthProviderRead] = []
-    for slug in _get_public_oidc_provider_slugs():
-        providers.append(
-            AuthProviderRead(
-                slug=slug,
-                name=_get_oidc_provider_label(slug),
-                kind="oidc",
-                enabled=bool(_oidc_enabled() and _get_oidc_provider_login_url(slug)),
+
+    # Collect enabled DB providers
+    db_provider_slugs: set[str] = set()
+    try:
+        from hermeshq.models.oidc_provider import OidcProvider
+        result = await db.execute(select(OidcProvider).where(OidcProvider.enabled.is_(True)))
+        for p in result.scalars().all():
+            db_provider_slugs.add(p.slug)
+            providers.append(
+                AuthProviderRead(
+                    slug=p.slug,
+                    name=p.name,
+                    kind="oidc",
+                    enabled=True,
+                )
             )
-        )
+    except Exception:
+        pass  # Table may not exist yet
+
+    # Add env-configured + always-visible providers (google, microsoft)
+    for slug in _get_public_oidc_provider_slugs():
+        if slug not in db_provider_slugs:
+            env_url = _get_oidc_provider_login_url(slug)
+            providers.append(
+                AuthProviderRead(
+                    slug=slug,
+                    name=_get_oidc_provider_label(slug),
+                    kind="oidc",
+                    enabled=bool(_oidc_enabled() and env_url),
+                )
+            )
+
+    oidc_active = _oidc_enabled() or len(db_provider_slugs) > 0
     return AuthProvidersResponse(
         auth_mode=auth_mode,
         local_login_enabled=True,
-        oidc_enabled=_oidc_enabled(),
+        oidc_enabled=oidc_active,
         providers=providers,
     )
 
@@ -419,11 +456,27 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
 
 
 @router.get("/oidc/login", include_in_schema=False)
-async def oidc_login(request: Request, provider: str | None = None) -> RedirectResponse:
+async def oidc_login(request: Request, provider: str | None = None, db: AsyncSession = Depends(get_db_session)) -> RedirectResponse:
+    requested_provider = (provider or "").strip().lower()
+
+    # --- Try DB-based multi-provider first ---
+    if requested_provider:
+        try:
+            from hermeshq.services import oidc_provider as oidc_svc
+            db_provider = await oidc_svc.get_provider_by_slug(db, requested_provider)
+            if db_provider:
+                redirect_uri = _build_oidc_redirect_uri(request)
+                state = oidc_svc.create_oidc_state(requested_provider, get_settings().jwt_secret)
+                auth_url = await oidc_svc.build_authorization_url(db_provider, redirect_uri, state)
+                return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
+        except Exception:
+            pass  # Fall through to env-based flow
+
+    # --- Legacy env-based OIDC flow ---
     auth_mode = _get_auth_mode()
     if auth_mode == AUTH_MODE_LOCAL or not _oidc_enabled():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enterprise authentication is not enabled")
-    requested_provider = (provider or "").strip().lower()
+
     configured_generic_slug = ((get_settings().oidc_provider_slug or "authentik").strip().lower() or "authentik")
     allowed_providers = set(_get_public_oidc_provider_slugs()) | {"authentik", configured_generic_slug}
     if requested_provider and requested_provider not in allowed_providers:
@@ -493,49 +546,71 @@ async def oidc_callback(
             _build_frontend_redirect(request, auth_error="Missing OIDC authorization code"),
             status_code=status.HTTP_302_FOUND,
         )
-    if not _validate_oidc_state(state):
+
+    # --- Try DB-provider state first (includes provider slug) ---
+    from hermeshq.services import oidc_provider as oidc_svc
+    state_payload = oidc_svc.verify_oidc_state(state, get_settings().jwt_secret)
+    local_user = None
+
+    if state_payload and state_payload.get("provider"):
+        # Multi-provider (DB) flow
+        try:
+            provider = await oidc_svc.get_provider_by_slug(db, state_payload["provider"])
+            if not provider:
+                raise ValueError(f"Provider '{state_payload['provider']}' not found or disabled")
+            claims = await oidc_svc.exchange_code_and_get_claims(provider, code, _build_oidc_redirect_uri(request))
+            local_user = await oidc_svc.resolve_or_create_user(db, claims, provider)
+        except Exception as exc:
+            return RedirectResponse(
+                _build_frontend_redirect(request, auth_error=f"Enterprise authentication failed: {exc}"),
+                status_code=status.HTTP_302_FOUND,
+            )
+    elif _validate_oidc_state(state):
+        # Legacy env-based flow
+        try:
+            discovery = await _fetch_oidc_discovery()
+            token_endpoint = discovery.get("token_endpoint")
+            userinfo_endpoint = discovery.get("userinfo_endpoint")
+            if not token_endpoint:
+                raise ValueError("OIDC discovery missing token endpoint")
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                token_response = await client.post(
+                    token_endpoint,
+                    data={
+                        "grant_type": "authorization_code",
+                        "code": code,
+                        "redirect_uri": _build_oidc_redirect_uri(request),
+                        "client_id": get_settings().oidc_client_id,
+                        "client_secret": get_settings().oidc_client_secret,
+                    },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+                token_response.raise_for_status()
+                token_payload = token_response.json()
+                claims = await _extract_id_token_claims(token_payload)
+                access_token = token_payload.get("access_token")
+                if userinfo_endpoint and access_token:
+                    userinfo_response = await client.get(
+                        userinfo_endpoint,
+                        headers={"Authorization": f"Bearer {access_token}"},
+                    )
+                    userinfo_response.raise_for_status()
+                    claims = {**claims, **userinfo_response.json()}
+                if not claims.get("sub"):
+                    raise ValueError("OIDC user claims did not include sub")
+            local_user = await _resolve_or_create_oidc_user(db, claims)
+        except Exception as exc:
+            return RedirectResponse(
+                _build_frontend_redirect(request, auth_error=f"Enterprise authentication failed: {exc}"),
+                status_code=status.HTTP_302_FOUND,
+            )
+    else:
         return RedirectResponse(
             _build_frontend_redirect(request, auth_error="Invalid OIDC login state"),
             status_code=status.HTTP_302_FOUND,
         )
-    try:
-        discovery = await _fetch_oidc_discovery()
-        token_endpoint = discovery.get("token_endpoint")
-        userinfo_endpoint = discovery.get("userinfo_endpoint")
-        if not token_endpoint:
-            raise ValueError("OIDC discovery missing token endpoint")
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            token_response = await client.post(
-                token_endpoint,
-                data={
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "redirect_uri": _build_oidc_redirect_uri(request),
-                    "client_id": get_settings().oidc_client_id,
-                    "client_secret": get_settings().oidc_client_secret,
-                },
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-            )
-            token_response.raise_for_status()
-            token_payload = token_response.json()
-            claims = await _extract_id_token_claims(token_payload)
-            access_token = token_payload.get("access_token")
-            if userinfo_endpoint and access_token:
-                userinfo_response = await client.get(
-                    userinfo_endpoint,
-                    headers={"Authorization": f"Bearer {access_token}"},
-                )
-                userinfo_response.raise_for_status()
-                claims = {**claims, **userinfo_response.json()}
-            if not claims.get("sub"):
-                raise ValueError("OIDC user claims did not include sub")
-        local_user = await _resolve_or_create_oidc_user(db, claims)
-    except Exception as exc:  # noqa: BLE001
-        return RedirectResponse(
-            _build_frontend_redirect(request, auth_error=f"Enterprise authentication failed: {exc}"),
-            status_code=status.HTTP_302_FOUND,
-        )
-    if not local_user.is_active:
+
+    if not local_user or not local_user.is_active:
         return RedirectResponse(
             _build_frontend_redirect(request, auth_error="This HermesHQ user is inactive"),
             status_code=status.HTTP_302_FOUND,

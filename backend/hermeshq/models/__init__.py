@@ -10,6 +10,7 @@ from hermeshq.models.message import AgentMessage
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.mcp_access import McpAccessToken
 from hermeshq.models.node import Node
+from hermeshq.models.oidc_provider import OidcProvider
 from hermeshq.models.provider import ProviderDefinition
 from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.secret import Secret
@@ -32,6 +33,7 @@ __all__ = [
     "MessagingChannel",
     "McpAccessToken",
     "Node",
+    "OidcProvider",
     "ProviderDefinition",
     "ScheduledTask",
     "Secret",
