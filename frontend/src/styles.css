@@ -1481,3 +1481,25 @@ select option {
 .tasks-composer .panel-label {
   font-size: 0.7rem;
 }
+
+/* ── Sidebar nav icons — theme-aware brightness ─────────────────────── */
+.app-shell-nav-icon {
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+/* Dark themes (default, enterprise, sixmanager): white icons */
+.app-shell-nav-icon {
+  filter: brightness(0) invert(1);
+}
+
+/* Light themes: dark icons */
+:root[data-theme="light"] .app-shell-nav-icon,
+:root[data-theme="light"][data-brand-theme="sixmanager-light"] .app-shell-nav-icon {
+  filter: brightness(0);
+}
+
+/* Hover — full opacity */
+.app-shell-nav-link:hover .app-shell-nav-icon {
+  opacity: 1;
+}
