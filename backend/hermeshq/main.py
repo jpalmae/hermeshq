@@ -166,6 +166,7 @@ async def lifespan(app: FastAPI):
         app.state.supervisor,
         app.state.event_broker,
     )
+    app.state.gateway_supervisor.set_enterprise_gateways(app.state.enterprise_gateways)
     # Expose individual gateway maps for webhook routing
     app.state.teams_gateways = app.state.enterprise_gateways.teams_gateways
     app.state.google_chat_gateways = app.state.enterprise_gateways.google_chat_gateways

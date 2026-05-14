@@ -1,11 +1,11 @@
 .DS_Store
 .env
 .cloudflared.env
-authentik-local/.env
 .venv/
 __pycache__/
 *.pyc
 backend/hermeshq.db
+backend/hermeshq/assets/whatsapp-bridge/node_modules/
 frontend/node_modules/
 frontend/dist/
 workspaces/

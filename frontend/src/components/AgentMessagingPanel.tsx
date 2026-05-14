@@ -186,8 +186,8 @@ const PLATFORM_CONFIGS: Record<PlatformSlug, PlatformConfig> = {
     showWhatsappMode: false,
     showQrSection: false,
     homeChatIdPlaceholder: "19:meeting_thread_id@thread.tacv2",
-    enableLabelKey: "agent.enableTelegram",
-    saveLabelKey: "agent.saveTelegram",
+    enableLabelKey: "agent.enableTeams",
+    saveLabelKey: "agent.saveTeams",
     stoppedLabelKey: "agent.gatewayStopped",
   },
   google_chat: {
@@ -198,8 +198,8 @@ const PLATFORM_CONFIGS: Record<PlatformSlug, PlatformConfig> = {
     showWhatsappMode: false,
     showQrSection: false,
     homeChatIdPlaceholder: "spaces/xxxxxxxxxxx",
-    enableLabelKey: "agent.enableTelegram",
-    saveLabelKey: "agent.saveTelegram",
+    enableLabelKey: "agent.enableGoogleChat",
+    saveLabelKey: "agent.saveGoogleChat",
     stoppedLabelKey: "agent.gatewayStopped",
   },
 };
@@ -293,7 +293,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
       (secrets ?? [])
         .filter((item) => {
           const provider = String(item.provider ?? "").trim().toLowerCase();
-          return !provider || provider === "telegram";
+          return !provider || provider === "telegram" || provider === "microsoft_teams" || provider === "google_chat";
         })
         .map((item) => String(item.name ?? ""))
         .filter(Boolean)

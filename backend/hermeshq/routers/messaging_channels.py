@@ -161,6 +161,68 @@ async def upsert_channel(
                 detail=f"Telegram bot token secret '{normalized_secret_ref}' was not found",
             )
 
+    if platform == "microsoft_teams":
+        if payload.enabled and not normalized_secret_ref:
+            await _log_channel_event(
+                db,
+                agent,
+                f"{event_prefix}.config_rejected",
+                f"{agent.name} {platform} configuration rejected",
+                severity="warning",
+                details=_channel_details(platform, normalized_secret_ref, {"reason": "missing_secret_ref"}),
+            )
+            await db.commit()
+            raise HTTPException(status_code=400, detail="Teams bot secret is required")
+        if (
+            normalized_secret_ref
+            and not secret_exists
+            and (payload.enabled or normalized_secret_ref != previous_secret_ref)
+        ):
+            await _log_channel_event(
+                db,
+                agent,
+                f"{event_prefix}.config_rejected",
+                f"{agent.name} {platform} configuration rejected",
+                severity="warning",
+                details=_channel_details(platform, normalized_secret_ref, {"reason": "secret_not_found"}),
+            )
+            await db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail=f"Teams bot secret '{normalized_secret_ref}' was not found",
+            )
+
+    if platform == "google_chat":
+        if payload.enabled and not normalized_secret_ref:
+            await _log_channel_event(
+                db,
+                agent,
+                f"{event_prefix}.config_rejected",
+                f"{agent.name} {platform} configuration rejected",
+                severity="warning",
+                details=_channel_details(platform, normalized_secret_ref, {"reason": "missing_secret_ref"}),
+            )
+            await db.commit()
+            raise HTTPException(status_code=400, detail="Google Chat service account secret is required")
+        if (
+            normalized_secret_ref
+            and not secret_exists
+            and (payload.enabled or normalized_secret_ref != previous_secret_ref)
+        ):
+            await _log_channel_event(
+                db,
+                agent,
+                f"{event_prefix}.config_rejected",
+                f"{agent.name} {platform} configuration rejected",
+                severity="warning",
+                details=_channel_details(platform, normalized_secret_ref, {"reason": "secret_not_found"}),
+            )
+            await db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail=f"Google Chat service account secret '{normalized_secret_ref}' was not found",
+            )
+
     channel.enabled = bool(payload.enabled)
     channel.mode = payload.mode or "bidirectional"
     channel.secret_ref = normalized_secret_ref

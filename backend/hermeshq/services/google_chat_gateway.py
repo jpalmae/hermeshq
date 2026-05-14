@@ -252,7 +252,7 @@ class GoogleChatGateway:
                 "Google Chat bot added to space %s (%s)",
                 space.get("name"), space.get("displayName"),
             )
-            return {"text": f"¡Hola! Soy el agente de HermesHQ. Envíame un mensaje para empezar."}
+            return {"text": "Hello! I'm the HermesHQ agent bot. Send me a message to get started."}
 
         if event_type == "REMOVED_FROM_SPACE":
             return None
@@ -296,7 +296,7 @@ class GoogleChatGateway:
                 "Google Chat → agent %s: created task %s from %s",
                 self.agent_id, task_id, sender_name,
             )
-            return {"text": "⏳ Procesando tu mensaje..."}
+            return {"text": "⏳ Processing your message..."}
 
         return None
 

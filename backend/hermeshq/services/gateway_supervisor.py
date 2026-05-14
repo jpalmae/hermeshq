@@ -52,6 +52,11 @@ class GatewaySupervisor:
         self.installation_manager = installation_manager
         self.processes: dict[str, GatewayProcessHandle] = {}
         self._agent_locks: dict[str, asyncio.Lock] = {}
+        self._enterprise_gateways: object | None = None
+
+    def set_enterprise_gateways(self, manager: object) -> None:
+        """Inject the EnterpriseGatewayManager after construction."""
+        self._enterprise_gateways = manager
 
     def _get_agent_lock(self, agent_id: str) -> asyncio.Lock:
         lock = self._agent_locks.get(agent_id)
@@ -124,6 +129,9 @@ class GatewaySupervisor:
 
         bootstrap_targets: dict[str, tuple[Agent, str]] = {}
         for channel, agent in rows:
+            # Enterprise platforms are bootstrapped by EnterpriseGatewayManager
+            if channel.platform in ("microsoft_teams", "google_chat"):
+                continue
             if not self._channel_runtime_enabled(channel):
                 continue
             bootstrap_targets.setdefault(agent.id, (agent, channel.platform))
@@ -244,6 +252,10 @@ class GatewaySupervisor:
                 await session.commit()
 
     async def get_runtime_status(self, agent_id: str, platform: str) -> dict:
+        # Delegate enterprise platforms to the EnterpriseGatewayManager
+        if platform in ("microsoft_teams", "google_chat") and self._enterprise_gateways is not None:
+            return await self._get_enterprise_runtime_status(agent_id, platform)
+
         async with self.session_factory() as session:
             agent = await session.get(Agent, agent_id)
             channel = await self._get_channel(session, agent_id, platform)
@@ -317,6 +329,11 @@ class GatewaySupervisor:
             await self._start_channel_locked(agent_id, platform)
 
     async def _start_channel_locked(self, agent_id: str, platform: str) -> None:
+        # Delegate enterprise platforms
+        if platform in ("microsoft_teams", "google_chat"):
+            await self._start_enterprise_channel(agent_id, platform)
+            return
+
         async with self.session_factory() as session:
             agent_row = await session.get(Agent, agent_id)
             if not agent_row:
@@ -462,6 +479,11 @@ class GatewaySupervisor:
             await self._stop_channel_locked(agent_id, platform)
 
     async def _stop_channel_locked(self, agent_id: str, platform: str) -> None:
+        # Delegate enterprise platforms
+        if platform in ("microsoft_teams", "google_chat"):
+            await self._stop_enterprise_channel(agent_id, platform)
+            return
+
         async with self.session_factory() as session:
             agent_row = await session.get(Agent, agent_id)
             if not agent_row:
@@ -545,7 +567,85 @@ class GatewaySupervisor:
     async def restart_channel(self, agent_id: str, platform: str) -> None:
         await self.start_channel(agent_id, platform)
 
+    # ------------------------------------------------------------------
+    # Enterprise gateway delegation (Microsoft Teams, Google Chat)
+    # ------------------------------------------------------------------
+
+    async def _get_enterprise_runtime_status(self, agent_id: str, platform: str) -> dict:
+        """Get runtime status from the EnterpriseGatewayManager."""
+        if self._enterprise_gateways is None:
+            return {"status": "missing", "pid": None, "log_path": None}
+        status_info = self._enterprise_gateways.get_status(agent_id, platform)
+        running = status_info.get("running", False)
+
+        async with self.session_factory() as session:
+            channel = await self._get_channel(session, agent_id, platform)
+            channel_status = channel.status if channel else "stopped"
+            bootstrap = dict((channel.metadata_json or {}).get("bootstrap") or {}) if channel else {}
+
+        return {
+            "status": "running" if running else channel_status,
+            "pid": None,
+            "log_path": None,
+            "last_bootstrap_at": bootstrap.get("last_attempt_at"),
+            "last_bootstrap_success_at": bootstrap.get("last_success_at"),
+            "last_bootstrap_status": bootstrap.get("last_status"),
+            "last_bootstrap_error": bootstrap.get("last_error"),
+            "last_bootstrap_duration_ms": bootstrap.get("last_duration_ms"),
+            "last_bootstrap_attempts": bootstrap.get("last_attempts"),
+            "paired": None,
+            "pairing_status": None,
+            "session_path": None,
+            "bridge_log_path": None,
+            "pairing_qr_text": None,
+        }
+
+    async def _start_enterprise_channel(self, agent_id: str, platform: str) -> None:
+        """Start an enterprise gateway via the EnterpriseGatewayManager."""
+        if self._enterprise_gateways is None:
+            raise ValueError(f"Enterprise gateway manager not available for {platform}")
+        try:
+            await self._enterprise_gateways.start_gateway(agent_id, platform)
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ValueError(str(exc)) from exc
+
+        async with self.session_factory() as session:
+            channel = await self._get_channel(session, agent_id, platform)
+            if channel:
+                channel.status = "running"
+                channel.last_error = None
+                channel.updated_at = utcnow()
+                await session.commit()
+
+        await self.event_broker.publish(
+            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "running", "message": platform}
+        )
+
+    async def _stop_enterprise_channel(self, agent_id: str, platform: str) -> None:
+        """Stop an enterprise gateway via the EnterpriseGatewayManager."""
+        if self._enterprise_gateways is None:
+            return
+        await self._enterprise_gateways.stop_gateway(agent_id, platform)
+
+        async with self.session_factory() as session:
+            channel = await self._get_channel(session, agent_id, platform)
+            if channel:
+                channel.status = "stopped"
+                channel.last_error = None
+                channel.updated_at = utcnow()
+                await session.commit()
+
+        await self.event_broker.publish(
+            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "stopped", "message": platform}
+        )
+
     async def tail_log(self, agent_id: str, platform: str, lines: int = 120) -> str:
+        # Enterprise gateways run as async tasks, not subprocesses — no file logs
+        if platform in ("microsoft_teams", "google_chat"):
+            return ""
+
         async with self.session_factory() as session:
             agent = await session.get(Agent, agent_id)
             channel = await self._get_channel(session, agent_id, platform)

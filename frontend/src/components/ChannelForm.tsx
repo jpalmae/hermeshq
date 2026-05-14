@@ -225,7 +225,13 @@ export function ChannelForm({
                       setForm((current) => ({ ...current, secret_ref: event.target.value }))
                     }
                   >
-                    <option value="">{t("agent.selectTelegramSecret")}</option>
+                    <option value="">
+                      {config.platform === "microsoft_teams"
+                        ? t("agent.selectTeamsSecret")
+                        : config.platform === "google_chat"
+                          ? t("agent.selectGoogleChatSecret")
+                          : t("agent.selectTelegramSecret")}
+                    </option>
                     {resolvedSecretOptions.map((option) => (
                       <option key={option} value={option}>
                         {option}
@@ -234,7 +240,11 @@ export function ChannelForm({
                   </select>
                 </label>
                 <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-                  {t("agent.telegramSecretHint")}
+                  {config.platform === "microsoft_teams"
+                    ? t("agent.teamsSecretHint")
+                    : config.platform === "google_chat"
+                      ? t("agent.googleChatSecretHint")
+                      : t("agent.telegramSecretHint")}
                 </p>
               </div>
             )}
