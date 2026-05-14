@@ -337,7 +337,7 @@ const manualContent: Record<"en" | "es", ManualContent> = {
         eyebrow: "Autenticación",
         title: "Login empresarial con Google y Microsoft 365",
         summary:
-          "HermesHQ soporta autenticación OIDC directa con Google Workspace y Microsoft 365, permitiendo single sign-on (SSO) sin dependencias externas como Authentik.",
+          "HermesHQ soporta autenticación OIDC directa con Google Workspace y Microsoft 365, permitiendo single sign-on (SSO) de forma nativa.",
         audience: "Solo administradores",
         bullets: [
           "Desde `Settings → Authentication` puedes configurar proveedores OIDC empresariales. Los presets de Google y Microsoft 365 están disponibles con un clic.",
@@ -352,7 +352,7 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "El logout desde HermesHQ también cierra la sesión en Google o Microsoft cuando el proveedor está configurado (social logout), revocando el acceso completamente.",
           "Puedes configurar múltiples proveedores simultáneamente. Cada usuario se identifica por su email (claim `sub`) y se asocia al proveedor con el que se autenticó.",
           "La tabla de proveedores en la base de datos permite agregar otros proveedores OIDC en el futuro (Okta, Keycloak, Cognito) sin cambios de código.",
-          "El flujo legacy basado en variables de entorno (Authentik) sigue funcionando y es compatible con el nuevo sistema multi-provider.",
+          "El flujo basado en variables de entorno sigue funcionando y es compatible con el sistema multi-provider.",
         ],
       },
       {
@@ -797,7 +797,7 @@ const manualContent: Record<"en" | "es", ManualContent> = {
         eyebrow: "Authentication",
         title: "Enterprise login with Google and Microsoft 365",
         summary:
-          "HermesHQ supports direct OIDC authentication with Google Workspace and Microsoft 365, enabling single sign-on (SSO) without external dependencies like Authentik.",
+          "HermesHQ supports direct OIDC authentication with Google Workspace and Microsoft 365, enabling single sign-on (SSO) natively.",
         audience: "Admins only",
         bullets: [
           "From `Settings → Authentication` you can configure enterprise OIDC providers. Google and Microsoft 365 presets are available with one click.",
@@ -812,7 +812,7 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "Logging out from HermesHQ also signs out from Google or Microsoft when the provider is configured (social logout), fully revoking access.",
           "You can configure multiple providers simultaneously. Each user is identified by their email (claim `sub`) and associated with the provider they authenticated with.",
           "The provider table in the database allows adding other OIDC providers in the future (Okta, Keycloak, Cognito) without code changes.",
-          "The legacy environment variable-based flow (Authentik) continues to work and is compatible with the new multi-provider system.",
+          "The environment variable-based flow continues to work and is compatible with the multi-provider system.",
         ],
       },
       {

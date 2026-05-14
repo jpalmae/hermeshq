@@ -22,14 +22,13 @@ class Settings(BaseSettings):
     oidc_client_secret: str | None = None
     oidc_redirect_uri: str | None = None
     oidc_scope: str = "openid profile email"
-    oidc_provider_name: str = "Authentik"
-    oidc_provider_slug: str = "authentik"
+    oidc_provider_name: str = "OIDC Provider"
+    oidc_provider_slug: str = "generic"
     oidc_post_logout_redirect_uri: str | None = None
     oidc_auto_provision_users: bool = False
     oidc_visible_providers: str = ""
     oidc_provider_login_url_google: str | None = None
     oidc_provider_login_url_microsoft: str | None = None
-    oidc_provider_login_url_authentik: str | None = None
 
     admin_username: str = "admin"
     admin_password: str = "admin123"

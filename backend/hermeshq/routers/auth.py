@@ -51,7 +51,6 @@ AUTH_MODE_OIDC = "oidc"
 OIDC_STATE_EXPIRY_MINUTES = 10
 USERNAME_SANITIZER = re.compile(r"[^a-z0-9._-]+")
 DEFAULT_OIDC_PROVIDER_LABELS = {
-    "authentik": "Authentik",
     "google": "Google",
     "microsoft": "Microsoft",
 }
@@ -139,8 +138,8 @@ def _get_oidc_provider_login_url(provider_slug: str | None) -> str | None:
         return settings.oidc_provider_login_url_google
     if slug == "microsoft":
         return settings.oidc_provider_login_url_microsoft
-    if slug in {"authentik", (settings.oidc_provider_slug or "").strip().lower()}:
-        return settings.oidc_provider_login_url_authentik
+    if slug == (settings.oidc_provider_slug or "").strip().lower():
+        return None
     return None
 
 
@@ -164,8 +163,8 @@ async def _get_db_providers(db: AsyncSession) -> list:
 def _get_oidc_provider_label(slug: str) -> str:
     settings = get_settings()
     normalized = slug.strip().lower()
-    if normalized in {"authentik", (settings.oidc_provider_slug or "").strip().lower()}:
-        return settings.oidc_provider_name or DEFAULT_OIDC_PROVIDER_LABELS["authentik"]
+    if normalized == (settings.oidc_provider_slug or "").strip().lower():
+        return settings.oidc_provider_name or normalized.replace("-", " ").title()
     return DEFAULT_OIDC_PROVIDER_LABELS.get(normalized, normalized.replace("-", " ").title())
 
 
@@ -477,8 +476,8 @@ async def oidc_login(request: Request, provider: str | None = None, db: AsyncSes
     if auth_mode == AUTH_MODE_LOCAL or not _oidc_enabled():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enterprise authentication is not enabled")
 
-    configured_generic_slug = ((get_settings().oidc_provider_slug or "authentik").strip().lower() or "authentik")
-    allowed_providers = set(_get_public_oidc_provider_slugs()) | {"authentik", configured_generic_slug}
+    configured_generic_slug = ((get_settings().oidc_provider_slug or "").strip().lower() or "generic")
+    allowed_providers = set(_get_public_oidc_provider_slugs()) | {configured_generic_slug}
     if requested_provider and requested_provider not in allowed_providers:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"OIDC provider '{requested_provider}' is not enabled")
 
@@ -486,7 +485,7 @@ async def oidc_login(request: Request, provider: str | None = None, db: AsyncSes
     if requested_provider and provider_login_url:
         return RedirectResponse(url=provider_login_url, status_code=status.HTTP_302_FOUND)
 
-    if requested_provider and requested_provider not in {"authentik", configured_generic_slug}:
+    if requested_provider and requested_provider != configured_generic_slug:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"OIDC provider '{requested_provider}' is not configured",
