@@ -265,6 +265,8 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "Para producción se recomienda restringir la Service Account con roles mínimos (Chat Bot) y configurar domain-wide delegation si se usa en toda la organización.",
         ],
       },
+      {
+        id: "users",
         eyebrow: "Administracion",
         title: "Usuarios, roles y asignaciones",
         summary:
@@ -717,6 +719,9 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "For production, restrict the Service Account with minimum roles (Chat Bot) and configure domain-wide delegation if used organization-wide.",
         ],
       },
+      {
+        id: "users",
+        eyebrow: "Administration",
         title: "Users, roles, and assignments",
         summary:
           "Administrators manage users, roles, and agent assignments from the Users screen.",
