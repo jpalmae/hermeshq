@@ -16,6 +16,9 @@
 - **OIDC Admin API** — CRUD endpoints at `/api/oidc-providers` (admin only)
 - **Authentication tab in Settings** — Manage OIDC providers from the UI
 
+### Added (continued)
+- **Manual: Authentication section** — New bilingual section covering Google and Microsoft 365 OIDC setup (13 bullets each in Spanish and English)
+
 ### Changed
 - Login page always shows Google and Microsoft buttons (enterprise appearance)
 - OIDC state token now includes provider slug for cross-provider CSRF protection
