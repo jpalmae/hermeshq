@@ -1420,3 +1420,64 @@
 .font-display {
   font-family: var(--font-display);
 }
+
+/* ── Custom scrollbar styles ────────────────────────────────────────── */
+.manual-sidebar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-visible) transparent;
+}
+
+.manual-sidebar::-webkit-scrollbar {
+  width: 3px;
+}
+
+.manual-sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.manual-sidebar::-webkit-scrollbar-thumb {
+  background: var(--border-visible);
+  border-radius: 999px;
+}
+
+.manual-sidebar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-disabled);
+}
+
+.manual-page {
+  overflow: visible !important;
+}
+
+.manual-page > section {
+  overflow: visible !important;
+}
+
+.app-shell-main {
+  overflow: visible;
+}
+
+.manual-section,
+.manual-quickstart {
+  scroll-margin-top: 2rem;
+}
+
+/* ── Select options — theme-aware background ────────────────────────── */
+select option {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}
+
+/* ── Tasks composer — compact sizing ────────────────────────────────── */
+.tasks-composer .panel-field {
+  font-size: 0.875rem;
+}
+
+.tasks-composer input,
+.tasks-composer select,
+.tasks-composer textarea {
+  font-size: 0.875rem;
+}
+
+.tasks-composer .panel-label {
+  font-size: 0.7rem;
+}
