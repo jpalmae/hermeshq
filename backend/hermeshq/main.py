@@ -15,13 +15,14 @@ from hermeshq.core.events import EventBroker, EventSubscription
 from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
 from hermeshq.database import AsyncSessionLocal, init_database
 from hermeshq.models import ActivityLog, Agent, AppSettings, Node, ProviderDefinition, TerminalSession, User
-from hermeshq.routers import agents, auth, backup, comms, dashboard, hermes_versions, integration_factory, integration_packages, internal_agents, internal_control, logs, managed_integrations, mcp_access, mcp_server, messaging_channels, nodes, oidc_admin, providers, runtime_ledger, runtime_profiles, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, terminal_sessions, users
+from hermeshq.routers import agents, auth, backup, comms, dashboard, hermes_versions, integration_factory, integration_packages, internal_agents, internal_control, logs, managed_integrations, mcp_access, mcp_server, messaging_channels, nodes, oidc_admin, providers, runtime_ledger, runtime_profiles, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, terminal_sessions, users, webhooks
 from hermeshq.schemas.common import HealthResponse
 from hermeshq.services.agent_identity import derive_agent_identity, slugify_agent_value
 from hermeshq.services.agent_supervisor import AgentSupervisor
 from hermeshq.services.comms_router import CommsRouter
 from hermeshq.services.hermes_installation import HermesInstallationManager
 from hermeshq.services.hermes_runtime import HermesRuntime
+from hermeshq.services.enterprise_gateway_manager import EnterpriseGatewayManager
 from hermeshq.services.gateway_supervisor import GatewaySupervisor
 from hermeshq.services.hermes_version_manager import HermesVersionManager
 from hermeshq.services.instance_backup import InstanceBackupService
@@ -160,6 +161,14 @@ async def lifespan(app: FastAPI):
         app.state.event_broker,
         app.state.installation_manager,
     )
+    app.state.enterprise_gateways = EnterpriseGatewayManager(
+        AsyncSessionLocal,
+        app.state.supervisor,
+        app.state.event_broker,
+    )
+    # Expose individual gateway maps for webhook routing
+    app.state.teams_gateways = app.state.enterprise_gateways.teams_gateways
+    app.state.google_chat_gateways = app.state.enterprise_gateways.google_chat_gateways
     app.state.comms_router = CommsRouter(AsyncSessionLocal, app.state.event_broker)
     async def log_terminal_activity(agent_id: str, event_type: str, message: str, details: dict) -> None:
         async with AsyncSessionLocal() as session:
@@ -223,14 +232,21 @@ async def lifespan(app: FastAPI):
     await app.state.supervisor.bootstrap_runtime()
     await app.state.scheduler.start()
     app.state.gateway_bootstrap_task = asyncio.create_task(app.state.gateway_supervisor.bootstrap_gateways())
+    app.state.enterprise_bootstrap_task = asyncio.create_task(app.state.enterprise_gateways.bootstrap())
     yield
     gateway_bootstrap_task = getattr(app.state, "gateway_bootstrap_task", None)
     if gateway_bootstrap_task:
         gateway_bootstrap_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await gateway_bootstrap_task
+    enterprise_bootstrap_task = getattr(app.state, "enterprise_bootstrap_task", None)
+    if enterprise_bootstrap_task:
+        enterprise_bootstrap_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await enterprise_bootstrap_task
     await app.state.scheduler.stop()
     await app.state.gateway_supervisor.shutdown()
+    await app.state.enterprise_gateways.shutdown()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
@@ -270,6 +286,7 @@ app.include_router(scheduled_tasks.router, prefix=settings.api_prefix)
 app.include_router(oidc_admin.router, prefix=settings.api_prefix)
 app.include_router(users.router, prefix=settings.api_prefix)
 app.include_router(mcp_server.router)
+app.include_router(webhooks.router)
 
 
 @app.get("/health", response_model=HealthResponse)

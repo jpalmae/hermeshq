@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 2026-05-14
+
+### Added
+- **Microsoft Teams channel**: enterprise gateway connecting agents to MS Teams as bots (1:1 chat, channels, threads)
+- **Google Chat channel**: enterprise gateway connecting agents to Google Chat via Service Account (DM, spaces, mentions)
+- Webhook endpoints `/webhooks/teams` and `/webhooks/google-chat` for receiving messages
+- `EnterpriseGatewayManager` for lifecycle management of Teams and Google Chat gateways
+- Frontend: MS Teams and Google Chat tabs in agent messaging panel
+- Manual: detailed setup guides for Microsoft Teams and Google Chat (Spanish and English)
+- `SUPPORTED_PLATFORMS` now includes `microsoft_teams` and `google_chat`
+
+### Changed
+- `AgentMessagingPanel.tsx` generalized from 2 to 4 platform support
+- Nginx proxy added `/webhooks/` location block
+- VERSION bumped to 2026.5.14.1
+
 ## 2026-05-13
 
 ### Added

@@ -17,7 +17,7 @@ from hermeshq.services.hermes_installation import HermesInstallationError
 from hermeshq.models.activity import ActivityLog
 
 router = APIRouter(prefix="/agents/{agent_id}/channels", tags=["messaging-channels"])
-SUPPORTED_PLATFORMS = {"telegram", "whatsapp"}
+SUPPORTED_PLATFORMS = {"telegram", "whatsapp", "microsoft_teams", "google_chat"}
 
 
 async def _get_or_create_channel(

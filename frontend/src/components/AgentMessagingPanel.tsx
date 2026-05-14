@@ -144,11 +144,20 @@ function RuntimeSummary({
 // Platform configuration descriptors
 // ---------------------------------------------------------------------------
 
-const PLATFORM_CONFIGS: Record<"telegram" | "whatsapp", PlatformConfig> = {
+type PlatformSlug = "telegram" | "whatsapp" | "microsoft_teams" | "google_chat";
+
+const COPY_KEYS: Record<PlatformSlug, string> = {
+  telegram: "agent.telegramCopy",
+  whatsapp: "agent.whatsappCopy",
+  microsoft_teams: "agent.teamsCopy",
+  google_chat: "agent.googleChatCopy",
+};
+
+const PLATFORM_CONFIGS: Record<PlatformSlug, PlatformConfig> = {
   telegram: {
     platform: "telegram",
     label: "Telegram",
-    copy: "", // set dynamically via t()
+    copy: "",
     showSecretRef: true,
     showWhatsappMode: false,
     showQrSection: false,
@@ -169,69 +178,114 @@ const PLATFORM_CONFIGS: Record<"telegram" | "whatsapp", PlatformConfig> = {
     saveLabelKey: "agent.saveWhatsapp",
     stoppedLabelKey: "agent.gatewayStopped",
   },
+  microsoft_teams: {
+    platform: "microsoft_teams",
+    label: "Microsoft Teams",
+    copy: "",
+    showSecretRef: true,
+    showWhatsappMode: false,
+    showQrSection: false,
+    homeChatIdPlaceholder: "19:meeting_thread_id@thread.tacv2",
+    enableLabelKey: "agent.enableTelegram",
+    saveLabelKey: "agent.saveTelegram",
+    stoppedLabelKey: "agent.gatewayStopped",
+  },
+  google_chat: {
+    platform: "google_chat",
+    label: "Google Chat",
+    copy: "",
+    showSecretRef: true,
+    showWhatsappMode: false,
+    showQrSection: false,
+    homeChatIdPlaceholder: "spaces/xxxxxxxxxxx",
+    enableLabelKey: "agent.enableTelegram",
+    saveLabelKey: "agent.saveTelegram",
+    stoppedLabelKey: "agent.gatewayStopped",
+  },
 };
 
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
+const ALL_PLATFORMS: PlatformSlug[] = ["telegram", "whatsapp", "microsoft_teams", "google_chat"];
+
+const PLATFORM_LABELS: Record<PlatformSlug, string> = {
+  telegram: "Telegram",
+  whatsapp: "WhatsApp",
+  microsoft_teams: "MS Teams",
+  google_chat: "Google Chat",
+};
+
 export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isAdmin: boolean }) {
   const { t } = useI18n();
+  // Hooks for all 4 platforms
   const { data: telegram } = useMessagingChannel(agentId, "telegram");
   const { data: telegramRuntime } = useMessagingChannelRuntime(agentId, "telegram");
   const { data: telegramLogs } = useMessagingChannelLogs(agentId, "telegram");
   const { data: whatsapp } = useMessagingChannel(agentId, "whatsapp");
   const { data: whatsappRuntime } = useMessagingChannelRuntime(agentId, "whatsapp");
   const { data: whatsappLogs } = useMessagingChannelLogs(agentId, "whatsapp");
+  const { data: teams } = useMessagingChannel(agentId, "microsoft_teams");
+  const { data: teamsRuntime } = useMessagingChannelRuntime(agentId, "microsoft_teams");
+  const { data: teamsLogs } = useMessagingChannelLogs(agentId, "microsoft_teams");
+  const { data: gchat } = useMessagingChannel(agentId, "google_chat");
+  const { data: gchatRuntime } = useMessagingChannelRuntime(agentId, "google_chat");
+  const { data: gchatLogs } = useMessagingChannelLogs(agentId, "google_chat");
+
   const { data: secrets } = useSecrets(isAdmin);
   const updateChannel = useUpdateMessagingChannel();
   const startChannel = useMessagingChannelAction("start");
   const stopChannel = useMessagingChannelAction("stop");
   const [submitErrors, setSubmitErrors] = useState<Record<string, string | null>>({});
-  const telegramDirtyRef = useRef(false);
-  const whatsappDirtyRef = useRef(false);
-  const [telegramForm, setTelegramForm] = useState<ChannelFormState>(defaultFormState);
-  const [whatsappForm, setWhatsappForm] = useState<ChannelFormState>(defaultFormState);
-  const [selectedPlatform, setSelectedPlatform] = useState<"telegram" | "whatsapp">("telegram");
+
+  // Per-platform dirty refs and forms
+  const dirtyRefs = useRef<Record<PlatformSlug, boolean>>({ telegram: false, whatsapp: false, microsoft_teams: false, google_chat: false });
+  const [forms, setForms] = useState<Record<PlatformSlug, ChannelFormState>>({
+    telegram: defaultFormState,
+    whatsapp: defaultFormState,
+    microsoft_teams: defaultFormState,
+    google_chat: defaultFormState,
+  });
+  const [selectedPlatform, setSelectedPlatform] = useState<PlatformSlug>("telegram");
   const whatsappQrSvg = useMemo(
     () => buildWhatsappQrSvg(whatsappRuntime?.pairing_qr_text),
     [whatsappRuntime?.pairing_qr_text],
   );
 
-  // Sync form state from server data
-  useEffect(() => {
-    if (!telegram || telegramDirtyRef.current) {
-      return;
-    }
-    setTelegramForm({
-      enabled: telegram.enabled,
-      secret_ref: telegram.secret_ref ?? "",
-      allowed_user_ids: formatList(telegram.allowed_user_ids),
-      home_chat_id: telegram.home_chat_id ?? "",
-      home_chat_name: telegram.home_chat_name ?? "",
-      require_mention: telegram.require_mention,
-      free_response_chat_ids: formatList(telegram.free_response_chat_ids),
-      unauthorized_dm_behavior: telegram.unauthorized_dm_behavior ?? "pair",
-      whatsapp_mode: "self-chat",
-    });
-  }, [telegram]);
+  const isActive = selectedPlatform === "telegram";
 
+  // Channel data map for generic access
+  const channelData: Record<PlatformSlug, MessagingChannel | undefined> = {
+    telegram, whatsapp, microsoft_teams: teams, google_chat: gchat,
+  };
+  const runtimeData: Record<PlatformSlug, MessagingChannelRuntime | undefined> = {
+    telegram: telegramRuntime, whatsapp: whatsappRuntime, microsoft_teams: teamsRuntime, google_chat: gchatRuntime,
+  };
+  const logsData: Record<PlatformSlug, string | undefined> = {
+    telegram: telegramLogs, whatsapp: whatsappLogs, microsoft_teams: teamsLogs, google_chat: gchatLogs,
+  };
+
+  // Generic sync effect for all platforms
   useEffect(() => {
-    if (!whatsapp || whatsappDirtyRef.current) {
-      return;
+    for (const p of ALL_PLATFORMS) {
+      const ch = channelData[p];
+      if (!ch || dirtyRefs.current[p]) continue;
+      const newForm: ChannelFormState = {
+        enabled: ch.enabled,
+        secret_ref: ch.secret_ref ?? "",
+        allowed_user_ids: formatList(ch.allowed_user_ids),
+        home_chat_id: ch.home_chat_id ?? "",
+        home_chat_name: ch.home_chat_name ?? "",
+        require_mention: ch.require_mention,
+        free_response_chat_ids: formatList(ch.free_response_chat_ids),
+        unauthorized_dm_behavior: ch.unauthorized_dm_behavior ?? "pair",
+        whatsapp_mode: p === "whatsapp" ? getWhatsappMode(ch) : "self-chat",
+      };
+      setForms((prev) => (prev[p] === newForm ? prev : { ...prev, [p]: newForm }));
     }
-    setWhatsappForm({
-      enabled: whatsapp.enabled,
-      secret_ref: whatsapp.secret_ref ?? "",
-      allowed_user_ids: formatList(whatsapp.allowed_user_ids),
-      home_chat_id: whatsapp.home_chat_id ?? "",
-      home_chat_name: whatsapp.home_chat_name ?? "",
-      require_mention: whatsapp.require_mention,
-      free_response_chat_ids: formatList(whatsapp.free_response_chat_ids),
-      unauthorized_dm_behavior: whatsapp.unauthorized_dm_behavior ?? "pair",
-      whatsapp_mode: getWhatsappMode(whatsapp),
-    });
-  }, [whatsapp]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [telegram, whatsapp, teams, gchat]);
 
   // Secret options
   const secretOptions = useMemo(
@@ -266,109 +320,76 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
   }
 
   // Save handlers
-  async function saveTelegram() {
-    clearError("telegram");
+  // Save handler (generic for all platforms)
+  async function savePlatform(platform: PlatformSlug) {
+    clearError(platform);
+    const form = forms[platform];
     try {
-      await updateChannel.mutateAsync({
-        agentId,
-        platform: "telegram",
-        payload: {
-          enabled: telegramForm.enabled,
-          secret_ref: telegramForm.secret_ref || null,
-          allowed_user_ids: parseListInput(telegramForm.allowed_user_ids),
-          home_chat_id: telegramForm.home_chat_id || null,
-          home_chat_name: telegramForm.home_chat_name || null,
-          require_mention: telegramForm.require_mention,
-          free_response_chat_ids: parseListInput(telegramForm.free_response_chat_ids),
-          unauthorized_dm_behavior: telegramForm.unauthorized_dm_behavior,
-        },
-      });
-      telegramDirtyRef.current = false;
+      const payload: Record<string, unknown> = {
+        enabled: form.enabled,
+        secret_ref: form.secret_ref || null,
+        allowed_user_ids: parseListInput(form.allowed_user_ids),
+        home_chat_id: form.home_chat_id || null,
+        home_chat_name: form.home_chat_name || null,
+        require_mention: form.require_mention,
+        free_response_chat_ids: parseListInput(form.free_response_chat_ids),
+        unauthorized_dm_behavior: form.unauthorized_dm_behavior,
+      };
+      if (platform === "whatsapp") {
+        payload.metadata_json = { whatsapp_mode: form.whatsapp_mode };
+      }
+      await updateChannel.mutateAsync({ agentId, platform, payload });
+      dirtyRefs.current[platform] = false;
     } catch (error) {
       setSubmitErrors((current) => ({
         ...current,
-        telegram: describeError(error, t("agent.gatewayConfigSaveFailed")),
+        [platform]: describeError(error, t("agent.gatewayConfigSaveFailed")),
       }));
     }
   }
 
-  async function saveWhatsapp() {
-    clearError("whatsapp");
-    try {
-      await updateChannel.mutateAsync({
-        agentId,
-        platform: "whatsapp",
-        payload: {
-          enabled: whatsappForm.enabled,
-          allowed_user_ids: parseListInput(whatsappForm.allowed_user_ids),
-          home_chat_id: whatsappForm.home_chat_id || null,
-          home_chat_name: whatsappForm.home_chat_name || null,
-          require_mention: whatsappForm.require_mention,
-          free_response_chat_ids: parseListInput(whatsappForm.free_response_chat_ids),
-          metadata_json: {
-            whatsapp_mode: whatsappForm.whatsapp_mode,
-          },
-        },
-      });
-      whatsappDirtyRef.current = false;
-    } catch (error) {
-      setSubmitErrors((current) => ({
-        ...current,
-        whatsapp: describeError(error, t("agent.whatsappConfigSaveFailed")),
-      }));
-    }
-  }
-
-  async function startPlatform(platform: "telegram" | "whatsapp") {
+  async function startPlatform(platform: PlatformSlug) {
     clearError(platform);
     try {
       await startChannel.mutateAsync({ agentId, platform });
     } catch (error) {
       setSubmitErrors((current) => ({
         ...current,
-        [platform]: describeError(
-          error,
-          platform === "telegram" ? t("agent.gatewayStartFailed") : t("agent.whatsappStartFailed"),
-        ),
+        [platform]: describeError(error, t("agent.gatewayStartFailed")),
       }));
     }
   }
 
-  async function stopPlatform(platform: "telegram" | "whatsapp") {
+  async function stopPlatform(platform: PlatformSlug) {
     clearError(platform);
     try {
       await stopChannel.mutateAsync({ agentId, platform });
     } catch (error) {
       setSubmitErrors((current) => ({
         ...current,
-        [platform]: describeError(
-          error,
-          platform === "telegram" ? t("agent.gatewayStopFailed") : t("agent.whatsappStopFailed"),
-        ),
+        [platform]: describeError(error, t("agent.gatewayStopFailed")),
       }));
     }
   }
 
-  const telegramStatus = telegramRuntime?.status ?? telegram?.status ?? "stopped";
-  const whatsappStatus = whatsappRuntime?.status ?? whatsapp?.status ?? "stopped";
+  // Build platform tab data
+  const platforms = ALL_PLATFORMS.map((p) => ({
+    platform: p,
+    label: PLATFORM_LABELS[p],
+    status: runtimeData[p]?.status ?? channelData[p]?.status ?? "stopped",
+  }));
 
-  // Platform tab data
-  const platforms = [
-    { platform: "telegram" as const, label: "Telegram", status: telegramStatus },
-    { platform: "whatsapp" as const, label: "WhatsApp", status: whatsappStatus },
-  ];
-
-  // Active platform data
-  const isActive = selectedPlatform === "telegram";
+  // Active platform data (generic)
   const activeConfig = { ...PLATFORM_CONFIGS[selectedPlatform] };
-  activeConfig.copy = isActive ? t("agent.telegramCopy") : t("agent.whatsappCopy");
-  const activeForm = isActive ? telegramForm : whatsappForm;
-  const activeSetForm = isActive 
-    ? (update: React.SetStateAction<ChannelFormState>) => { telegramDirtyRef.current = true; setTelegramForm(update); }
-    : (update: React.SetStateAction<ChannelFormState>) => { whatsappDirtyRef.current = true; setWhatsappForm(update); };
-  const activeRuntime = isActive ? telegramRuntime : whatsappRuntime;
-  const activeStatus = isActive ? telegramStatus : whatsappStatus;
-  const activeLogs = isActive ? telegramLogs : whatsappLogs;
+  activeConfig.copy = t(COPY_KEYS[selectedPlatform]);
+  const activeForm = forms[selectedPlatform];
+  const activeSetForm = (update: React.SetStateAction<ChannelFormState>) => {
+    dirtyRefs.current[selectedPlatform] = true;
+    setForms((prev) => ({ ...prev, [selectedPlatform]: typeof update === "function" ? update(prev[selectedPlatform]) : update }));
+  };
+  const activeRuntime = runtimeData[selectedPlatform];
+  const activeStatus = runtimeData[selectedPlatform]?.status ?? channelData[selectedPlatform]?.status ?? "stopped";
+  const activeLogs = logsData[selectedPlatform];
 
   return (
     <div className="mt-6 border-t border-[var(--border)] pt-6">
@@ -419,7 +440,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
             sessionPath={whatsappRuntime?.session_path ?? null}
             bridgeLogPath={whatsappRuntime?.bridge_log_path ?? null}
             pairingQrText={whatsappRuntime?.pairing_qr_text ?? null}
-            onSave={() => void (isActive ? saveTelegram() : saveWhatsapp())}
+            onSave={() => void savePlatform(selectedPlatform)}
             onStart={() => void startPlatform(selectedPlatform)}
             onStop={() => void stopPlatform(selectedPlatform)}
           />
@@ -430,9 +451,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
             <pre className="mt-3 max-h-60 overflow-auto whitespace-pre-wrap border border-[var(--border)] bg-[var(--surface-raised)] p-4 text-xs leading-6 text-[var(--text-secondary)]">
               {activeLogs?.trim()
                 ? activeLogs
-                : isActive
-                  ? t("agent.noGatewayOutput")
-                  : t("agent.noWhatsappGatewayOutput")}
+                : t("agent.noGatewayOutput")}
             </pre>
           </div>
 
