@@ -47,12 +47,18 @@ export type PlatformConfig = {
   label: string;
   /** Introductory copy rendered below the label */
   copy: string;
-  /** Whether to show the secret-ref selector (Telegram only) */
+  /** Whether to show the secret-ref selector */
   showSecretRef: boolean;
   /** Whether to show the WhatsApp-mode selector */
   showWhatsappMode: boolean;
   /** Whether to show the QR / pairing section */
   showQrSection: boolean;
+  /** Whether to show the allowed-user-ids section */
+  showAllowedUsers: boolean;
+  /** Whether to show the home-chat section */
+  showHomeChat: boolean;
+  /** Whether to show the behavior settings (unauthorized DM + require mention) */
+  showBehavior: boolean;
   /** Placeholder for home_chat_id field */
   homeChatIdPlaceholder: string;
   /** i18n key for the enable checkbox label */
@@ -195,16 +201,20 @@ export function ChannelForm({
               value={runtime?.last_bootstrap_status ?? t("agent.none")}
               subtle={!runtime?.last_bootstrap_status}
             />
-            <ChannelStat
-              label={t("agent.allowedUsers")}
-              value="—"
-              subtle
-            />
-            <ChannelStat
-              label={t("agent.homeChat")}
-              value="—"
-              subtle
-            />
+            {config.showAllowedUsers && (
+              <ChannelStat
+                label={t("agent.allowedUsers")}
+                value="—"
+                subtle
+              />
+            )}
+            {config.showHomeChat && (
+              <ChannelStat
+                label={t("agent.homeChat")}
+                value="—"
+                subtle
+              />
+            )}
           </>
         )}
       </div>
@@ -267,10 +277,11 @@ export function ChannelForm({
               </div>
             )}
 
-            {/* Allowed users */}
+            {/* Allowed users — only for platforms that need it */}
+            {config.showAllowedUsers && (
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
               <p className="panel-label">
-                {config.showSecretRef
+                {config.platform === "telegram"
                   ? t("agent.allowedTelegramUsers")
                   : t("agent.allowedUsers")}
               </p>
@@ -282,13 +293,15 @@ export function ChannelForm({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, allowed_user_ids: event.target.value }))
                   }
-                  placeholder={config.showSecretRef ? "123456789\n987654321" : "56912345678@s.whatsapp.net"}
+                  placeholder={config.platform === "telegram" ? "123456789\n987654321" : "56912345678@s.whatsapp.net"}
                 />
               </label>
             </div>
+            )}
           </div>
 
-          {/* Home chat */}
+          {/* Home chat — only for platforms that need it */}
+          {config.showHomeChat && (
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
             <p className="panel-label">{t("agent.homeChat")}</p>
             <div className="mt-3 grid gap-4 lg:grid-cols-2">
@@ -325,8 +338,10 @@ export function ChannelForm({
               </label>
             </div>
           </div>
+          )}
 
-          {/* Behavior settings */}
+          {/* Behavior settings — only for platforms that need it */}
+          {config.showBehavior && (
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
             <div className="grid gap-4 lg:grid-cols-2">
               <label className="panel-field">
@@ -362,6 +377,7 @@ export function ChannelForm({
               </div>
             </div>
           </div>
+          )}
 
           {/* WhatsApp QR / pairing section */}
           {config.showQrSection && (
