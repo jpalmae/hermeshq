@@ -27,9 +27,9 @@ type ManualContent = {
 const manualContent: Record<"en" | "es", ManualContent> = {
   es: {
     sidebarLabel: "Manual de usuario",
-    heroTitle: "Operar HermesHQ de punta a punta",
+    heroTitle: "Guía Integral",
     heroSummary:
-      "Esta guía explica el flujo completo de uso de la plataforma, desde la navegación general hasta la administración de agentes, usuarios, tareas recurrentes y canales externos.",
+      "Domina la plataforma de punta a punta: desde la configuración inicial y gestión de agentes hasta la automatización de tareas y canales externos.",
     quickstartLabel: "Inicio rapido",
     quickstartSteps: [
       {
@@ -965,23 +965,23 @@ export function ManualPage() {
 
   return (
     <div className="manual-page space-y-8">
-      <section className="grid gap-6 xl:grid-cols-[0.42fr_1fr]">
-        <aside className="manual-sidebar panel-frame p-6 xl:sticky xl:top-8 xl:self-start">
+      <section className="grid gap-6 xl:grid-cols-[0.42fr_1fr] xl:items-start">
+        <aside className="manual-sidebar panel-frame p-6 xl:sticky xl:top-8 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:self-start">
           <p className="panel-label">{content.sidebarLabel}</p>
-          <h1 className="mt-4 max-w-[12ch] text-4xl leading-none text-[var(--text-display)] md:text-5xl">
+          <h1 className="mt-4 text-4xl leading-none text-[var(--text-display)] md:text-5xl">
             {content.heroTitle}
           </h1>
-          <p className="mt-4 max-w-[34ch] text-sm leading-6 text-[var(--text-secondary)]">{content.heroSummary}</p>
+          <p className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">{content.heroSummary}</p>
           <div className="mt-8 space-y-2">
             {content.sections.map((section, index) => (
               <a
                 key={section.id}
                 href={`#${section.id}`}
-                className="manual-sidebar-link flex items-start justify-between gap-3 border-b border-[var(--border)] py-3 text-sm text-[var(--text-primary)]"
+                className="manual-sidebar-link flex items-start justify-between gap-0 border-b border-[var(--border)] py-1 text-sm text-[var(--text-primary)]"
               >
-                <span className="min-w-0">
-                  <span className="panel-label">{String(index + 1).padStart(2, "0")}</span>
-                  <span className="mt-1 block">{section.title}</span>
+                <span className="min-w-0 flex items-baseline gap-2">
+                  <span className="panel-label shrink-0">{String(index + 1).padStart(2, "0")}</span>
+                  <span>{section.title}</span>
                 </span>
                 {section.audience ? (
                   <span className="shrink-0 rounded-full border border-[var(--border-visible)] px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
@@ -993,7 +993,7 @@ export function ManualPage() {
           </div>
         </aside>
 
-        <div className="space-y-6">
+        <div className="space-y-8 pb-[48rem]">
           <section className="manual-quickstart panel-frame p-6 md:p-8">
             <p className="panel-label">{content.quickstartLabel}</p>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
