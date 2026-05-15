@@ -130,9 +130,9 @@ const ns: Record<string, string> = {
   "agent.teamsCopy": "Gateway de bot de Microsoft Teams para este agente. Los mensajes de chats y canales de Teams se reenvían como tareas; las respuestas se publican automáticamente.",
   "agent.googleChatCopy": "Gateway de bot de Google Chat para este agente. Los mensajes de espacios y DMs se reenvían como tareas; las respuestas se publican automáticamente.",
   "agent.selectTeamsSecret": "Selecciona un secreto de Teams",
-  "agent.teamsSecretHint": "Crea un secreto en Settings → Secrets con el client secret del Bot como valor y el App ID en username. Luego referéncialo aquí.",
+  "agent.teamsSecretHint": "Crea un secreto en Settings → Secrets con el **client secret (App Password)** del Bot como valor. Luego seleccionalo aquí. El App ID y Tenant ID van en los campos de abajo.",
   "agent.selectGoogleChatSecret": "Selecciona un secreto de Google Chat",
-  "agent.googleChatSecretHint": "Crea un secreto en Settings → Secrets con el JSON completo de la Service Account como valor. Luego referéncialo aquí.",
+  "agent.googleChatSecretHint": "Crea un secreto en Settings → Secrets con el **JSON completo de la Service Account** pegado como valor. Luego seleccionalo aquí. El Project ID de Google Cloud va en el campo de abajo.",
   "agent.enableTeams": "Habilitar gateway de Microsoft Teams para este agente",
   "agent.enableGoogleChat": "Habilitar gateway de Google Chat para este agente",
   "agent.saveTeams": "Guardar canal Teams",
@@ -249,6 +249,14 @@ const ns: Record<string, string> = {
   "agent.editor": "Editor",
   "agent.selectFile": "Selecciona un archivo",
   "agent.workspacePlaceholder": "Contenido del archivo del workspace",
+
+  "agent.teamsMetadata": "Configuración Azure Bot",
+  "agent.teamsAppId": "App ID (Client ID)",
+  "agent.teamsTenantId": "Tenant ID",
+  "agent.teamsMetadataHint": "Se encuentran en Azure Portal → App Registration → Overview. El App ID es el \"Application (client) ID\". El Tenant ID es opcional para bots multi-tenant.",
+  "agent.googleChatMetadata": "Configuración Google Cloud",
+  "agent.googleProjectId": "Google Cloud Project ID",
+  "agent.googleChatMetadataHint": "El ID del proyecto donde están configurados la Google Chat API y la Service Account. Se encuentra en Google Cloud Console → IAM & Admin → Settings.",
 };
 
 export default ns;

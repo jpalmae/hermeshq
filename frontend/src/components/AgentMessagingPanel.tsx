@@ -164,6 +164,8 @@ const PLATFORM_CONFIGS: Record<PlatformSlug, PlatformConfig> = {
     showAllowedUsers: true,
     showHomeChat: true,
     showBehavior: true,
+    showTeamsMetadata: false,
+    showGoogleChatMetadata: false,
     homeChatIdPlaceholder: "-1001234567890",
     enableLabelKey: "agent.enableTelegram",
     saveLabelKey: "agent.saveTelegram",
@@ -179,6 +181,8 @@ const PLATFORM_CONFIGS: Record<PlatformSlug, PlatformConfig> = {
     showAllowedUsers: true,
     showHomeChat: true,
     showBehavior: true,
+    showTeamsMetadata: false,
+    showGoogleChatMetadata: false,
     homeChatIdPlaceholder: "56912345678@s.whatsapp.net",
     enableLabelKey: "agent.enableWhatsapp",
     saveLabelKey: "agent.saveWhatsapp",
@@ -194,6 +198,8 @@ const PLATFORM_CONFIGS: Record<PlatformSlug, PlatformConfig> = {
     showAllowedUsers: true,
     showHomeChat: false,
     showBehavior: true,
+    showTeamsMetadata: true,
+    showGoogleChatMetadata: false,
     homeChatIdPlaceholder: "",
     enableLabelKey: "agent.enableTeams",
     saveLabelKey: "agent.saveTeams",
@@ -209,6 +215,8 @@ const PLATFORM_CONFIGS: Record<PlatformSlug, PlatformConfig> = {
     showAllowedUsers: true,
     showHomeChat: false,
     showBehavior: true,
+    showTeamsMetadata: false,
+    showGoogleChatMetadata: true,
     homeChatIdPlaceholder: "",
     enableLabelKey: "agent.enableGoogleChat",
     saveLabelKey: "agent.saveGoogleChat",
@@ -293,6 +301,9 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
         free_response_chat_ids: formatList(ch.free_response_chat_ids),
         unauthorized_dm_behavior: ch.unauthorized_dm_behavior ?? "pair",
         whatsapp_mode: p === "whatsapp" ? getWhatsappMode(ch) : "self-chat",
+        teams_app_id: String(ch.metadata_json?.app_id ?? ""),
+        teams_tenant_id: String(ch.metadata_json?.tenant_id ?? ""),
+        google_project_id: String(ch.metadata_json?.project_id ?? ""),
       };
       setForms((prev) => (prev[p] === newForm ? prev : { ...prev, [p]: newForm }));
     }
@@ -349,6 +360,19 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
       };
       if (platform === "whatsapp") {
         payload.metadata_json = { whatsapp_mode: form.whatsapp_mode };
+      }
+      if (platform === "microsoft_teams") {
+        payload.metadata_json = {
+          ...(channelData[platform]?.metadata_json ?? {}),
+          app_id: form.teams_app_id || undefined,
+          tenant_id: form.teams_tenant_id || undefined,
+        };
+      }
+      if (platform === "google_chat") {
+        payload.metadata_json = {
+          ...(channelData[platform]?.metadata_json ?? {}),
+          project_id: form.google_project_id || undefined,
+        };
       }
       await updateChannel.mutateAsync({ agentId, platform, payload });
       dirtyRefs.current[platform] = false;

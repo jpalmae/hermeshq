@@ -26,6 +26,11 @@ export type ChannelFormState = {
   free_response_chat_ids: string;
   unauthorized_dm_behavior: string;
   whatsapp_mode: string;
+  // Teams metadata
+  teams_app_id: string;
+  teams_tenant_id: string;
+  // Google Chat metadata
+  google_project_id: string;
 };
 
 export const defaultFormState: ChannelFormState = {
@@ -38,10 +43,13 @@ export const defaultFormState: ChannelFormState = {
   free_response_chat_ids: "",
   unauthorized_dm_behavior: "pair",
   whatsapp_mode: "self-chat",
+  teams_app_id: "",
+  teams_tenant_id: "",
+  google_project_id: "",
 };
 
 export type PlatformConfig = {
-  /** "telegram" | "whatsapp" */
+  /** "telegram" | "whatsapp" | "microsoft_teams" | "google_chat" */
   platform: string;
   /** Human-readable label shown in the header */
   label: string;
@@ -59,6 +67,10 @@ export type PlatformConfig = {
   showHomeChat: boolean;
   /** Whether to show the behavior settings (unauthorized DM + require mention) */
   showBehavior: boolean;
+  /** Whether to show Teams metadata fields (app_id, tenant_id) */
+  showTeamsMetadata: boolean;
+  /** Whether to show Google Chat metadata fields (project_id) */
+  showGoogleChatMetadata: boolean;
   /** Placeholder for home_chat_id field */
   homeChatIdPlaceholder: string;
   /** i18n key for the enable checkbox label */
@@ -275,6 +287,58 @@ export function ChannelForm({
                   </select>
                 </label>
               </div>
+            )}
+
+            {/* Teams metadata (App ID + Tenant ID) */}
+            {config.showTeamsMetadata && (
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+              <p className="panel-label">{t("agent.teamsMetadata")}</p>
+              <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                <label className="panel-field">
+                  <span className="panel-label">{t("agent.teamsAppId")}</span>
+                  <input
+                    value={form.teams_app_id}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, teams_app_id: event.target.value }))
+                    }
+                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  />
+                </label>
+                <label className="panel-field">
+                  <span className="panel-label">{t("agent.teamsTenantId")}</span>
+                  <input
+                    value={form.teams_tenant_id}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, teams_tenant_id: event.target.value }))
+                    }
+                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (optional)"
+                  />
+                </label>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                {t("agent.teamsMetadataHint")}
+              </p>
+            </div>
+            )}
+
+            {/* Google Chat metadata (Project ID) */}
+            {config.showGoogleChatMetadata && (
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+              <p className="panel-label">{t("agent.googleChatMetadata")}</p>
+              <label className="panel-field mt-3">
+                <span className="panel-label">{t("agent.googleProjectId")}</span>
+                <input
+                  value={form.google_project_id}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, google_project_id: event.target.value }))
+                  }
+                  placeholder="my-gcp-project-123"
+                />
+              </label>
+              <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                {t("agent.googleChatMetadataHint")}
+              </p>
+            </div>
             )}
 
             {/* Allowed users — only for platforms that need it */}

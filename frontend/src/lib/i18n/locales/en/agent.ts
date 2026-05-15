@@ -130,9 +130,9 @@ const ns: Record<string, string> = {
   "agent.teamsCopy": "Microsoft Teams bot gateway for this agent. Messages from Teams chats and channels are forwarded as tasks; responses are posted back automatically.",
   "agent.googleChatCopy": "Google Chat bot gateway for this agent. Messages from spaces and DMs are forwarded as tasks; responses are posted back automatically.",
   "agent.selectTeamsSecret": "Select Teams secret",
-  "agent.teamsSecretHint": "Create a secret in Settings → Secrets with the Bot client secret as value and the App ID in username. Then reference it here.",
+  "agent.teamsSecretHint": "Create a secret in Settings → Secrets with the **Bot client secret (App Password)** as value. Then select it here. The App ID and Tenant ID go in the fields below.",
   "agent.selectGoogleChatSecret": "Select Google Chat secret",
-  "agent.googleChatSecretHint": "Create a secret in Settings → Secrets with the full Service Account JSON as value. Then reference it here.",
+  "agent.googleChatSecretHint": "Create a secret in Settings → Secrets with the **full Service Account JSON** pasted as value. Then select it here. The Google Cloud Project ID goes in the field below.",
   "agent.enableTeams": "Enable Microsoft Teams gateway for this agent",
   "agent.enableGoogleChat": "Enable Google Chat gateway for this agent",
   "agent.saveTeams": "Save Teams channel",
@@ -249,6 +249,14 @@ const ns: Record<string, string> = {
   "agent.editor": "Editor",
   "agent.selectFile": "Select a file",
   "agent.workspacePlaceholder": "Workspace file contents",
+
+  "agent.teamsMetadata": "Azure Bot Configuration",
+  "agent.teamsAppId": "App ID (Client ID)",
+  "agent.teamsTenantId": "Tenant ID",
+  "agent.teamsMetadataHint": "Found in Azure Portal → App Registration → Overview. The App ID is the \"Application (client) ID\". Tenant ID is optional for multi-tenant bots.",
+  "agent.googleChatMetadata": "Google Cloud Configuration",
+  "agent.googleProjectId": "Google Cloud Project ID",
+  "agent.googleChatMetadataHint": "The project ID where the Google Chat API and Service Account are configured. Found in Google Cloud Console → IAM & Admin → Settings.",
 };
 
 export default ns;
