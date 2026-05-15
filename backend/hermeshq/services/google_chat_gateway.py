@@ -234,6 +234,24 @@ class GoogleChatGateway:
 
     # ---- incoming message handling (from webhook) ----
 
+    async def _load_channel_config(self) -> dict:
+        """Load the messaging channel configuration (allowed users, mention gating, etc)."""
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(MessagingChannel).where(
+                    MessagingChannel.agent_id == self.agent_id,
+                    MessagingChannel.platform == "google_chat",
+                )
+            )
+            channel = result.scalar_one_or_none()
+            if not channel:
+                return {}
+            return {
+                "allowed_user_ids": channel.allowed_user_ids or [],
+                "require_mention": channel.require_mention or False,
+                "unauthorized_dm_behavior": channel.unauthorized_dm_behavior or "pair",
+            }
+
     async def handle_event(self, event: dict) -> dict | None:
         """
         Process an incoming Google Chat event (called from webhook router).
@@ -268,6 +286,7 @@ class GoogleChatGateway:
 
         # Process message
         message = event.get("message", {})
+        # argumentText already has @mention stripped by Google Chat
         text = (message.get("argumentText") or message.get("text") or "").strip()
         if not text:
             return None
@@ -278,8 +297,40 @@ class GoogleChatGateway:
 
         space = event.get("space", {})
         space_name = space.get("name", "")
+        space_type = space.get("spaceType", "")
         thread_name = message.get("thread", {}).get("name")
         message_name = message.get("name", "")
+
+        # --- Access control ---
+        config = await self._load_channel_config()
+        allowed = config.get("allowed_user_ids", [])
+        require_mention = config.get("require_mention", False)
+        unauthorized_behavior = config.get("unauthorized_dm_behavior", "pair")
+
+        is_dm = space_type == "DIRECT_MESSAGE"
+
+        # Check allowed users (matched by email)
+        if allowed and sender_email and sender_email not in allowed:
+            logger.info(
+                "Google Chat: sender %s (%s) not in allowed list — ignoring",
+                sender_name, sender_email,
+            )
+            if unauthorized_behavior == "pair":
+                return {"text": f"👋 Hi {sender_name}, you are not authorized to use this bot."}
+            return None
+
+        # Check require_mention in group spaces (DMs always pass)
+        if require_mention and not is_dm:
+            # Google Chat only sends events when @mentioned if configured in
+            # the Google Cloud console.  If we receive it here and require_mention
+            # is on, we still check for annotation-based mentions.
+            annotations = message.get("annotations", [])
+            has_user_mention = any(
+                a.get("type") == "USER_MENTION"
+                for a in annotations
+            )
+            if not has_user_mention:
+                return None
 
         # Create task for the agent
         task_id = await self._create_task(

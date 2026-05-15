@@ -151,6 +151,8 @@ const ns: Record<string, string> = {
   "agent.selectTelegramSecret": "Select Telegram secret",
   "agent.telegramSecretHint": "Store the bot token first in Settings -> Secrets, then reference that secret here.",
   "agent.allowedTelegramUsers": "Allowed Telegram user IDs",
+  "agent.allowedTeamsUsers": "Allowed Microsoft Teams user IDs (AAD Object IDs)",
+  "agent.allowedGoogleChatUsers": "Allowed Google Chat user emails",
   "agent.allowedWhatsappUsers": "Allowed WhatsApp users or numbers",
   "agent.homeChatId": "Home chat ID",
   "agent.homeChatName": "Home chat name",

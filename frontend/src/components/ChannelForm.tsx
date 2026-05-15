@@ -283,7 +283,11 @@ export function ChannelForm({
               <p className="panel-label">
                 {config.platform === "telegram"
                   ? t("agent.allowedTelegramUsers")
-                  : t("agent.allowedUsers")}
+                  : config.platform === "microsoft_teams"
+                    ? t("agent.allowedTeamsUsers")
+                    : config.platform === "google_chat"
+                      ? t("agent.allowedGoogleChatUsers")
+                      : t("agent.allowedUsers")}
               </p>
               <label className="panel-field mt-3">
                 <span className="panel-label">{t("agent.allowedUsers")}</span>
@@ -293,7 +297,15 @@ export function ChannelForm({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, allowed_user_ids: event.target.value }))
                   }
-                  placeholder={config.platform === "telegram" ? "123456789\n987654321" : "56912345678@s.whatsapp.net"}
+                  placeholder={
+                    config.platform === "telegram"
+                      ? "123456789\n987654321"
+                      : config.platform === "microsoft_teams"
+                        ? "8a8f1234-5678-abcd-ef01-234567890abc\n..."
+                        : config.platform === "google_chat"
+                          ? "user@company.com\nadmin@company.com"
+                          : "56912345678@s.whatsapp.net"
+                  }
                 />
               </label>
             </div>

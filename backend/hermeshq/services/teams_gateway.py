@@ -275,6 +275,24 @@ class TeamsGateway:
 
     # ---- activity handling ----
 
+    async def _load_channel_config(self) -> dict:
+        """Load the messaging channel configuration (allowed users, mention gating, etc)."""
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(MessagingChannel).where(
+                    MessagingChannel.agent_id == self.agent_id,
+                    MessagingChannel.platform == "microsoft_teams",
+                )
+            )
+            channel = result.scalar_one_or_none()
+            if not channel:
+                return {}
+            return {
+                "allowed_user_ids": channel.allowed_user_ids or [],
+                "require_mention": channel.require_mention or False,
+                "unauthorized_dm_behavior": channel.unauthorized_dm_behavior or "pair",
+            }
+
     async def _handle_activity(self, activity: dict, service_url: str) -> None:
         """Process a single Teams activity."""
         if activity.get("type") != "message":
@@ -290,7 +308,9 @@ class TeamsGateway:
 
         conversation = activity.get("conversation", {})
         conv_id = conversation.get("id", "")
-        sender_name = activity.get("from", {}).get("name", "Teams User")
+        sender = activity.get("from", {})
+        sender_name = sender.get("name", "Teams User")
+        sender_aad_id = sender.get("aadObjectId", "")
         activity_id = activity.get("id", "")
 
         # Store conversation reference for replies
@@ -299,6 +319,54 @@ class TeamsGateway:
             "conversation_id": conv_id,
             "activity_id": activity_id,
         }
+
+        # --- Access control ---
+        config = await self._load_channel_config()
+        allowed = config.get("allowed_user_ids", [])
+        require_mention = config.get("require_mention", False)
+        unauthorized_behavior = config.get("unauthorized_dm_behavior", "pair")
+
+        # Check allowed users
+        if allowed and sender_aad_id and sender_aad_id not in allowed:
+            logger.info(
+                "Teams: sender %s (AAD %s) not in allowed list — ignoring",
+                sender_name, sender_aad_id,
+            )
+            if unauthorized_behavior == "pair":
+                try:
+                    await _reply_to_activity(
+                        token=self._token or await _get_app_token(
+                            self._app_id, self._app_password, self._tenant_id
+                        ),
+                        service_url=service_url,
+                        conversation_id=conv_id,
+                        activity_id=activity_id,
+                        text=f"👋 Hi {sender_name}, you are not authorized to use this bot.",
+                    )
+                except Exception:
+                    logger.exception("Failed to send unauthorized reply to %s", sender_name)
+            return
+
+        # Check require_mention — strip @bot mention from text if present
+        is_dm = conversation.get("conversationType") == "personal"
+        if require_mention and not is_dm:
+            mention_entities = [
+                e for e in (activity.get("entities") or [])
+                if e.get("type") == "mention"
+            ]
+            is_mentioned = any(
+                e.get("mentioned", {}).get("id") == self._app_id
+                for e in mention_entities
+            )
+            if not is_mentioned:
+                return  # Bot not mentioned in group chat — skip
+            # Strip the mention text from the prompt
+            for e in mention_entities:
+                mention_text = e.get("text", "")
+                if mention_text:
+                    text = text.replace(mention_text, "").strip()
+            if not text:
+                return  # Message was only the @mention
 
         # Create a task for the agent
         task_id = await self._create_task(text, sender_name, conv_id, activity_id, service_url)
