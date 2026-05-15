@@ -21,6 +21,7 @@ from hermeshq.models.base import utcnow
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.secret import Secret
 from hermeshq.models.task import Task
+from hermeshq.services.secret_vault import SecretVault
 
 logger = logging.getLogger(__name__)
 
@@ -148,11 +149,13 @@ class GoogleChatGateway:
         session_factory: async_sessionmaker[AsyncSession],
         supervisor: object,
         event_broker: object,
+        secret_vault: SecretVault,
     ) -> None:
         self.agent_id = agent_id
         self.session_factory = session_factory
         self.supervisor = supervisor
         self.event_broker = event_broker
+        self.secret_vault = secret_vault
 
         self._running = False
         self._token: str | None = None
@@ -209,8 +212,8 @@ class GoogleChatGateway:
                 return None
 
             metadata = channel.metadata_json or {}
-            # The service account JSON is stored as the secret value
-            service_account_json = secret.value
+            # The service account JSON is stored as the encrypted secret value
+            service_account_json = self.secret_vault.decrypt(secret.value_enc)
             project_id = metadata.get("project_id", "")
 
             if not service_account_json:

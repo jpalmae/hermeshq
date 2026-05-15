@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hermeshq.models.agent import Agent
 from hermeshq.models.messaging_channel import MessagingChannel
+from hermeshq.services.secret_vault import SecretVault
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +35,12 @@ class EnterpriseGatewayManager:
         session_factory: async_sessionmaker[AsyncSession],
         supervisor: object,
         event_broker: object,
+        secret_vault: SecretVault,
     ) -> None:
         self.session_factory = session_factory
         self.supervisor = supervisor
         self.event_broker = event_broker
+        self.secret_vault = secret_vault
 
         # agent_id → gateway instance
         self.teams_gateways: dict[str, object] = {}
@@ -113,6 +116,7 @@ class EnterpriseGatewayManager:
             session_factory=self.session_factory,
             supervisor=self.supervisor,
             event_broker=self.event_broker,
+            secret_vault=self.secret_vault,
         )
         await gw.start()
         self.teams_gateways[agent_id] = gw
@@ -136,6 +140,7 @@ class EnterpriseGatewayManager:
             session_factory=self.session_factory,
             supervisor=self.supervisor,
             event_broker=self.event_broker,
+            secret_vault=self.secret_vault,
         )
         await gw.start()
         self.google_chat_gateways[agent_id] = gw

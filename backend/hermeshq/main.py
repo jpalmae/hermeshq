@@ -165,6 +165,7 @@ async def lifespan(app: FastAPI):
         AsyncSessionLocal,
         app.state.supervisor,
         app.state.event_broker,
+        app.state.secret_vault,
     )
     app.state.gateway_supervisor.set_enterprise_gateways(app.state.enterprise_gateways)
     # Expose individual gateway maps for webhook routing

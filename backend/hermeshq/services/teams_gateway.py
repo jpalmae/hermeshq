@@ -22,6 +22,7 @@ from hermeshq.models.base import utcnow
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.secret import Secret
 from hermeshq.models.task import Task
+from hermeshq.services.secret_vault import SecretVault
 
 logger = logging.getLogger(__name__)
 
@@ -131,11 +132,13 @@ class TeamsGateway:
         session_factory: async_sessionmaker[AsyncSession],
         supervisor: object,
         event_broker: object,
+        secret_vault: SecretVault,
     ) -> None:
         self.agent_id = agent_id
         self.session_factory = session_factory
         self.supervisor = supervisor
         self.event_broker = event_broker
+        self.secret_vault = secret_vault
 
         self._running = False
         self._poll_task: asyncio.Task | None = None
@@ -193,7 +196,7 @@ class TeamsGateway:
             if not channel or not channel.secret_ref:
                 return None
 
-            # secret_ref points to a Secret with bot app_id in username and password in value
+            # secret_ref → Secret with encrypted bot app password
             secret_result = await session.execute(
                 select(Secret).where(Secret.name == channel.secret_ref)
             )
@@ -202,8 +205,8 @@ class TeamsGateway:
                 return None
 
             metadata = channel.metadata_json or {}
-            app_id = metadata.get("app_id", secret.username or "")
-            app_password = secret.value
+            app_id = metadata.get("app_id", "")
+            app_password = self.secret_vault.decrypt(secret.value_enc)
             tenant_id = metadata.get("tenant_id")
 
             if not app_id or not app_password:
