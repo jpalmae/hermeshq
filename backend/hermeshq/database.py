@@ -14,11 +14,11 @@ settings = get_settings()
 engine = create_async_engine(
     settings.database_url,
     future=True,
-    echo=False,
-    pool_size=10,
-    max_overflow=20,
+    echo=False,  # Set to True for debugging connection issues
+    pool_size=30,
+    max_overflow=60,
     pool_timeout=30,
-    pool_recycle=1800,
+    pool_recycle=600,  # Recycle connections after 10 minutes
     pool_pre_ping=True,
 )
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)

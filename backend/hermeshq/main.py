@@ -18,6 +18,7 @@ from hermeshq.models import ActivityLog, Agent, AppSettings, Node, ProviderDefin
 from hermeshq.routers import agents, auth, backup, comms, dashboard, hermes_versions, integration_factory, integration_packages, internal_agents, internal_control, logs, managed_integrations, mcp_access, mcp_server, messaging_channels, nodes, oidc_admin, providers, runtime_ledger, runtime_profiles, scheduled_tasks, secrets, settings as settings_router, skills, tasks, templates, terminal_sessions, users, webhooks
 from hermeshq.routers import attachments
 from hermeshq.routers import m365
+from hermeshq.routers import diagnostics
 from hermeshq.schemas.common import HealthResponse
 from hermeshq.services.agent_identity import derive_agent_identity, slugify_agent_value
 from hermeshq.services.agent_supervisor import AgentSupervisor
@@ -294,6 +295,7 @@ app.include_router(mcp_server.router)
 app.include_router(webhooks.router)
 app.include_router(attachments.router, prefix=settings.api_prefix)
 app.include_router(m365.router, prefix=settings.api_prefix)
+app.include_router(diagnostics.router, prefix=settings.api_prefix)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -350,6 +352,12 @@ async def stream(websocket: WebSocket) -> None:
             except Exception:
                 pass
     except WebSocketDisconnect:
+        broker.disconnect(websocket)
+    except Exception as exc:
+        logger.warning("WebSocket stream unexpected error: %s", exc)
+        broker.disconnect(websocket)
+    finally:
+        # Ensure connection is cleaned up on any exit path
         broker.disconnect(websocket)
 
 
