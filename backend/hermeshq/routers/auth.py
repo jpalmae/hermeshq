@@ -359,9 +359,8 @@ def _build_frontend_redirect(request: Request, *, token: str | None = None, auth
     scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
     base_url = f"{scheme}://{host}/"
     if token:
-        # Successful auth: redirect to root with token in fragment (#) so it's
-        # not sent to servers in logs/Referer headers
-        return f"{base_url}#token={token}"
+        query = urlencode({"token": token})
+        return f"{base_url}login?{query}"
     if auth_error:
         # Failed auth: redirect to /login so LoginPage.tsx can display the error
         query = urlencode({"auth_error": auth_error})
