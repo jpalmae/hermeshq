@@ -591,6 +591,10 @@ class InstanceBackupService:
             existing = await session.get(model, payload[pk_name])
             if existing is None:
                 session.add(model(**payload))
+            elif mode == "merge":
+                for key, value in payload.items():
+                    if getattr(existing, key, None) is None:
+                        setattr(existing, key, value)
             else:
                 for key, value in payload.items():
                     setattr(existing, key, value)

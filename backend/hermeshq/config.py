@@ -103,12 +103,24 @@ class Settings(BaseSettings):
                     env_path,
                 )
         elif self.jwt_secret == "change-me":
+            if not self.debug:
+                raise RuntimeError(
+                    "JWT_SECRET is using default value 'change-me'. "
+                    "Set a secure JWT_SECRET before running in production, "
+                    "or set DEBUG=true to bypass this check."
+                )
             logger.warning(
                 "⚠️ JWT_SECRET is using default value 'change-me'. "
                 "This is insecure for production. To rotate, set FERNET_KEY first "
                 "and then use the rotate-secrets CLI command."
             )
         if self.admin_password in ("", "admin123"):
+            if not self.debug and self.admin_password == "admin123":
+                raise RuntimeError(
+                    "ADMIN_PASSWORD is using default value 'admin123'. "
+                    "Set a secure ADMIN_PASSWORD before running in production, "
+                    "or set DEBUG=true to bypass this check."
+                )
             logger.warning("⚠️ ADMIN_PASSWORD is not set or using default value. This is insecure for production!")
         self.workspaces_root = self.workspaces_root.resolve()
         if self.branding_root is None:

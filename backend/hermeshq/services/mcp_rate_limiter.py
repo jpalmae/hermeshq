@@ -78,6 +78,7 @@ class McpRateLimiter:
                 window.popleft()
 
             if len(window) >= self._max_requests:
+                retry_after = int(window[0] - cutoff) + 1 if window else self._window_seconds
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     detail=(
@@ -85,6 +86,7 @@ class McpRateLimiter:
                         f"maximum {self._max_requests} requests per "
                         f"{self._window_seconds}s window."
                     ),
+                    headers={"Retry-After": str(retry_after)},
                 )
 
             # Record this request.

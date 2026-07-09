@@ -1,10 +1,13 @@
 import asyncio
 import json
+import logging
 import re
 import shutil
 import sys
 import time
 import urllib.request
+
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -328,6 +331,11 @@ class HermesVersionManager:
             1,
         )
         if updated == text:
+            logger.warning(
+                "Runtime hotfix needles not found in %s (v%s) — "
+                "upstream may have changed. Hotfixes were NOT applied.",
+                run_agent_path, version,
+            )
             return
         run_agent_path.write_text(updated, encoding="utf-8")
 

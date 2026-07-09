@@ -307,7 +307,21 @@ async def lifespan(app: FastAPI):
     await app.state.scheduler.start()
     app.state.gateway_bootstrap_task = asyncio.create_task(app.state.gateway_supervisor.bootstrap_gateways())
     app.state.enterprise_bootstrap_task = asyncio.create_task(app.state.enterprise_gateways.bootstrap())
+
+    async def _periodic_cleanup() -> None:
+        from hermeshq.routers.mcp_server import _rate_limiter, _analytics
+        while True:
+            await asyncio.sleep(60)
+            _rate_limiter.cleanup()
+            _analytics.evict_stale()
+
+    app.state._cleanup_task = asyncio.create_task(_periodic_cleanup())
+
     yield
+
+    app.state._cleanup_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await app.state._cleanup_task
     gateway_bootstrap_task = getattr(app.state, "gateway_bootstrap_task", None)
     if gateway_bootstrap_task:
         gateway_bootstrap_task.cancel()

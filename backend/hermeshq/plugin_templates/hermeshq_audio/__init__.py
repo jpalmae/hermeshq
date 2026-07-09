@@ -13,8 +13,10 @@ SUPPORTED_EXTS = {".m4a", ".ogg", ".mp3", ".wav", ".webm", ".flac", ".aac", ".op
 MAX_AUDIO_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 _TRANSCRIBE_SCRIPT = """
-import sys, json, asyncio
-sys.path.insert(0, "/app")
+import sys, json, asyncio, os
+for _p in ["/app", os.environ.get("HERMESHQ_BACKEND_ROOT", "")]:
+    if _p and os.path.isdir(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
 from hermeshq.services.voice import transcribe
 
 file_path = sys.argv[1]
