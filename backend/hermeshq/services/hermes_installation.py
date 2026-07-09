@@ -1361,7 +1361,7 @@ class HermesInstallationManager:
             envs = getattr(pconfig, "api_key_env_vars", None) if pconfig else None
             if envs:
                 return list(envs)
-        except (KeyError, AttributeError):
+        except (ImportError, KeyError, AttributeError):
             logger.debug("Provider registry env lookup failed for '%s'; using fallback", provider, exc_info=True)
         fallback = {
             "bedrock": [],
@@ -1390,7 +1390,7 @@ class HermesInstallationManager:
             base_url_env = getattr(pconfig, "base_url_env_var", None) if pconfig else None
             if isinstance(base_url_env, str) and base_url_env.strip():
                 return base_url_env.strip()
-        except (KeyError, AttributeError):
+        except (ImportError, KeyError, AttributeError):
             logger.debug("Provider base_url_env lookup failed for '%s'; using fallback", provider, exc_info=True)
         fallback = {
             "bedrock": "BEDROCK_BASE_URL",
