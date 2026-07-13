@@ -1361,7 +1361,7 @@ class HermesInstallationManager:
             envs = getattr(pconfig, "api_key_env_vars", None) if pconfig else None
             if envs:
                 return list(envs)
-        except (KeyError, AttributeError):
+        except (KeyError, AttributeError, ImportError):
             logger.debug("Provider registry env lookup failed for '%s'; using fallback", provider, exc_info=True)
         fallback = {
             "bedrock": [],

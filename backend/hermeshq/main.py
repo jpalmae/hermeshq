@@ -382,7 +382,7 @@ async def health() -> HealthResponse:
     try:
         async with AsyncSessionLocal() as session:
             await session.execute(select(1))
-    except OSError:
+    except Exception:
         db_ok = False
     return HealthResponse(
         status="ok" if db_ok else "degraded",

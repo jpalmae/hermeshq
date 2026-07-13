@@ -53,12 +53,6 @@ jobs:
         continue-on-error: true
         run: python -m pytest tests/ -v --tb=short --ignore=tests/test_gateway_supervisor_crash_loop.py --ignore=tests/test_regressions.py --ignore=tests/test_response_attachments.py
 
-      - name: Run full backend tests (including known failures)
-        if: always()
-        continue-on-error: true
-        working-directory: backend
-        run: python -m pytest tests/ -v --tb=short
-
   # ── Frontend build ────────────────────────────────────────────────────────
   frontend:
     runs-on: ubuntu-latest

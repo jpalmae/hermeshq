@@ -115,6 +115,14 @@ export function useDeleteAgent() {
       }
       return agentId;
     },
+    onError: (_error, _agentId, context) => {
+      if (context?.previousAgents) {
+        queryClient.setQueryData(["agents"], context.previousAgents);
+      }
+      if (context?.removedAgent) {
+        queryClient.setQueryData(["agents", context.removedAgent.id], context.removedAgent);
+      }
+    },
     onSuccess: async (agentId) => {
       await queryClient.invalidateQueries({ queryKey: ["agents"] });
       await queryClient.invalidateQueries({ queryKey: ["agents", agentId] });

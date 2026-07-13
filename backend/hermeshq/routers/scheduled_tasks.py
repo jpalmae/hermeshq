@@ -21,6 +21,8 @@ router = APIRouter(prefix="/scheduled-tasks", tags=["scheduled-tasks"])
 
 
 def _compute_next_run(expression: str) -> datetime:
+    if not croniter.is_valid(expression):
+        raise HTTPException(status_code=400, detail=f"Invalid cron expression: {expression}")
     now = datetime.now(UTC)
     if len(expression.split()) == 6:
         return croniter(expression, now, second_at_beginning=True).get_next(datetime)

@@ -136,7 +136,7 @@ function slugify(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    || "agent";
+    || `agent-${Date.now()}`;
 }
 
 function formatHermesVersionLabel(version: string | null | undefined, detectedVersion: string | null | undefined) {
@@ -488,12 +488,18 @@ export function AgentDetailPage() {
   }
 
   async function onSaveIdentity() {
+    const name = identityForm.name.trim();
+    const slug = identityForm.slug.trim();
+    if (!name || !slug) {
+      window.alert("Name and slug are required.");
+      return;
+    }
     await updateAgent.mutateAsync({
       agentId: currentAgent.id,
       payload: {
         friendly_name: identityForm.friendly_name.trim() || currentAgent.name,
-        name: identityForm.name.trim(),
-        slug: identityForm.slug.trim(),
+        name,
+        slug,
       },
     });
   }

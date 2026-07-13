@@ -316,7 +316,7 @@ export function TasksPage() {
                           <button
                             className="panel-button-secondary w-full"
                             onClick={() => cancelTask.mutate(task.id)}
-                            disabled={cancelTask.isPending}
+                            disabled={cancelTask.isPending && cancelTask.variables === task.id}
                             type="button"
                           >
                             {t("tasks.cancel")}
@@ -330,7 +330,7 @@ export function TasksPage() {
                                 deleteTask.mutate(task.id);
                               }
                             }}
-                            disabled={deleteTask.isPending}
+                            disabled={deleteTask.isPending && deleteTask.variables === task.id}
                             type="button"
                           >
                             {t("tasks.delete")}
