@@ -442,9 +442,10 @@ async def stream(websocket: WebSocket) -> None:
             websocket=websocket,
             is_admin=is_admin(user),
             agent_ids=set(accessible_agent_ids),
+            user_id=user_id,
         )
     else:
-        await broker.connect(websocket, is_admin=is_admin(user), agent_ids=accessible_agent_ids)
+        await broker.connect(websocket, is_admin=is_admin(user), agent_ids=accessible_agent_ids, user_id=user_id)
 
     # Handle pong responses for heartbeat
     try:
