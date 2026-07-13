@@ -441,13 +441,13 @@ async def _list_resources(db: AsyncSession, access: McpAccessToken) -> list[dict
     for agent in agents:
         label = _agent_label(agent)
         resources.append({
-            "uri": f"hermeshq://agent/{agent.id}/config",
+            "uri": f"agent://{agent.id}/config",
             "name": f"{label} — Configuration",
             "description": f"Runtime configuration for agent {label}.",
             "mimeType": "application/json",
         })
         resources.append({
-            "uri": f"hermeshq://agent/{agent.id}/recent-tasks",
+            "uri": f"agent://{agent.id}/tasks/recent",
             "name": f"{label} — Recent Tasks",
             "description": f"Last 20 tasks for agent {label}.",
             "mimeType": "application/json",
@@ -459,13 +459,13 @@ async def _list_resource_templates(db: AsyncSession, access: McpAccessToken) -> 
     """Return parameterised resource templates."""
     return [
         {
-            "uriTemplate": "hermeshq://task/{taskId}",
+            "uriTemplate": "task://{taskId}",
             "name": "Task by ID",
             "description": "Read a specific task's status, response and metadata.",
             "mimeType": "application/json",
         },
         {
-            "uriTemplate": "hermeshq://agent/{agentId}/activity",
+            "uriTemplate": "agent://{agentId}/activity",
             "name": "Agent Activity Log",
             "description": "Recent activity log entries for an agent.",
             "mimeType": "application/json",
@@ -478,22 +478,22 @@ async def _read_resource(db: AsyncSession, access: McpAccessToken, uri: str) -> 
     import re as _re
 
     # Static: agent config
-    m = _re.match(r"^hermeshq://agent/([^/]+)/config$", uri)
+    m = _re.match(r"^agent://([^/]+)/config$", uri)
     if m:
         return await _read_agent_config(db, access, m.group(1))
 
     # Static: agent recent tasks
-    m = _re.match(r"^hermeshq://agent/([^/]+)/recent-tasks$", uri)
+    m = _re.match(r"^agent://([^/]+)/tasks/recent$", uri)
     if m:
         return await _read_agent_recent_tasks(db, access, m.group(1))
 
     # Template: task by id
-    m = _re.match(r"^hermeshq://task/([^/]+)$", uri)
+    m = _re.match(r"^task://([^/]+)$", uri)
     if m:
         return await _read_task_resource(db, access, m.group(1))
 
     # Template: agent activity
-    m = _re.match(r"^hermeshq://agent/([^/]+)/activity$", uri)
+    m = _re.match(r"^agent://([^/]+)/activity$", uri)
     if m:
         return await _read_agent_activity(db, access, m.group(1))
 
@@ -504,7 +504,7 @@ async def _read_agent_config(db: AsyncSession, access: McpAccessToken, agent_id:
     ensure_mcp_agent_allowed(access, agent_id)
     agent = await db.get(Agent, agent_id)
     if not agent or agent.is_archived:
-        return {"contents": [{"uri": f"hermeshq://agent/{agent_id}/config", "text": "Agent not found."}]}
+        return {"contents": [{"uri": f"agent://{agent_id}/config", "text": "Agent not found."}]}
     config = {
         "id": agent.id, "slug": agent.slug, "name": _agent_label(agent),
         "description": agent.description, "status": agent.status,
@@ -512,7 +512,7 @@ async def _read_agent_config(db: AsyncSession, access: McpAccessToken, agent_id:
         "can_receive_tasks": agent.can_receive_tasks,
         "mcp_servers": agent.mcp_servers or [],
     }
-    return {"contents": [{"uri": f"hermeshq://agent/{agent_id}/config", "mimeType": "application/json", "text": json.dumps(config, default=str)}]}
+    return {"contents": [{"uri": f"agent://{agent_id}/config", "mimeType": "application/json", "text": json.dumps(config, default=str)}]}
 
 
 async def _read_agent_recent_tasks(db: AsyncSession, access: McpAccessToken, agent_id: str) -> dict:
@@ -526,13 +526,13 @@ async def _read_agent_recent_tasks(db: AsyncSession, access: McpAccessToken, age
          "completed_at": t.completed_at.isoformat() if t.completed_at else None}
         for t in rows
     ]
-    return {"contents": [{"uri": f"hermeshq://agent/{agent_id}/recent-tasks", "mimeType": "application/json", "text": json.dumps(tasks, default=str)}]}
+    return {"contents": [{"uri": f"agent://{agent_id}/tasks/recent", "mimeType": "application/json", "text": json.dumps(tasks, default=str)}]}
 
 
 async def _read_task_resource(db: AsyncSession, access: McpAccessToken, task_id: str) -> dict:
     task = await db.get(Task, task_id)
     if not task:
-        return {"contents": [{"uri": f"hermeshq://task/{task_id}", "text": "Task not found."}]}
+        return {"contents": [{"uri": f"task://{task_id}", "text": "Task not found."}]}
     ensure_mcp_agent_allowed(access, task.agent_id)
     data = {
         "id": task.id, "agent_id": task.agent_id, "title": task.title,
@@ -543,7 +543,7 @@ async def _read_task_resource(db: AsyncSession, access: McpAccessToken, task_id:
         "started_at": task.started_at.isoformat() if task.started_at else None,
         "completed_at": task.completed_at.isoformat() if task.completed_at else None,
     }
-    return {"contents": [{"uri": f"hermeshq://task/{task_id}", "mimeType": "application/json", "text": json.dumps(data, default=str)}]}
+    return {"contents": [{"uri": f"task://{task_id}", "mimeType": "application/json", "text": json.dumps(data, default=str)}]}
 
 
 async def _read_agent_activity(db: AsyncSession, access: McpAccessToken, agent_id: str) -> dict:
@@ -556,7 +556,7 @@ async def _read_agent_activity(db: AsyncSession, access: McpAccessToken, agent_i
          "created_at": r.created_at.isoformat() if r.created_at else None, "details": r.details}
         for r in rows
     ]
-    return {"contents": [{"uri": f"hermeshq://agent/{agent_id}/activity", "mimeType": "application/json", "text": json.dumps(logs, default=str)}]}
+    return {"contents": [{"uri": f"agent://{agent_id}/activity", "mimeType": "application/json", "text": json.dumps(logs, default=str)}]}
 
 # ---------------------------------------------------------------------------
 # Prompts
@@ -830,13 +830,9 @@ async def mcp_http_endpoint(
 
         # ── logging/setLevel ──────────────────────────────────────────
         if method == "logging/setLevel":
-            _level = str(params.get("level", "info")).upper()  # noqa: F841 — acknowledged
-            # Level acknowledged (per-session filtering not yet implemented)
-            result: Any = {}
-            resp = JSONResponse(_jsonrpc_result(request_id, result))
             _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000)
             await db.commit()
-            return resp
+            return JSONResponse(_jsonrpc_error(request_id, -32601, "logging/setLevel is not supported"))
 
         # ── Unknown method ───────────────────────────────────────────
         _analytics.record(token_id=access.id, method=method, latency_ms=(time.monotonic() - t0) * 1000)

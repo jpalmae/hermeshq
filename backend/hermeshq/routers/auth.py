@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import logging
 import re
 import secrets
@@ -728,14 +729,14 @@ async def verify_mfa(
             expires_at = expires_at.replace(tzinfo=UTC)
         if now > expires_at:
             continue
-        if mc.code_hash == code_hash:
+        if hmac.compare_digest(mc.code_hash, code_hash):
             matched_code = mc
             break
 
     if not matched_code:
         # Check if the code matches an expired one (give specific error)
         for mc in mfa_codes:
-            if mc.code_hash == code_hash:
+            if hmac.compare_digest(mc.code_hash, code_hash):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Verification code has expired. Please request a new one.",

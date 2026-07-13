@@ -50,8 +50,7 @@ jobs:
 
       - name: Run backend tests
         working-directory: backend
-        continue-on-error: true
-        run: python -m pytest tests/ -v --tb=short --ignore=tests/test_gateway_supervisor_crash_loop.py --ignore=tests/test_regressions.py --ignore=tests/test_response_attachments.py
+        run: python -m pytest tests/ -v --tb=short
 
   # ── Frontend build ────────────────────────────────────────────────────────
   frontend:

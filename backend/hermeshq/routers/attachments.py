@@ -85,17 +85,27 @@ async def upload_attachment(
             detail=f"File type '{ext}' not allowed.",
         )
 
-    content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail=f"File too large. Max {MAX_FILE_SIZE // (1024*1024)}MB")
-
     file_id = str(uuid.uuid4())
     safe_filename = f"{file_id}{ext}"
     uploads = _uploads_dir(request.app.state.workspace_manager, agent_id)
     file_path = uploads / safe_filename
 
-    with open(file_path, "wb") as f:
-        f.write(content)
+    total_size = 0
+    chunk_size = 1024 * 1024  # 1 MB
+    try:
+        with open(file_path, "wb") as f:
+            while chunk := await file.read(chunk_size):
+                total_size += len(chunk)
+                if total_size > MAX_FILE_SIZE:
+                    break
+                f.write(chunk)
+    except Exception:
+        file_path.unlink(missing_ok=True)
+        raise
+
+    if total_size > MAX_FILE_SIZE:
+        file_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=413, detail=f"File too large. Max {MAX_FILE_SIZE // (1024*1024)}MB")
 
     media_type = _resolve_media_type(file.filename)
     relative_path = f"uploads/{safe_filename}"
@@ -104,7 +114,7 @@ async def upload_attachment(
         "file_id": file_id,
         "filename": file.filename,
         "media_type": media_type,
-        "size": len(content),
+        "size": total_size,
         "path": relative_path,
     }
 
