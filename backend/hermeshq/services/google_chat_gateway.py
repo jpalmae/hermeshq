@@ -7,8 +7,10 @@ is posted back to the originating Google Chat space.
 """
 
 import asyncio
+import contextlib
 import json
 import logging
+import time
 import uuid
 
 import httpx
@@ -28,7 +30,8 @@ def _get_http_client() -> httpx.AsyncClient:
     """Return a shared httpx.AsyncClient, creating one if needed."""
     global _http_client
     if _http_client is None or _http_client.is_closed:
-        _http_client = httpx.AsyncClient(timeout=30)
+        transport = httpx.AsyncHTTPTransport(retries=2)
+        _http_client = httpx.AsyncClient(timeout=30, transport=transport)
     return _http_client
 
 from hermeshq.models.agent import Agent
@@ -175,6 +178,8 @@ class GoogleChatGateway:
         self._service_account_json: str = ""
         self._project_id: str = ""
         self._pending_tasks: dict[str, dict] = {}  # task_id → delivery info
+        self._pending_tasks_ttl = 1800  # 30 minutes
+        self._cleanup_task: asyncio.Task | None = None
         self._known_spaces: set[str] = set()  # spaces this gateway has been added to
 
     # ---- lifecycle ----
@@ -188,6 +193,7 @@ class GoogleChatGateway:
         self._token = await _get_service_account_token(self._service_account_json)
         self._running = True
         self._token_refresh_task = asyncio.create_task(self._token_refresh_loop())
+        self._cleanup_task = asyncio.create_task(self._pending_tasks_cleanup_loop())
         # Subscribe to task completion events
         self.event_broker.subscribe(self._on_event)
         logger.info("Google Chat gateway started for agent %s", self.agent_id)
@@ -196,10 +202,12 @@ class GoogleChatGateway:
         """Stop and clean up."""
         self._running = False
         self.event_broker.unsubscribe(self._on_event)
-        if self._token_refresh_task:
-            self._token_refresh_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._token_refresh_task
+        for task in (self._token_refresh_task, self._cleanup_task):
+            if task:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+        self._pending_tasks.clear()
         logger.info("Google Chat gateway stopped for agent %s", self.agent_id)
 
     # ---- credential loading ----
@@ -247,6 +255,24 @@ class GoogleChatGateway:
                 logger.exception(
                     "Failed to refresh Google Chat token for agent %s", self.agent_id
                 )
+
+    async def _pending_tasks_cleanup_loop(self) -> None:
+        """Evict stale entries from _pending_tasks that never received a completion event."""
+        while self._running:
+            try:
+                await asyncio.sleep(300)
+                now = time.monotonic()
+                stale = [
+                    tid for tid, info in self._pending_tasks.items()
+                    if now - info.get("_created_at", now) > self._pending_tasks_ttl
+                ]
+                for tid in stale:
+                    self._pending_tasks.pop(tid, None)
+                    logger.warning("Evicted stale pending task %s (TTL expired)", tid)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                logger.debug("pending_tasks cleanup error", exc_info=True)
 
     # ---- incoming message handling (from webhook) ----
 
@@ -427,6 +453,7 @@ class GoogleChatGateway:
         self._pending_tasks[task_id] = {
             "space_name": space_name,
             "thread_name": thread_name,
+            "_created_at": time.monotonic(),
         }
         await self.supervisor.submit_task(task_id)
         return task_id
@@ -434,17 +461,25 @@ class GoogleChatGateway:
     # ---- event handler (task completion) ----
 
     async def _on_event(self, event: dict) -> None:
-        """Handle task completion events from the EventBroker."""
-        if event.get("type") != "task.completed":
+        """Handle task completion/failure events from the EventBroker."""
+        event_type = event.get("type", "")
+        if event_type not in ("task.completed", "task.failed"):
             return
         task_id = event.get("task_id")
         if task_id not in self._pending_tasks:
             return
 
-        response_text = event.get("response", "")
         delivery = self._pending_tasks.pop(task_id, None)
-        if not delivery or not response_text:
+        if not delivery:
             return
+
+        if event_type == "task.failed":
+            logger.warning("Task %s failed, sending error reply to Google Chat", task_id)
+            response_text = "Sorry, an error occurred while processing your message."
+        else:
+            response_text = event.get("response", "")
+            if not response_text:
+                return
 
         try:
             token = self._token or await _get_service_account_token(
@@ -461,7 +496,6 @@ class GoogleChatGateway:
             logger.exception("Failed to send Google Chat reply for task %s", task_id)
 
 
-import contextlib  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Webhook handler for Google Chat events

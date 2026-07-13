@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 GATEWAY_STARTUP_STABILIZATION_SECONDS = 2
 GATEWAY_AUTO_RESTART_MAX_ATTEMPTS = 5
 GATEWAY_AUTO_RESTART_MIN_UPTIME = 30  # if process ran longer, reset backoff
+GATEWAY_RECOVERY_RETRY_DELAY = 300  # 5 minutes
 
 
 class GatewayProcessManager:
@@ -740,9 +741,9 @@ class GatewayProcessManager:
                     attempt + 1, GATEWAY_AUTO_RESTART_MAX_ATTEMPTS, agent_id,
                 )
 
-        # All attempts exhausted
-        logger.error("Gateway auto-restart exhausted for agent %s after %d attempts — giving up",
-                     agent_id, GATEWAY_AUTO_RESTART_MAX_ATTEMPTS)
+        # All attempts exhausted — mark error and schedule a recovery retry
+        logger.error("Gateway auto-restart exhausted for agent %s after %d attempts — scheduling recovery in %ds",
+                     agent_id, GATEWAY_AUTO_RESTART_MAX_ATTEMPTS, GATEWAY_RECOVERY_RETRY_DELAY)
 
         async with self.session_factory() as session:
             agent_row = await session.get(Agent, agent_id)
@@ -752,7 +753,7 @@ class GatewayProcessManager:
             for ch in channels:
                 if ch.platform in platforms:
                     ch.status = "error"
-                    ch.last_error = "Gateway crashed repeatedly — manual restart required"
+                    ch.last_error = "Gateway crashed repeatedly — automatic recovery scheduled"
                     session.add(ActivityLog(
                         agent_id=agent_row.id,
                         node_id=agent_row.node_id,
@@ -766,6 +767,12 @@ class GatewayProcessManager:
                 await self.event_broker.publish(
                     {"type": "messaging.status_changed", "agent_id": agent_id, "status": "error", "message": platform}
                 )
+
+        await asyncio.sleep(GATEWAY_RECOVERY_RETRY_DELAY)
+        if agent_id in self.processes:
+            return
+        logger.info("Gateway recovery retry for agent %s after cooldown", agent_id)
+        await self._auto_restart_gateway(agent_id, platforms, 0, log_mgr)
 
     # ── Path helpers ────────────────────────────────────────────────────────
 

@@ -84,15 +84,37 @@ class CommsRouter:
                 detail=f"Broadcast target group has {len(recipients)} agents; limit is {self.MAX_BROADCAST_RECIPIENTS}",
             )
         messages: list[AgentMessage] = []
-        for recipient in recipients:
-            message = await self.send_message(
-                MessageCreate(
+        async with self.session_factory() as session:
+            for recipient in recipients:
+                msg = AgentMessage(
                     from_agent_id=payload.from_agent_id,
                     to_agent_id=recipient.id,
                     message_type="broadcast",
                     content=payload.content,
-                    metadata={"team_tag": payload.team_tag, **payload.metadata},
+                    metadata_json={"team_tag": payload.team_tag, **payload.metadata},
                 )
+                session.add(msg)
+                session.add(
+                    ActivityLog(
+                        agent_id=recipient.id,
+                        event_type="comms.message",
+                        message=payload.content[:120],
+                        details={"message_type": "broadcast", "from_agent_id": payload.from_agent_id},
+                    )
+                )
+                messages.append(msg)
+            await session.commit()
+            for msg in messages:
+                await session.refresh(msg)
+        for msg in messages:
+            await self.event_broker.publish(
+                {
+                    "type": "comms.message",
+                    "message_id": msg.id,
+                    "from_agent_id": msg.from_agent_id,
+                    "to_agent_id": msg.to_agent_id,
+                    "message_type": msg.message_type,
+                    "content": msg.content,
+                }
             )
-            messages.append(message)
         return messages

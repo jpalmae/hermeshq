@@ -11,11 +11,13 @@ enabling horizontal scalability without per-agent process overhead.
 """
 
 import asyncio
+import contextlib
 import hashlib
 import hmac
 import json
 import logging
 import re
+import time
 import uuid
 
 import httpx
@@ -32,7 +34,8 @@ def _get_http_client() -> httpx.AsyncClient:
     """Return a shared httpx.AsyncClient, creating one if needed."""
     global _http_client
     if _http_client is None or _http_client.is_closed:
-        _http_client = httpx.AsyncClient(timeout=30)
+        transport = httpx.AsyncHTTPTransport(retries=2)
+        _http_client = httpx.AsyncClient(timeout=30, transport=transport)
     return _http_client
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -276,6 +279,8 @@ class KapsoWhatsAppGateway:
         self._phone_number_id: str | None = None
         self._webhook_secret: str | None = None
         self._pending_tasks: dict[str, dict] = {}  # task_id → delivery info
+        self._pending_tasks_ttl = 1800  # 30 minutes
+        self._cleanup_task: asyncio.Task | None = None
 
     # ---- lifecycle ----
 
@@ -290,6 +295,7 @@ class KapsoWhatsAppGateway:
         await self._validate_connectivity()
 
         self._running = True
+        self._cleanup_task = asyncio.create_task(self._pending_tasks_cleanup_loop())
         self.event_broker.subscribe(self._on_event)
         logger.info(
             "Kapso WhatsApp gateway started for agent %s (phone_number_id=%s)",
@@ -300,6 +306,10 @@ class KapsoWhatsAppGateway:
         """Stop and clean up."""
         self._running = False
         self.event_broker.unsubscribe(self._on_event)
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._cleanup_task
         self._pending_tasks.clear()
         logger.info("Kapso WhatsApp gateway stopped for agent %s", self.agent_id)
 
@@ -583,6 +593,7 @@ class KapsoWhatsAppGateway:
             "sender_wa_id": sender_wa_id,
             "message_id": message_id,
             "conversation_id": conversation_id,
+            "_created_at": time.monotonic(),
         }
         await self.supervisor.submit_task(task_id)
         return task_id
@@ -595,6 +606,24 @@ class KapsoWhatsAppGateway:
             "Kapso WhatsApp: message %s status=%s for agent %s",
             message_id, status, self.agent_id,
         )
+
+    async def _pending_tasks_cleanup_loop(self) -> None:
+        """Evict stale entries from _pending_tasks that never received a completion event."""
+        while self._running:
+            try:
+                await asyncio.sleep(300)
+                now = time.monotonic()
+                stale = [
+                    tid for tid, info in self._pending_tasks.items()
+                    if now - info.get("_created_at", now) > self._pending_tasks_ttl
+                ]
+                for tid in stale:
+                    self._pending_tasks.pop(tid, None)
+                    logger.warning("Evicted stale pending task %s (TTL expired)", tid)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                logger.debug("pending_tasks cleanup error", exc_info=True)
 
     # ---- event handler (task completion) ----
 
