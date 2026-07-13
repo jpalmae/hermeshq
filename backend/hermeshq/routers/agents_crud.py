@@ -82,7 +82,13 @@ async def list_agents(
         accessible_ids = await get_accessible_agent_ids(db, current_user)
         statement = statement.where(Agent.id.in_(accessible_ids)) if accessible_ids else statement.where(false())
     result = await db.execute(statement)
-    return [_serialize_agent(request, a) for a in result.scalars().all()]
+    agents: list[AgentRead] = []
+    for agent in result.scalars().all():
+        try:
+            agents.append(_serialize_agent(request, agent))
+        except Exception:
+            logger.exception("Failed to serialize agent %s; skipping", agent.id)
+    return agents
 
 
 # ------------------------------------------------------------------

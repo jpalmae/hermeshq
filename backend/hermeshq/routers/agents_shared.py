@@ -123,6 +123,8 @@ def _build_avatar_path(agent: Agent) -> Path | None:
 
 
 def _serialize_agent(request: Request, agent: Agent) -> AgentRead:
+    if isinstance(agent.integration_configs, list):
+        agent.integration_configs = {}
     payload = AgentRead.model_validate(agent)
     avatar_url = None
     if agent.avatar_filename:
