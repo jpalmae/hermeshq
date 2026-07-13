@@ -11,6 +11,7 @@ from hermeshq.services.agent_builder import (
 )
 from hermeshq.services.gateway_process_manager import (
     GATEWAY_AUTO_RESTART_MAX_ATTEMPTS,
+    GATEWAY_RECOVERY_MAX_RETRIES,
     GatewayProcessManager,
 )
 
@@ -315,13 +316,13 @@ class TestAutoRestartDecision(unittest.IsolatedAsyncioTestCase):
         mgr._launch_gateway_process.assert_called_once()
 
     async def test_gives_up_after_max_attempts(self):
-        """After max attempts, marks channel as error."""
+        """After max attempts, marks channel as error and schedules recovery."""
         mgr, sf, eb, im = _make_process_manager()
         agent = _make_agent_mock()
         channels = [_make_channel_mock(enabled=True)]
 
         sessions = []
-        for _ in range(40):
+        for _ in range(80):
             s = MagicMock()
             s.__aenter__ = AsyncMock(return_value=s)
             s.__aexit__ = AsyncMock(return_value=False)
@@ -337,13 +338,26 @@ class TestAutoRestartDecision(unittest.IsolatedAsyncioTestCase):
         sf.side_effect = lambda: sessions.pop(0) if sessions else sessions[-1]
 
         mgr._reload_agent = AsyncMock(return_value=agent)
-        mgr._launch_gateway_process = AsyncMock(side_effect=RuntimeError("boom"))
+        call_count = 0
+        async def _fail_launch(*a, **kw):
+            nonlocal call_count
+            call_count += 1
+            raise RuntimeError("boom")
+        mgr._launch_gateway_process = AsyncMock(side_effect=_fail_launch)
 
-        with patch("asyncio.sleep", new=AsyncMock()):
-            await mgr._auto_restart_gateway("agent-1", {"sixagentic"}, uptime=5.0, log_mgr=None)
+        sleep_calls = 0
+        async def _mock_sleep(seconds):
+            nonlocal sleep_calls
+            if seconds >= 300:
+                sleep_calls += 1
+                if sleep_calls > GATEWAY_RECOVERY_MAX_RETRIES:
+                    raise asyncio.CancelledError()
+        with patch("asyncio.sleep", new=_mock_sleep):
+            with self.assertRaises(asyncio.CancelledError):
+                await mgr._auto_restart_gateway("agent-1", {"sixagentic"}, uptime=5.0, log_mgr=None)
 
-        # Should have tried exactly MAX_ATTEMPTS times
-        self.assertEqual(mgr._launch_gateway_process.call_count, GATEWAY_AUTO_RESTART_MAX_ATTEMPTS)
+        self.assertGreaterEqual(call_count, GATEWAY_AUTO_RESTART_MAX_ATTEMPTS)
+        self.assertTrue(any(c.status == "error" for c in channels))
 
 
 # ---------------------------------------------------------------------------

@@ -25,6 +25,7 @@ GATEWAY_STARTUP_STABILIZATION_SECONDS = 2
 GATEWAY_AUTO_RESTART_MAX_ATTEMPTS = 5
 GATEWAY_AUTO_RESTART_MIN_UPTIME = 30  # if process ran longer, reset backoff
 GATEWAY_RECOVERY_RETRY_DELAY = 300  # 5 minutes
+GATEWAY_RECOVERY_MAX_RETRIES = 3  # max recovery cycles before giving up permanently
 
 
 class GatewayProcessManager:
@@ -657,6 +658,7 @@ class GatewayProcessManager:
         platforms: set[str],
         uptime: float,
         log_mgr,
+        _recovery_attempt: int = 0,
     ) -> None:
         """Auto-restart gateway after unexpected exit, with exponential backoff."""
 
@@ -771,8 +773,14 @@ class GatewayProcessManager:
         await asyncio.sleep(GATEWAY_RECOVERY_RETRY_DELAY)
         if agent_id in self.processes:
             return
-        logger.info("Gateway recovery retry for agent %s after cooldown", agent_id)
-        await self._auto_restart_gateway(agent_id, platforms, 0, log_mgr)
+        _recovery_attempt += 1
+        if _recovery_attempt > GATEWAY_RECOVERY_MAX_RETRIES:
+            logger.error("Gateway recovery exhausted for agent %s after %d recovery cycles — giving up permanently",
+                         agent_id, _recovery_attempt - 1)
+            return
+        logger.info("Gateway recovery retry %d/%d for agent %s after cooldown",
+                    _recovery_attempt, GATEWAY_RECOVERY_MAX_RETRIES, agent_id)
+        await self._auto_restart_gateway(agent_id, platforms, 0, log_mgr, _recovery_attempt=_recovery_attempt)
 
     # ── Path helpers ────────────────────────────────────────────────────────
 
