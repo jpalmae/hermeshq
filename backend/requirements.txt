@@ -19,5 +19,4 @@ av>=14.0,<18.0
 edge-tts>=7.2,<8.0
 piper-tts>=1.4,<2.0
 aiofiles>=24.1,<25.0
-pytest-asyncio>=0.23,<1.0
 weasyprint>=62.0

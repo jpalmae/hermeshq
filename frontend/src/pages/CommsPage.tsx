@@ -271,7 +271,7 @@ export function CommsPage() {
           <button
             type="submit"
             className="panel-button-primary w-full"
-            disabled={!content.trim() || !fromAgentId || (messageType !== "broadcast" && (!toAgentId || (messageType === "delegate" && Boolean(selectedDelegateState?.disabled))))}
+            disabled={!content.trim() || !fromAgentId || (messageType === "broadcast" ? !teamTag.trim() : (!toAgentId || (messageType === "delegate" && Boolean(selectedDelegateState?.disabled))))}
           >
             {t("comms.dispatch")}
           </button>

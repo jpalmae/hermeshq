@@ -107,53 +107,9 @@ class HermesRuntime:
             # ── Fallback provider retry ────────────────────────────────
             if not self._has_fallback(agent):
                 raise
-            logger.warning(
-                "Primary provider failed for agent %s, attempting fallback: provider=%s model=%s",
-                agent.id,
-                agent.fallback_provider,
-                agent.fallback_model,
-            )
             try:
                 fallback_api_key = await self._resolve_api_key(agent.fallback_api_key_ref)
                 fallback_provider_normalized = normalize_runtime_provider(agent.fallback_provider)
-
-                # ── Re-sync installation with fallback config ─────────
-                # The on-disk config.yaml and auth store have the PRIMARY
-                # provider's base_url and credentials. Hermes Agent reads
-                # these files when initialising the provider client. Without
-                # re-syncing, the fallback would hit the primary's (broken)
-                # API endpoint even though the env vars and payload have
-                # the fallback credentials.
-                _orig_provider = agent.provider
-                _orig_model = agent.model
-                _orig_api_key_ref = agent.api_key_ref
-                _orig_base_url = agent.base_url
-                agent.provider = fallback_provider_normalized
-                agent.model = agent.fallback_model
-                agent.api_key_ref = agent.fallback_api_key_ref
-                agent.base_url = agent.fallback_base_url
-                try:
-                    from hermeshq.services.hermes_installation import _invalidate_install_cached
-                    _invalidate_install_cached(agent.id)
-                    await self.installation_manager.sync_agent_installation(agent)
-                    # Resolve the provider key AFTER re-sync — this may be
-                    # "hermeshq-openai-compatible" for custom OpenAI providers,
-                    # which is what Hermes Agent expects in the payload to
-                    # match the config.yaml providers section.
-                    fallback_provider_key = self.installation_manager._model_provider_for_agent(agent)
-                finally:
-                    agent.provider = _orig_provider
-                    agent.model = _orig_model
-                    agent.api_key_ref = _orig_api_key_ref
-                    agent.base_url = _orig_base_url
-
-                logger.info(
-                    "Fallback resolved: provider=%s (normalized=%s), base_url=%s, api_key=%s",
-                    agent.fallback_provider,
-                    fallback_provider_normalized,
-                    agent.fallback_base_url,
-                    (fallback_api_key[:12] + "...") if fallback_api_key else None,
-                )
                 return await self._run_real(
                     agent,
                     task,
@@ -165,13 +121,12 @@ class HermesRuntime:
                     session_id=session_id,
                     fallback_override={
                         "model": agent.fallback_model,
-                        "provider": fallback_provider_key,
+                        "provider": fallback_provider_normalized,
                         "base_url": agent.fallback_base_url,
                         "api_key": fallback_api_key,
                     },
                 )
-            except Exception:
-                logger.error("Fallback provider also failed for agent %s", agent.id, exc_info=True)
+            except Exception:  # noqa: BLE001  # fallback failed — re-raise
                 raise  # Fallback also failed — raise its error
         except Exception as exc:  # noqa: BLE001  # runtime execution catch-all → RuntimeExecutionError
             raise RuntimeExecutionError(str(exc)) from exc
@@ -245,12 +200,6 @@ class HermesRuntime:
             for key, value in fallback_override.items():
                 if value is not None:
                     payload[key] = value
-            logger.info(
-                "Fallback payload: model=%s provider=%s base_url=%s",
-                payload.get("model"),
-                payload.get("provider"),
-                payload.get("base_url"),
-            )
 
         process = await asyncio.create_subprocess_exec(
             runtime_python_bin,
@@ -263,18 +212,6 @@ class HermesRuntime:
         )
 
         final_result: dict | None = None
-
-        # Read stderr concurrently to prevent pipe deadlock — if the process
-        # writes a lot to stderr while we're reading stdout, the stderr pipe
-        # buffer fills up and the process blocks on stderr write, causing a
-        # deadlock (we're blocked on stdout readline, process is blocked on
-        # stderr write).
-        async def _drain_stderr() -> str:
-            if process.stderr is None:
-                return ""
-            return (await process.stderr.read()).decode("utf-8", errors="replace").strip()
-
-        stderr_task = asyncio.create_task(_drain_stderr())
 
         assert process.stdout is not None
         while True:
@@ -297,7 +234,9 @@ class HermesRuntime:
             elif event.get("event") == "error":
                 raise RuntimeExecutionError(str(event.get("error") or "Hermes runtime process failed"))
 
-        stderr_output = await stderr_task
+        stderr_output = ""
+        if process.stderr is not None:
+            stderr_output = (await process.stderr.read()).decode("utf-8", errors="replace").strip()
 
         return_code = await process.wait()
         if return_code != 0 and not final_result:

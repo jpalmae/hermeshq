@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   listOidcProviders,
   createOidcProvider,
@@ -162,10 +162,9 @@ export function AuthenticationTab() {
     });
   }
 
-  // Load on first render
-  if (!loading && providers.length === 0 && !showCreate && !editing) {
+  useEffect(() => {
     loadProviders();
-  }
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-6">

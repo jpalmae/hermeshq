@@ -125,7 +125,7 @@ export function ScheduledTasksPage() {
           </label>
           <label className="panel-field">
             <span className="panel-label">{t("schedules.name")}</span>
-            <input value={scheduleName} onChange={(event) => setScheduleName(event.target.value)} />
+            <input value={scheduleName} onChange={(event) => setScheduleName(event.target.value)} required />
           </label>
           <label className="panel-field">
             <span className="panel-label">{t("schedules.cron")}</span>
@@ -133,7 +133,7 @@ export function ScheduledTasksPage() {
           </label>
           <label className="panel-field">
             <span className="panel-label">{t("tasks.prompt")}</span>
-            <textarea rows={6} value={schedulePrompt} onChange={(event) => setSchedulePrompt(event.target.value)} />
+            <textarea rows={6} value={schedulePrompt} onChange={(event) => setSchedulePrompt(event.target.value)} required />
           </label>
           <button type="submit" className="panel-button-primary w-full" disabled={createScheduledTask.isPending}>
             {createScheduledTask.isPending ? t("common.loading") : t("schedules.create")}
@@ -183,7 +183,7 @@ export function ScheduledTasksPage() {
                     type="button"
                     className="panel-button-secondary w-full border-[var(--accent)] text-[var(--accent)]"
                     onClick={() => onDelete(schedule.id, schedule.name)}
-                    disabled={deleteScheduledTask.isPending}
+                    disabled={deleteScheduledTask.isPending && deleteScheduledTask.variables === schedule.id}
                   >
                     {t("schedules.delete")}
                   </button>

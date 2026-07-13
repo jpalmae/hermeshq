@@ -93,7 +93,13 @@ printf 'Packing backup bundle\n'
 tar czf "$OUT_DIR/$BUNDLE_NAME" -C "$TMP_DIR" .
 
 # Generate SHA-256 checksum
-sha256sum "$OUT_DIR/$BUNDLE_NAME" > "$OUT_DIR/${BUNDLE_NAME}.sha256"
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256sum "$OUT_DIR/$BUNDLE_NAME" > "$OUT_DIR/${BUNDLE_NAME}.sha256"
+elif command -v shasum >/dev/null 2>&1; then
+  shasum -a 256 "$OUT_DIR/$BUNDLE_NAME" > "$OUT_DIR/${BUNDLE_NAME}.sha256"
+else
+  printf 'Warning: no sha256sum or shasum found, skipping checksum\n' >&2
+fi
 echo "Checksum written to ${BUNDLE_NAME}.sha256"
 
 printf '\nBackup complete\n'

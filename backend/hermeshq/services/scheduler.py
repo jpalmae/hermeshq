@@ -65,32 +65,35 @@ class SchedulerService:
             schedules = result.scalars().all()
             created_task_ids: list[str] = []
             for schedule in schedules:
-                schedule.next_run = self._ensure_utc(schedule.next_run)
-                schedule.last_run = self._ensure_utc(schedule.last_run)
-                next_run = schedule.next_run or self._get_next_run(schedule.cron_expression, now)
-                if not schedule.next_run:
-                    schedule.next_run = next_run
-                if schedule.next_run and schedule.next_run <= now:
-                    task = Task(
-                        agent_id=schedule.agent_id,
-                        title=schedule.name,
-                        prompt=schedule.prompt,
-                        metadata_json={"scheduled_task_id": schedule.id, "scheduled": True},
-                    )
-                    session.add(task)
-                    await session.flush()
-                    created_task_ids.append(task.id)
-                    schedule.last_run = now
-                    schedule.next_run = self._get_next_run(schedule.cron_expression, now)
-                    session.add(
-                        ActivityLog(
+                try:
+                    schedule.next_run = self._ensure_utc(schedule.next_run)
+                    schedule.last_run = self._ensure_utc(schedule.last_run)
+                    next_run = schedule.next_run or self._get_next_run(schedule.cron_expression, now)
+                    if not schedule.next_run:
+                        schedule.next_run = next_run
+                    if schedule.next_run and schedule.next_run <= now:
+                        task = Task(
                             agent_id=schedule.agent_id,
-                            task_id=task.id,
-                            event_type="schedule.triggered",
-                            message=schedule.name,
-                            details={"schedule_id": schedule.id},
+                            title=schedule.name,
+                            prompt=schedule.prompt,
+                            metadata_json={"scheduled_task_id": schedule.id, "scheduled": True},
                         )
-                    )
+                        session.add(task)
+                        await session.flush()
+                        created_task_ids.append(task.id)
+                        schedule.last_run = now
+                        schedule.next_run = self._get_next_run(schedule.cron_expression, now)
+                        session.add(
+                            ActivityLog(
+                                agent_id=schedule.agent_id,
+                                task_id=task.id,
+                                event_type="schedule.triggered",
+                                message=schedule.name,
+                                details={"schedule_id": schedule.id},
+                            )
+                        )
+                except Exception:
+                    logger.exception("Scheduler: failed to process schedule %s", schedule.id)
             await session.commit()
         for task_id in created_task_ids:
             await self.on_task_created(task_id)

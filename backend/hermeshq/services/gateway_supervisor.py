@@ -205,6 +205,7 @@ class GatewaySupervisor:
         for _agent_id, handle in list(self.processes.items()):
             await self._process_mgr._terminate_handle(handle)
         self.processes.clear()
+        self._agent_locks.clear()
 
     # ── Public channel operations ───────────────────────────────────────────
 

@@ -24,10 +24,12 @@ class _StreamBuffer:
         log_func,
         event_broker: EventBroker,
         flush_interval: float = 0.5,
+        user_id: str | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._task_id = task_id
         self._agent_id = agent_id
+        self._user_id = user_id
         self._log_func = log_func
         self._event_broker = event_broker
         self._flush_interval = flush_interval
@@ -53,15 +55,16 @@ class _StreamBuffer:
     async def push(self, delta: str, index: int | None = None) -> None:
         """Append a delta to the buffer and publish an event immediately."""
         self._deltas.append((delta, index))
-        await self._event_broker.publish(
-            {
-                "type": "task.progress",
-                "task_id": self._task_id,
-                "agent_id": self._agent_id,
-                "message": delta,
-                "step": index,
-            }
-        )
+        event = {
+            "type": "task.progress",
+            "task_id": self._task_id,
+            "agent_id": self._agent_id,
+            "message": delta,
+            "step": index,
+        }
+        if self._user_id:
+            event["created_by_user_id"] = self._user_id
+        await self._event_broker.publish(event)
 
     async def flush(self) -> None:
         """Write all buffered deltas to the DB in a single transaction."""
@@ -347,16 +350,18 @@ class AgentSupervisor:
                 if agent.status != "running":
                     task.status = "failed"
                     await session.commit()
-                    await self.event_broker.publish(
-                        {
-                            "type": "task.failed",
-                            "task_id": task_id,
-                            "agent_id": task.agent_id,
-                            "error": f"Agent is not running (status={agent.status})",
-                            "error_type": "AgentNotRunning",
-                        }
-                    )
+                    event = {
+                        "type": "task.failed",
+                        "task_id": task_id,
+                        "agent_id": task.agent_id,
+                        "error": f"Agent is not running (status={agent.status})",
+                        "error_type": "AgentNotRunning",
+                    }
+                    if task.created_by_user_id:
+                        event["created_by_user_id"] = task.created_by_user_id
+                    await self.event_broker.publish(event)
                     return
+                task_owner_id = task.created_by_user_id
                 conversation_history = await self._build_conversation_history(session, task)
                 metadata = task.metadata_json or {}
                 if metadata.get("conversation"):
@@ -377,13 +382,14 @@ class AgentSupervisor:
                 )
                 await session.commit()
 
-            await self.event_broker.publish(
-                {
-                    "type": "task.started",
-                    "task_id": task_id,
-                    "agent_id": task.agent_id,
-                }
-            )
+            event = {
+                "type": "task.started",
+                "task_id": task_id,
+                "agent_id": task.agent_id,
+            }
+            if task_owner_id:
+                event["created_by_user_id"] = task_owner_id
+            await self.event_broker.publish(event)
 
             stream_buffer = _StreamBuffer(
                 session_factory=self.session_factory,
@@ -391,6 +397,7 @@ class AgentSupervisor:
                 agent_id=task.agent_id,
                 log_func=self._log,
                 event_broker=self.event_broker,
+                user_id=task_owner_id,
             )
             stream_buffer.start_flush_loop()
 
@@ -461,15 +468,16 @@ class AgentSupervisor:
                 await session.commit()
                 await self._drain_pending_callbacks()
 
-            await self.event_broker.publish(
-                {
-                    "type": "task.completed",
-                    "task_id": task_id,
-                    "agent_id": task.agent_id,
-                    "response": execution.final_response,
-                    "metadata": task.metadata_json or {},
-                }
-            )
+            completed_event = {
+                "type": "task.completed",
+                "task_id": task_id,
+                "agent_id": task.agent_id,
+                "response": execution.final_response,
+                "metadata": task.metadata_json or {},
+            }
+            if task_owner_id:
+                completed_event["created_by_user_id"] = task_owner_id
+            await self.event_broker.publish(completed_event)
 
             # Post-task hooks
             await self._run_post_task_hooks(task_id)
@@ -492,7 +500,10 @@ class AgentSupervisor:
                         message=task.title or "Task cancelled",
                     )
                 await session.commit()
-            await self.event_broker.publish({"type": "task.cancelled", "task_id": task_id})
+            cancelled_event: dict = {"type": "task.cancelled", "task_id": task_id}
+            if task and task.created_by_user_id:
+                cancelled_event["created_by_user_id"] = task.created_by_user_id
+            await self.event_broker.publish(cancelled_event)
         except Exception as exc:  # noqa: BLE001  # task cancellation catch-all
             async with self.session_factory() as session:
                 task = await session.get(Task, task_id)
@@ -532,15 +543,16 @@ class AgentSupervisor:
                     )
                 await session.commit()
                 await self._drain_pending_callbacks()
-            await self.event_broker.publish(
-                {
-                    "type": "task.failed",
-                    "task_id": task_id,
-                    "agent_id": task.agent_id if task else None,
-                    "error": str(exc),
-                    "error_type": type(exc).__name__,
-                }
-            )
+            failed_event = {
+                "type": "task.failed",
+                "task_id": task_id,
+                "agent_id": task.agent_id if task else None,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            }
+            if task and task.created_by_user_id:
+                failed_event["created_by_user_id"] = task.created_by_user_id
+            await self.event_broker.publish(failed_event)
         finally:
             self.active_tasks.pop(task_id, None)
 

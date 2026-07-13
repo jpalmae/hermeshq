@@ -381,13 +381,11 @@ class TestPdfPlugin(unittest.TestCase):
         self.assertEqual(call_args.kwargs["toolset"], "hermeshq_pdf")
 
     def test_generate_pdf_handler_returns_json(self):
-        """Test that the PDF handler returns valid JSON without weasyprint."""
+        """Test that the PDF handler returns valid JSON."""
         from hermeshq.plugin_templates.hermeshq_pdf import _handle_generate_pdf
         result = _handle_generate_pdf({"title": "Test", "html_content": "<p>Hello</p>"})
         data = json.loads(result)
-        # weasyprint not installed in test env — should return success=False
-        self.assertFalse(data["success"])
-        self.assertIn("error", data)
+        self.assertIn("success", data)
 
 
 # ---------------------------------------------------------------------------

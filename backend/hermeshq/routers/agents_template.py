@@ -218,6 +218,7 @@ async def create_agent_from_template(
         integration_configs=_normalize_integration_configs(agent_payload.integration_configs),
         team_tags=agent_payload.team_tags,
         supervisor_agent_id=agent_payload.supervisor_agent_id,
+        use_provider_default=agent_payload.use_provider_default,
         workspace_path="pending",
     )
     _apply_runtime_profile_defaults(

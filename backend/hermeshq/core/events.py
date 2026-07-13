@@ -14,6 +14,7 @@ class EventSubscription:
     websocket: WebSocket
     is_admin: bool
     agent_ids: set[str]
+    user_id: str | None = None
 
 
 class EventBroker:
@@ -21,12 +22,19 @@ class EventBroker:
         self._connections: dict[WebSocket, EventSubscription] = {}
         self._internal_subscribers: list[Callable] = []
 
-    async def connect(self, websocket: WebSocket, is_admin: bool, agent_ids: set[str]) -> None:
+    async def connect(
+        self,
+        websocket: WebSocket,
+        is_admin: bool,
+        agent_ids: set[str],
+        user_id: str | None = None,
+    ) -> None:
         await websocket.accept()
         self._connections[websocket] = EventSubscription(
             websocket=websocket,
             is_admin=is_admin,
             agent_ids=set(agent_ids),
+            user_id=user_id,
         )
 
     def disconnect(self, websocket: WebSocket) -> None:
@@ -54,9 +62,14 @@ class EventBroker:
         # Then push to WebSocket connections (frontend)
         stale_connections: list[WebSocket] = []
         event_agent_id = event.get("agent_id")
+        event_user_id = event.get("created_by_user_id")
         send_tasks: list[tuple[WebSocket, asyncio.Task]] = []
         for connection, subscription in list(self._connections.items()):
-            if event_agent_id and not subscription.is_admin and event_agent_id not in subscription.agent_ids:
+            if subscription.is_admin:
+                pass  # admins receive everything
+            elif event_agent_id and event_agent_id not in subscription.agent_ids:
+                continue
+            elif event_user_id and subscription.user_id and event_user_id != subscription.user_id:
                 continue
             send_tasks.append((connection, asyncio.ensure_future(connection.send_json(event))))
 

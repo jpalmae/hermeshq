@@ -105,7 +105,7 @@ export default function App() {
   if (!token) {
     return (
       <I18nProvider locale={effectiveLocale}>
-        <ErrorBoundary>
+        <ErrorBoundary resetKey={location.pathname}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -120,7 +120,7 @@ export default function App() {
 
   return (
     <I18nProvider locale={effectiveLocale}>
-      <ErrorBoundary>
+      <ErrorBoundary resetKey={location.pathname}>
         <Routes>
           <Route element={<AppShell />}>
             <Route path="/" element={<DashboardPage />} />

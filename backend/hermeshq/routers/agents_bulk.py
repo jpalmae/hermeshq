@@ -226,6 +226,9 @@ async def bulk_config_update(
         if "runtime_profile" in update_data:
             update_data["runtime_profile"] = normalize_runtime_profile_slug(update_data["runtime_profile"])
 
+        if "model" in update_data or "provider" in update_data or "api_key_ref" in update_data or "base_url" in update_data:
+            update_data.setdefault("use_provider_default", False)
+
         for field, value in update_data.items():
             setattr(agent, field, value)
 

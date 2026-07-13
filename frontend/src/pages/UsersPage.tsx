@@ -339,6 +339,10 @@ export function UsersPage() {
                       value={user.role}
                       onChange={(event) => {
                         const value = event.target.value;
+                        if (!window.confirm(`Change role for ${user.username} to ${value}?`)) {
+                          event.target.value = user.role;
+                          return;
+                        }
                         updateUser.mutateAsync({ userId: user.id, payload: { role: value } }).catch((error: unknown) => {
                           setRowMessages((current) => ({ ...current, [user.id]: extractErrorMessage(error) }));
                           setRowSuccess((current) => ({ ...current, [user.id]: false }));
@@ -431,7 +435,7 @@ export function UsersPage() {
                       type="button"
                       className="panel-button-secondary border-[var(--accent)] text-[var(--accent)]"
                       onClick={() => void onDeleteUser(user.id, user.username)}
-                      disabled={currentUser?.id === user.id || deleteUser.isPending}
+                      disabled={currentUser?.id === user.id || (deleteUser.isPending && deleteUser.variables === user.id)}
                     >
                       Delete user
                     </button>

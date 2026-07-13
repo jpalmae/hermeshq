@@ -283,33 +283,30 @@ const PLATFORM_LABELS: Record<PlatformSlug, string> = {
 
 export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isAdmin: boolean }) {
   const { t } = useI18n();
-  // Hooks for all 4 platforms
-  const { data: telegram } = useMessagingChannel(agentId, "telegram");
-  const { data: telegramRuntime } = useMessagingChannelRuntime(agentId, "telegram");
-  const { data: telegramLogs } = useMessagingChannelLogs(agentId, "telegram");
-  const { data: whatsapp } = useMessagingChannel(agentId, "whatsapp");
-  const { data: whatsappRuntime } = useMessagingChannelRuntime(agentId, "whatsapp");
-  const { data: whatsappLogs } = useMessagingChannelLogs(agentId, "whatsapp");
-  const { data: teams } = useMessagingChannel(agentId, "microsoft_teams");
-  const { data: teamsRuntime } = useMessagingChannelRuntime(agentId, "microsoft_teams");
-  const { data: teamsLogs } = useMessagingChannelLogs(agentId, "microsoft_teams");
-  const { data: gchat } = useMessagingChannel(agentId, "google_chat");
-  const { data: gchatRuntime } = useMessagingChannelRuntime(agentId, "google_chat");
-  const { data: gchatLogs } = useMessagingChannelLogs(agentId, "google_chat");
-  const { data: kapso } = useMessagingChannel(agentId, "kapso_whatsapp");
-  const { data: kapsoRuntime } = useMessagingChannelRuntime(agentId, "kapso_whatsapp");
-  const { data: kapsoLogs } = useMessagingChannelLogs(agentId, "kapso_whatsapp");
+  const [selectedPlatform, setSelectedPlatform] = useState<PlatformSlug>("telegram");
 
-  // SixAgentic App channel
+  // Channel data for all platforms (lightweight, needed for tab status)
+  const { data: telegram } = useMessagingChannel(agentId, "telegram");
+  const { data: whatsapp } = useMessagingChannel(agentId, "whatsapp");
+  const { data: teams } = useMessagingChannel(agentId, "microsoft_teams");
+  const { data: gchat } = useMessagingChannel(agentId, "google_chat");
+  const { data: kapso } = useMessagingChannel(agentId, "kapso_whatsapp");
   const { data: sixagentic } = useMessagingChannel(agentId, "sixagentic");
-  const { data: sixagenticRuntime } = useMessagingChannelRuntime(agentId, "sixagentic");
-  const { data: sixagenticLogs } = useMessagingChannelLogs(agentId, "sixagentic");
+
+  // Runtime and logs only for the selected platform (lazy-loaded)
+  const { data: activeRuntimeData } = useMessagingChannelRuntime(agentId, selectedPlatform);
+  const { data: activeLogsData } = useMessagingChannelLogs(agentId, selectedPlatform);
+  // WhatsApp runtime needed for QR even when not selected tab — fetch when whatsapp exists
+  const { data: whatsappRuntime } = useMessagingChannelRuntime(
+    agentId, "whatsapp", selectedPlatform === "whatsapp" || Boolean(whatsapp),
+  );
 
   const { data: secrets } = useSecrets(isAdmin);
   const updateChannel = useUpdateMessagingChannel();
   const startChannel = useMessagingChannelAction("start");
   const stopChannel = useMessagingChannelAction("stop");
   const [submitErrors, setSubmitErrors] = useState<Record<string, string | null>>({});
+  const [pendingAction, setPendingAction] = useState<Record<string, string | null>>({});
 
   // Per-platform dirty refs and forms
   const dirtyRefs = useRef<Record<PlatformSlug, boolean>>({ telegram: false, whatsapp: false, microsoft_teams: false, google_chat: false, kapso_whatsapp: false, sixagentic: false });
@@ -321,7 +318,6 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
     kapso_whatsapp: defaultFormState,
     sixagentic: defaultFormState,
   });
-  const [selectedPlatform, setSelectedPlatform] = useState<PlatformSlug>("telegram");
 
   useEffect(() => {
     dirtyRefs.current = { telegram: false, whatsapp: false, microsoft_teams: false, google_chat: false, kapso_whatsapp: false, sixagentic: false };
@@ -331,17 +327,9 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
     [whatsappRuntime?.pairing_qr_text],
   );
 
-  const isActive = selectedPlatform === "telegram";
-
   // Channel data map for generic access
   const channelData: Record<PlatformSlug, MessagingChannel | undefined> = {
     telegram, whatsapp, microsoft_teams: teams, google_chat: gchat, kapso_whatsapp: kapso, sixagentic,
-  };
-  const runtimeData: Record<PlatformSlug, MessagingChannelRuntime | undefined> = {
-    telegram: telegramRuntime, whatsapp: whatsappRuntime, microsoft_teams: teamsRuntime, google_chat: gchatRuntime, kapso_whatsapp: kapsoRuntime, sixagentic: sixagenticRuntime,
-  };
-  const logsData: Record<PlatformSlug, string | undefined> = {
-    telegram: telegramLogs, whatsapp: whatsappLogs, microsoft_teams: teamsLogs, google_chat: gchatLogs, kapso_whatsapp: kapsoLogs, sixagentic: sixagenticLogs,
   };
 
   // Generic sync effect for all platforms
@@ -368,7 +356,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
       setForms((prev) => (prev[p] === newForm ? prev : { ...prev, [p]: newForm }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [telegram, whatsapp, teams, gchat, kapso]);
+  }, [telegram, whatsapp, teams, gchat, kapso, sixagentic]);
 
   // Secret options
   const secretOptions = useMemo(
@@ -455,6 +443,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
 
   async function startPlatform(platform: PlatformSlug) {
     clearError(platform);
+    setPendingAction((prev) => ({ ...prev, [platform]: "start" }));
     try {
       await startChannel.mutateAsync({ agentId, platform });
     } catch (error) {
@@ -462,11 +451,14 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
         ...current,
         [platform]: describeError(error, t("agent.gatewayStartFailed")),
       }));
+    } finally {
+      setPendingAction((prev) => ({ ...prev, [platform]: null }));
     }
   }
 
   async function stopPlatform(platform: PlatformSlug) {
     clearError(platform);
+    setPendingAction((prev) => ({ ...prev, [platform]: "stop" }));
     try {
       await stopChannel.mutateAsync({ agentId, platform });
     } catch (error) {
@@ -474,6 +466,8 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
         ...current,
         [platform]: describeError(error, t("agent.gatewayStopFailed")),
       }));
+    } finally {
+      setPendingAction((prev) => ({ ...prev, [platform]: null }));
     }
   }
 
@@ -481,7 +475,7 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
   const platforms = ALL_PLATFORMS.map((p) => ({
     platform: p,
     label: PLATFORM_LABELS[p],
-    status: runtimeData[p]?.status ?? channelData[p]?.status ?? "stopped",
+    status: channelData[p]?.status ?? "stopped",
   }));
 
   // Active platform data (generic)
@@ -492,9 +486,9 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
     dirtyRefs.current[selectedPlatform] = true;
     setForms((prev) => ({ ...prev, [selectedPlatform]: typeof update === "function" ? update(prev[selectedPlatform]) : update }));
   };
-  const activeRuntime = runtimeData[selectedPlatform];
-  const activeStatus = runtimeData[selectedPlatform]?.status ?? channelData[selectedPlatform]?.status ?? "stopped";
-  const activeLogs = logsData[selectedPlatform];
+  const activeRuntime = activeRuntimeData;
+  const activeStatus = activeRuntimeData?.status ?? channelData[selectedPlatform]?.status ?? "stopped";
+  const activeLogs = activeLogsData;
 
   return (
     <div className="mt-6 border-t border-[var(--border)] pt-6">
@@ -538,8 +532,8 @@ export function AgentMessagingPanel({ agentId, isAdmin }: { agentId: string; isA
             secretOptions={secretOptions}
             isAdmin={isAdmin}
             isUpdatePending={updateChannel.isPending}
-            isStartPending={startChannel.isPending}
-            isStopPending={stopChannel.isPending}
+            isStartPending={pendingAction[selectedPlatform] === "start"}
+            isStopPending={pendingAction[selectedPlatform] === "stop"}
             qrSvg={whatsappQrSvg}
             pairingStatus={whatsappRuntime?.pairing_status ?? null}
             sessionPath={whatsappRuntime?.session_path ?? null}

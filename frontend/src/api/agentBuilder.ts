@@ -54,6 +54,7 @@ export async function sendBuilderMessage(
       ...authHeaders(),
     },
     body: JSON.stringify({ text }),
+    credentials: "include",
   });
 
   if (!response.ok) {
@@ -105,7 +106,7 @@ export async function sendBuilderMessage(
 }
 
 function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem("hermeshq_token");
+  const token = localStorage.getItem("hermeshq.token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

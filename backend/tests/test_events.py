@@ -21,6 +21,14 @@ class TestEventSubscription(unittest.TestCase):
         sub = EventSubscription(websocket=MagicMock(), is_admin=False, agent_ids=set())
         self.assertIsInstance(sub.agent_ids, set)
 
+    def test_user_id_default_none(self):
+        sub = EventSubscription(websocket=MagicMock(), is_admin=False, agent_ids=set())
+        self.assertIsNone(sub.user_id)
+
+    def test_user_id_set(self):
+        sub = EventSubscription(websocket=MagicMock(), is_admin=False, agent_ids=set(), user_id="user-42")
+        self.assertEqual(sub.user_id, "user-42")
+
 
 # ---------------------------------------------------------------------------
 # Helper to create mock WebSockets
@@ -57,6 +65,18 @@ class TestConnectDisconnect(unittest.IsolatedAsyncioTestCase):
         ws = _make_ws()
         await self.broker.connect(ws, is_admin=False, agent_ids=set())
         ws.accept.assert_awaited_once()
+
+    async def test_connect_stores_user_id(self):
+        ws = _make_ws()
+        await self.broker.connect(ws, is_admin=False, agent_ids=set(), user_id="user-7")
+        sub = self.broker._connections[ws]
+        self.assertEqual(sub.user_id, "user-7")
+
+    async def test_connect_user_id_default_none(self):
+        ws = _make_ws()
+        await self.broker.connect(ws, is_admin=False, agent_ids=set())
+        sub = self.broker._connections[ws]
+        self.assertIsNone(sub.user_id)
 
     async def test_disconnect_removes_from_connections(self):
         ws = _make_ws()
@@ -235,6 +255,86 @@ class TestPublishWebSocketDelivery(unittest.IsolatedAsyncioTestCase):
 
 
 # ===================================================================
+# publish – user_id filtering (cross-user privacy)
+# ===================================================================
+
+class TestPublishUserIdFiltering(unittest.IsolatedAsyncioTestCase):
+    """EventBroker.publish filters events by created_by_user_id to prevent cross-user leaks."""
+
+    async def asyncSetUp(self):
+        self.broker = EventBroker()
+
+    async def test_user_receives_own_events(self):
+        """User receives events created by themselves."""
+        ws = _make_ws()
+        await self.broker.connect(ws, is_admin=False, agent_ids={"agent-1"}, user_id="user-A")
+
+        event = {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-A"}
+        await self.broker.publish(event)
+
+        ws.send_json.assert_awaited_once_with(event)
+
+    async def test_user_does_not_receive_other_users_events(self):
+        """User does NOT receive events created by a different user, even for the same agent."""
+        ws = _make_ws()
+        await self.broker.connect(ws, is_admin=False, agent_ids={"agent-1"}, user_id="user-A")
+
+        event = {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-B"}
+        await self.broker.publish(event)
+
+        ws.send_json.assert_not_awaited()
+
+    async def test_two_users_same_agent_isolated(self):
+        """Two users sharing the same agent only receive their own events."""
+        ws_a = _make_ws()
+        ws_b = _make_ws()
+        await self.broker.connect(ws_a, is_admin=False, agent_ids={"agent-1"}, user_id="user-A")
+        await self.broker.connect(ws_b, is_admin=False, agent_ids={"agent-1"}, user_id="user-B")
+
+        event_a = {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-A"}
+        event_b = {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-B"}
+
+        await self.broker.publish(event_a)
+        await self.broker.publish(event_b)
+
+        ws_a.send_json.assert_awaited_once_with(event_a)
+        ws_b.send_json.assert_awaited_once_with(event_b)
+
+    async def test_admin_receives_all_users_events(self):
+        """Admin receives events from all users."""
+        admin_ws = _make_ws()
+        await self.broker.connect(admin_ws, is_admin=True, agent_ids=set(), user_id="admin-1")
+
+        event = {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-B"}
+        await self.broker.publish(event)
+
+        admin_ws.send_json.assert_awaited_once_with(event)
+
+    async def test_event_without_user_id_goes_to_all_matching_agent(self):
+        """Events without created_by_user_id are delivered to all users with matching agent."""
+        ws_a = _make_ws()
+        ws_b = _make_ws()
+        await self.broker.connect(ws_a, is_admin=False, agent_ids={"agent-1"}, user_id="user-A")
+        await self.broker.connect(ws_b, is_admin=False, agent_ids={"agent-1"}, user_id="user-B")
+
+        event = {"type": "agent.status_changed", "agent_id": "agent-1"}
+        await self.broker.publish(event)
+
+        ws_a.send_json.assert_awaited_once_with(event)
+        ws_b.send_json.assert_awaited_once_with(event)
+
+    async def test_subscription_without_user_id_receives_all(self):
+        """Connections without user_id (legacy) receive all events for their agents."""
+        ws = _make_ws()
+        await self.broker.connect(ws, is_admin=False, agent_ids={"agent-1"})
+
+        event = {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-B"}
+        await self.broker.publish(event)
+
+        ws.send_json.assert_awaited_once_with(event)
+
+
+# ===================================================================
 # publish – internal subscribers
 # ===================================================================
 
@@ -367,6 +467,23 @@ class TestPublishMany(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(admin_ws.send_json.await_count, 3)
         # User only sees the 2 matching agent-1
         self.assertEqual(user_ws.send_json.await_count, 2)
+
+    async def test_publish_many_respects_user_filtering(self):
+        """publish_many respects user_id filtering across multiple events."""
+        ws_a = _make_ws()
+        ws_b = _make_ws()
+        await self.broker.connect(ws_a, is_admin=False, agent_ids={"agent-1"}, user_id="user-A")
+        await self.broker.connect(ws_b, is_admin=False, agent_ids={"agent-1"}, user_id="user-B")
+
+        events = [
+            {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-A"},
+            {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-B"},
+            {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-A"},
+        ]
+        await self.broker.publish_many(events)
+
+        self.assertEqual(ws_a.send_json.await_count, 2)
+        self.assertEqual(ws_b.send_json.await_count, 1)
 
 
 if __name__ == "__main__":

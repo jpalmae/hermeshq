@@ -42,7 +42,7 @@ function slugify(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    || "agent";
+    || `agent-${Date.now()}`;
 }
 
 function statusTone(status: string) {
@@ -762,13 +762,13 @@ export function AgentsPage() {
                 </div>
               </div>
               <div className="grid min-w-[18rem] gap-2 md:grid-cols-2">
-                <button className="panel-button-secondary w-full" onClick={() => startAgent.mutate(agent.id)} disabled={agent.is_archived || startAgent.isPending || stopAgent.isPending || restartAgent.isPending}>
+                <button className="panel-button-secondary w-full" onClick={() => startAgent.mutate(agent.id)} disabled={agent.is_archived || ((startAgent.isPending || stopAgent.isPending || restartAgent.isPending) && (startAgent.variables === agent.id || stopAgent.variables === agent.id || restartAgent.variables === agent.id))}>
                   Start
                 </button>
-                <button className="panel-button-secondary w-full" onClick={() => stopAgent.mutate(agent.id)} disabled={agent.is_archived || startAgent.isPending || stopAgent.isPending || restartAgent.isPending}>
+                <button className="panel-button-secondary w-full" onClick={() => stopAgent.mutate(agent.id)} disabled={agent.is_archived || ((startAgent.isPending || stopAgent.isPending || restartAgent.isPending) && (startAgent.variables === agent.id || stopAgent.variables === agent.id || restartAgent.variables === agent.id))}>
                   Stop
                 </button>
-                <button className="panel-button-secondary w-full" onClick={() => restartAgent.mutate(agent.id)} disabled={agent.is_archived || startAgent.isPending || stopAgent.isPending || restartAgent.isPending}>
+                <button className="panel-button-secondary w-full" onClick={() => restartAgent.mutate(agent.id)} disabled={agent.is_archived || ((startAgent.isPending || stopAgent.isPending || restartAgent.isPending) && (startAgent.variables === agent.id || stopAgent.variables === agent.id || restartAgent.variables === agent.id))}>
                   Restart
                 </button>
                 {isAdmin ? (
