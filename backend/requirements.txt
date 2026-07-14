@@ -20,3 +20,4 @@ edge-tts>=7.2,<8.0
 piper-tts>=1.4,<2.0
 aiofiles>=24.1,<25.0
 weasyprint>=62.0
+nh3>=0.2,<1.0

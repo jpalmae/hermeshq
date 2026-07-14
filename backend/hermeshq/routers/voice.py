@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from hermeshq.core.rate_limit import RateLimiter
 from hermeshq.core.security import get_current_user
 from hermeshq.database import get_db_session
 from hermeshq.models.user import User
@@ -22,6 +23,9 @@ router = APIRouter()
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024  # 25 MB
 MAX_TTS_CHARS = 2000
+
+_stt_limiter = RateLimiter(max_requests=20, window_seconds=60)
+_tts_limiter = RateLimiter(max_requests=60, window_seconds=60)
 
 
 class TTSRequest(BaseModel):
@@ -70,9 +74,10 @@ async def voice_config(
 async def speech_to_text(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db_session),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """Transcribe an audio file to text."""
+    _stt_limiter.check(user.id)
     content_type = file.content_type or ""
     if not content_type.startswith("audio/"):
         raise HTTPException(status_code=415, detail="Only audio files are accepted")
@@ -82,6 +87,7 @@ async def speech_to_text(
         raise HTTPException(status_code=413, detail="Audio file too large (max 25 MB)")
     if len(audio_bytes) < 100:
         raise HTTPException(status_code=400, detail="Audio file is empty or too short")
+    _stt_limiter.record(user.id)
 
     engine, config = await resolve_active_voice_engine(db)
     if engine is None:
@@ -104,9 +110,10 @@ async def speech_to_text(
 async def text_to_speech(
     payload: TTSRequest,
     db: AsyncSession = Depends(get_db_session),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """Synthesize text to speech audio (MP3)."""
+    _tts_limiter.check(user.id)
     if len(payload.text) > MAX_TTS_CHARS:
         raise HTTPException(status_code=400, detail=f"Text too long (max {MAX_TTS_CHARS} characters)")
 
@@ -124,5 +131,6 @@ async def text_to_speech(
     except Exception:
         logger.error("TTS synthesis failed", exc_info=True)
         raise HTTPException(status_code=500, detail="Synthesis failed")
+    _tts_limiter.record(user.id)
 
     return Response(content=audio, media_type="audio/mpeg")

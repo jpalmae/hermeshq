@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import uuid
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 DEFAULT_CSS = """
@@ -90,9 +92,64 @@ def _check_requirements():
         return False
 
 
+def _sanitize_html(html: str) -> str:
+    try:
+        import nh3
+        return nh3.clean(
+            html,
+            tags={
+                "h1", "h2", "h3", "h4", "h5", "h6", "p", "br", "hr",
+                "table", "thead", "tbody", "tr", "th", "td",
+                "ul", "ol", "li", "blockquote", "code", "pre",
+                "img", "strong", "em", "b", "i", "u", "span", "div",
+                "a",
+            },
+            attributes={
+                "img": {"src"},
+                "a": {"href"},
+                "td": {"colspan", "rowspan"},
+                "th": {"colspan", "rowspan"},
+            },
+            protocols={"data", "https"},
+        )
+    except ImportError:
+        return html
+
+
+def _is_private_ip(hostname: str) -> bool:
+    try:
+        ip = socket.gethostbyname(hostname)
+        parts = [int(p) for p in ip.split(".")]
+        if len(parts) != 4:
+            return False
+        if parts[0] == 10:
+            return True
+        if parts[0] == 172 and 16 <= parts[1] <= 31:
+            return True
+        if parts[0] == 192 and parts[1] == 168:
+            return True
+        if parts[0] == 127:
+            return True
+        if parts[0] == 169 and parts[1] == 254:
+            return True
+        return False
+    except (socket.gaierror, ValueError):
+        return False
+
+
+def _safe_url_fetcher(url: str, timeout: int = 10, ssl_context=None):
+    parsed = urlparse(url)
+    if parsed.scheme == "file":
+        return {"string": "", "mime_type": "text/plain"}
+    if parsed.hostname and _is_private_ip(parsed.hostname):
+        return {"string": "", "mime_type": "text/plain"}
+    from weasyprint import default_url_fetcher
+    return default_url_fetcher(url, timeout=timeout, ssl_context=ssl_context)
+
+
 def _handle_generate_pdf(args, **_kwargs):
     title = args.get("title", "Documento")
-    html_content = args.get("html_content", "")
+    html_content = _sanitize_html(args.get("html_content", ""))
     css_content = args.get("css_content", "")
     filename = args.get("filename", "")
 
@@ -132,7 +189,7 @@ def _handle_generate_pdf(args, **_kwargs):
     combined_css = css_content if css_content.strip() else DEFAULT_CSS
 
     try:
-        HTML(string=full_html).write_pdf(str(filepath), stylesheets=[CSS(string=combined_css)])
+        HTML(string=full_html, url_fetcher=_safe_url_fetcher).write_pdf(str(filepath), stylesheets=[CSS(string=combined_css)])
     except Exception as exc:
         return json.dumps({"success": False, "error": f"PDF generation failed: {exc}"})
 

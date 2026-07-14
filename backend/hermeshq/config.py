@@ -102,11 +102,11 @@ class Settings(BaseSettings):
                     "Secrets will break on next restart!",
                     env_path,
                 )
-        elif self.jwt_secret == "change-me":
+        elif self.jwt_secret in ("change-me", "changeme", "secret") or len(self.jwt_secret) < 16:
             if not self.debug:
                 raise RuntimeError(
-                    "JWT_SECRET is using default value 'change-me'. "
-                    "Set a secure JWT_SECRET before running in production, "
+                    f"JWT_SECRET is using a weak or default value ('{self.jwt_secret[:8]}...'). "
+                    "Set a secure JWT_SECRET (min 16 chars) before running in production, "
                     "or set DEBUG=true to bypass this check."
                 )
             logger.warning(

@@ -21,6 +21,7 @@ from hermeshq.models.app_settings import AppSettings
 logger = logging.getLogger(__name__)
 
 _STT_SEMAPHORE: asyncio.Semaphore | None = None
+_TTS_SEMAPHORE: asyncio.Semaphore | None = None
 _WHISPER_MODEL: Any = None
 _WHISPER_MODEL_NAME: str | None = None
 
@@ -32,6 +33,15 @@ def _get_stt_semaphore() -> asyncio.Semaphore:
         max_concurrent = max(1, cpu // 2) if cpu > 2 else 1
         _STT_SEMAPHORE = asyncio.Semaphore(max_concurrent)
     return _STT_SEMAPHORE
+
+
+def _get_tts_semaphore() -> asyncio.Semaphore:
+    global _TTS_SEMAPHORE
+    if _TTS_SEMAPHORE is None:
+        cpu = _cpu_count()
+        max_concurrent = max(2, cpu) if cpu > 2 else 2
+        _TTS_SEMAPHORE = asyncio.Semaphore(max_concurrent)
+    return _TTS_SEMAPHORE
 
 
 def _cpu_count() -> int:
@@ -263,13 +273,15 @@ async def _synthesize_edge(text: str, voice: str) -> bytes:
     import edge_tts
     import io
 
-    communicate = edge_tts.Communicate(text, voice)
-    buf = io.BytesIO()
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio":
-            buf.write(chunk["data"])
-    buf.seek(0)
-    return buf.read()
+    sem = _get_tts_semaphore()
+    async with sem:
+        communicate = edge_tts.Communicate(text, voice)
+        buf = io.BytesIO()
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                buf.write(chunk["data"])
+        buf.seek(0)
+        return buf.read()
 
 
 async def _synthesize_piper(text: str, voice: str) -> bytes:
@@ -277,13 +289,15 @@ async def _synthesize_piper(text: str, voice: str) -> bytes:
     if not piper_bin:
         raise RuntimeError("piper binary not found on PATH")
 
-    proc = await asyncio.create_subprocess_exec(
-        piper_bin,
-        "--model", voice,
-        "--output-raw",
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, _stderr = await proc.communicate(text.encode("utf-8"))
-    return stdout
+    sem = _get_tts_semaphore()
+    async with sem:
+        proc = await asyncio.create_subprocess_exec(
+            piper_bin,
+            "--model", voice,
+            "--output-raw",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _stderr = await proc.communicate(text.encode("utf-8"))
+        return stdout

@@ -39,7 +39,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hermeshq}:${POSTGRES_PASSWORD:-hermeshq}@postgres:5432/${POSTGRES_DB:-hermeshq}
-      JWT_SECRET: ${JWT_SECRET:-change-me}
+      JWT_SECRET: ${JWT_SECRET:-}
       AUTH_MODE: ${AUTH_MODE:-local}
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
       OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-}
@@ -56,7 +56,7 @@ services:
       OIDC_PROVIDER_LOGIN_URL_MICROSOFT: ${OIDC_PROVIDER_LOGIN_URL_MICROSOFT:-}
 
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_DISPLAY_NAME: ${ADMIN_DISPLAY_NAME:-Hermes Operator}
       WORKSPACES_ROOT: ${WORKSPACES_ROOT:-/app/workspaces}
       BRANDING_ROOT: ${BRANDING_ROOT:-/app/workspaces/_branding}
