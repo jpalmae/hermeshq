@@ -363,6 +363,10 @@ async def process_builder_message(
 
     session.llm_messages.append({"role": "user", "content": user_text})
 
+    MAX_LLM_MESSAGES = 60
+    if len(session.llm_messages) > MAX_LLM_MESSAGES:
+        session.llm_messages = [session.llm_messages[0]] + session.llm_messages[-(MAX_LLM_MESSAGES - 1):]
+
     client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
 
     try:
