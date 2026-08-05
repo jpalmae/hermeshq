@@ -132,7 +132,30 @@ class HermesInstallationManager:
         profile = get_runtime_profile(agent.runtime_profile)
         runtime_provider = normalize_runtime_provider(agent.provider)
         effective_base_url = self._effective_provider_base_url(agent)
-        env = {**build_safe_env(), "HERMES_HOME": str(hermes_home), "TERM": "xterm-256color"}
+        # Providers with auth_type "aws_sdk" (currently: bedrock) authenticate via
+        # the standard AWS credential chain (env vars or an EC2 instance role)
+        # instead of a per-agent secret ref — see
+        # HermesRuntimeService._provider_uses_sdk_auth, which treats these
+        # providers as always having credentials. build_safe_env() strips AWS_*
+        # unconditionally to stop agents from silently billing the platform via
+        # inherited provider API keys, but that protection doesn't apply here:
+        # there is no per-agent secret for aws_sdk providers to bypass in the
+        # first place, so without this allowlist such agents can never
+        # authenticate even when valid AWS credentials are configured.
+        aws_sdk_env_allow = ()
+        if runtime_provider == "bedrock":
+            aws_sdk_env_allow = (
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+                "AWS_SESSION_TOKEN",
+                "AWS_REGION",
+                "AWS_DEFAULT_REGION",
+            )
+        env = {
+            **build_safe_env(extra_allow=aws_sdk_env_allow),
+            "HERMES_HOME": str(hermes_home),
+            "TERM": "xterm-256color",
+        }
         env["HERMESHQ_AGENT_ID"] = agent.id
         env["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id)
         env["HERMESHQ_INTERNAL_API_URL"] = get_settings().internal_api_base_url.rstrip("/")
