@@ -161,6 +161,7 @@ class GatewayProcessManager:
                 raise ValueError("Messaging channel not found")
 
             self._set_runtime_disabled(channel, False)
+            await session.commit()
             if not channel.enabled:
                 channel.status = "stopped"
                 channel.last_error = None
