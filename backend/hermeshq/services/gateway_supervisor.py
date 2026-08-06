@@ -122,6 +122,15 @@ class GatewaySupervisor:
             all_channels = list(channels.scalars().all())
 
         for channel in all_channels:
+            metadata = channel.metadata_json if isinstance(channel.metadata_json, dict) else {}
+            stale_disabled = bool(metadata.get("runtime_disabled")) and channel.enabled
+            if stale_disabled:
+                logger.info(
+                    "Bootstrap: clearing stale runtime_disabled for %s/%s (enabled in DB)",
+                    agent.id, channel.platform,
+                )
+                metadata.pop("runtime_disabled", None)
+                channel.metadata_json = metadata
             if not self._process_mgr._channel_runtime_enabled(channel):
                 continue
             platform = channel.platform
