@@ -18,7 +18,7 @@ from hermeshq.models.agent import Agent
 from hermeshq.models.base import utcnow
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.services.gateway_types import GatewayProcessHandle
-from hermeshq.services.hermes_installation import HermesInstallationError, HermesInstallationManager
+from hermeshq.services.hermes_installation import HermesInstallationError, HermesInstallationManager, _invalidate_install_cached
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +218,7 @@ class GatewayProcessManager:
                     raise ValueError(channel.last_error)
 
             try:
+                _invalidate_install_cached(agent_id)
                 await self.installation_manager.sync_agent_installation(agent_row)
             except HermesInstallationError as exc:
                 channel.status = "error"
@@ -337,6 +338,7 @@ class GatewayProcessManager:
             self._set_runtime_disabled(channel, True)
             await session.commit()
             try:
+                _invalidate_install_cached(agent_id)
                 await self.installation_manager.sync_agent_installation(agent_row)
             except HermesInstallationError:
                 logger.exception("Failed to resync agent installation while stopping %s for %s", platform, agent_id)
@@ -765,6 +767,7 @@ class GatewayProcessManager:
             # Attempt restart
             try:
                 agent_row = await self._reload_agent(agent_id)
+                _invalidate_install_cached(agent_id)
                 await self.installation_manager.sync_agent_installation(agent_row)
 
                 async with self.session_factory() as session:

@@ -154,6 +154,7 @@ class AgentSupervisor:
         self.secret_vault = secret_vault
         self.running_agents: set[str] = set()
         self.active_tasks: dict[str, asyncio.Task] = {}
+        self.gateway_supervisor: object | None = None
         settings = get_settings()
         self._concurrency_semaphore = asyncio.Semaphore(settings.concurrency_semaphore)
         self._semaphore_value = settings.concurrency_semaphore
@@ -269,7 +270,35 @@ class AgentSupervisor:
             }
         )
         await self._start_pending_tasks(agent_id)
+        await self._ensure_gateways_alive(agent_id)
         return agent
+
+    async def _ensure_gateways_alive(self, agent_id: str) -> None:
+        gw = getattr(self, "gateway_supervisor", None)
+        if gw is None:
+            return
+        from hermeshq.models.messaging_channel import MessagingChannel
+
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(MessagingChannel).where(
+                    MessagingChannel.agent_id == agent_id,
+                    MessagingChannel.enabled.is_(True),
+                )
+            )
+            channels = result.scalars().all()
+
+        for channel in channels:
+            if channel.platform in ("google_chat", "kapso_whatsapp"):
+                continue
+            handle = gw.processes.get(agent_id)
+            is_alive = handle and handle.process.poll() is None and channel.platform in handle.platforms
+            if not is_alive:
+                logger.info("Reviving dead gateway for %s/%s on agent start", agent_id, channel.platform)
+                try:
+                    await gw.start_channel(agent_id, channel.platform)
+                except Exception:
+                    logger.warning("Failed to revive gateway %s/%s", agent_id, channel.platform, exc_info=True)
 
     async def stop_agent(self, agent_id: str) -> Agent:
         async with self.session_factory() as session:

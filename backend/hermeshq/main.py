@@ -320,6 +320,7 @@ async def lifespan(app: FastAPI):
 
     app.state.pty_manager = PTYManager(settings.pty_shell, audit_callback=log_terminal_activity)
     app.state.supervisor.pty_manager = app.state.pty_manager
+    app.state.supervisor.gateway_supervisor = app.state.gateway_supervisor
     app.state.scheduler = SchedulerService(AsyncSessionLocal, app.state.supervisor.submit_task)
     await app.state.supervisor.bootstrap_runtime()
     await app.state.scheduler.start()
