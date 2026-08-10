@@ -43,6 +43,7 @@ class PiInstallationManager:
 
         policy = await self._load_policy(agent)
         self._write_settings(agent, pi_home)
+        self._write_models(agent, pi_home)
         self._write_security_extension(agent, pi_home, policy)
         self._write_integration_extension(agent, pi_home)
 
@@ -60,6 +61,35 @@ class PiInstallationManager:
             "retry": {"enabled": True, "maxRetries": 3},
         }
         (pi_home / "settings.json").write_text(json.dumps(settings, indent=2))
+
+    def _write_models(self, agent: Agent, pi_home: Path) -> None:
+        provider = (agent.provider or "openai").replace("-", "_").replace("/", "_")
+        model_id = agent.model or "gpt-4o"
+        base_url = agent.base_url or ""
+        api_key_env = "OPENAI_API_KEY"
+        if (agent.provider or "").startswith("anthropic"):
+            api_key_env = "ANTHROPIC_API_KEY"
+            base_url = base_url or "https://api.anthropic.com"
+
+        models = {
+            "providers": {
+                provider: {
+                    "baseUrl": base_url or "https://api.openai.com/v1",
+                    "api": "openai-completions",
+                    "apiKey": "$" + api_key_env,
+                    "models": [{
+                        "id": model_id,
+                        "name": model_id.split("/")[-1],
+                        "reasoning": False,
+                        "input": ["text"],
+                        "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+                        "contextWindow": 128000,
+                        "maxTokens": 4096,
+                    }],
+                }
+            }
+        }
+        (pi_home / "models.json").write_text(json.dumps(models, indent=2))
 
     def _write_security_extension(
         self, agent: Agent, pi_home: Path, policy: PermissionPolicy | None,

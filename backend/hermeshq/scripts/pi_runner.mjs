@@ -14,8 +14,13 @@ function send(msg) {
 async function handleInit(params) {
   const { createAgentSession, SessionManager } = await import("@earendil-works/pi-coding-agent");
   const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
+  const { existsSync } = await import("fs");
+  const { join } = await import("path");
 
-  const modelRuntime = await ModelRuntime.create();
+  const modelsPath = join(process.cwd(), ".pi", "models.json");
+  const modelRuntime = existsSync(modelsPath)
+    ? await ModelRuntime.create({ modelsPath })
+    : await ModelRuntime.create();
   const model = resolveModel(params.model, modelRuntime);
 
   const tools = params.tools || ["read", "bash", "edit"];
