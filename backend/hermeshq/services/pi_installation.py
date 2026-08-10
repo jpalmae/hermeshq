@@ -225,16 +225,18 @@ class PiInstallationManager:
             """)
         (pi_home / "extensions" / "hermeshq-integrations.ts").write_text(extension)
 
-    def build_process_env(self, agent: Agent) -> dict[str, str]:
+    async def build_process_env(self, agent: Agent) -> dict[str, str]:
         env = build_safe_env()
         env["HERMESHQ_AGENT_ID"] = agent.id
         env["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id)
         settings = get_settings()
         env["HERMESHQ_INTERNAL_API_URL"] = settings.internal_api_base_url.rstrip("/")
 
-        api_key = None
-        if agent.api_key_ref:
-            api_key = require_secret_value(self.secret_vault, agent.api_key_ref)
+        if agent.api_key_ref and self.session_factory:
+            async with self.session_factory() as session:
+                api_key = await require_secret_value(session, self.secret_vault, agent.api_key_ref)
+        else:
+            api_key = None
 
         if api_key:
             provider = agent.provider or "openai"

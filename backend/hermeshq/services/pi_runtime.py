@@ -57,7 +57,7 @@ class PiRuntime(RuntimeBase):
             raise RuntimeExecutionError("Pi runtime is not available (node or runner script missing)")
 
         await self.installation_manager.sync_agent_installation(agent)
-        env = self.installation_manager.build_process_env(agent)
+        env = await self.installation_manager.build_process_env(agent)
         workspace = self.workspace_manager.build_workspace_path(agent.id)
 
         process = await asyncio.create_subprocess_exec(
