@@ -22,4 +22,4 @@ aiofiles>=25.1.0,<26.0
 weasyprint>=62.0,<66.0
 nh3>=0.3.6,<1.0
 prometheus-fastapi-instrumentator>=8.1.0,<9.0
-Pillow>=10.4,<12.0
+Pillow>=12.3.0,<13.0
