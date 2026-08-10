@@ -39,6 +39,9 @@ USER_EDITABLE_FIELDS = {
     "soul_md",
     "skills",
     "team_tags",
+    "runtime_type",
+    "pi_config",
+    "permission_policy_id",
 }
 
 MAX_BULK_AGENT_TARGETS = 25

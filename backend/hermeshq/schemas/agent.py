@@ -60,6 +60,9 @@ class AgentCreate(BaseModel):
     integration_configs: dict[str, dict] | None = None
     team_tags: list[str] = []
     supervisor_agent_id: str | None = None
+    runtime_type: str = "hermes"
+    pi_config: dict | None = None
+    permission_policy_id: str | None = None
 
 
 class AgentUpdate(BaseModel):
@@ -93,6 +96,9 @@ class AgentUpdate(BaseModel):
     status: AgentStatus | None = None
     supervisor_agent_id: str | None = None
     mcp_servers: list[dict] | None = None
+    runtime_type: str | None = None
+    pi_config: dict | None = None
+    permission_policy_id: str | None = None
 
 
 class AgentRead(ORMModel):
@@ -140,6 +146,9 @@ class AgentRead(ORMModel):
     total_tasks: int
     total_tokens_used: int
     last_activity: datetime | None
+    runtime_type: str = "hermes"
+    pi_config: dict | None = None
+    permission_policy_id: str | None = None
     created_at: datetime
     updated_at: datetime
     node: NodeRead | None = None

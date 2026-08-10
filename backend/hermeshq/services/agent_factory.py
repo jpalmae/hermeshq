@@ -288,6 +288,9 @@ async def create_agent_from_config(
         integration_configs=_normalize_integration_configs(payload.integration_configs),
         team_tags=payload.team_tags,
         supervisor_agent_id=payload.supervisor_agent_id,
+        runtime_type=payload.runtime_type,
+        pi_config=payload.pi_config,
+        permission_policy_id=payload.permission_policy_id,
         workspace_path="pending",
     )
 
