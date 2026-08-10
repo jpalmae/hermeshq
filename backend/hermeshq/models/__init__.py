@@ -14,6 +14,7 @@ from hermeshq.models.mfa_code import MfaCode
 from hermeshq.models.node import Node
 from hermeshq.models.oidc_provider import OidcProvider
 from hermeshq.models.password_reset import PasswordResetToken
+from hermeshq.models.permission_policy import PermissionPolicy
 from hermeshq.models.provider import ProviderDefinition
 from hermeshq.models.public_chat import (
     PublicChatApiKey,
@@ -47,6 +48,7 @@ __all__ = [
     "Node",
     "OidcProvider",
     "PasswordResetToken",
+    "PermissionPolicy",
     "ProviderDefinition",
     "PublicChatApiKey",
     "PublicChatMessage",

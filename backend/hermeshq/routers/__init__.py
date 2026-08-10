@@ -16,6 +16,7 @@ __all__ = [
     "messaging_channels",
     "nodes",
     "oidc_admin",
+    "permission_policies",
     "providers",
     "runtime_ledger",
     "runtime_profiles",

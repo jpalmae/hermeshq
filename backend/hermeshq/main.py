@@ -3,6 +3,7 @@ import base64
 import contextlib
 import json
 import logging
+import shutil
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,6 +42,7 @@ from hermeshq.routers import (
     messaging_channels,
     nodes,
     oidc_admin,
+    permission_policies,
     providers,
     runtime_ledger,
     runtime_profiles,
@@ -321,6 +323,18 @@ async def lifespan(app: FastAPI):
     app.state.pty_manager = PTYManager(settings.pty_shell, audit_callback=log_terminal_activity)
     app.state.supervisor.pty_manager = app.state.pty_manager
     app.state.supervisor.gateway_supervisor = app.state.gateway_supervisor
+
+    pi_available = shutil.which("node") is not None
+    if pi_available:
+        from hermeshq.services.pi_runtime import PiRuntime
+
+        app.state.pi_runtime = PiRuntime(
+            AsyncSessionLocal, app.state.secret_vault, app.state.workspace_manager,
+        )
+        app.state.supervisor.register_runtime("pi", app.state.pi_runtime)
+        logger.info("Pi runtime registered")
+    else:
+        logger.warning("Node.js not found — Pi runtime unavailable")
     app.state.scheduler = SchedulerService(AsyncSessionLocal, app.state.supervisor.submit_task)
     await app.state.supervisor.bootstrap_runtime()
     await app.state.scheduler.start()
@@ -411,6 +425,7 @@ app.include_router(terminal_sessions.router, prefix=settings.api_prefix)
 app.include_router(scheduled_tasks.router, prefix=settings.api_prefix)
 app.include_router(oidc_admin.router, prefix=settings.api_prefix)
 app.include_router(users.router, prefix=settings.api_prefix)
+app.include_router(permission_policies.router, prefix=settings.api_prefix)
 app.include_router(audit.router, prefix=settings.api_prefix)
 app.include_router(mcp_server.router)
 app.include_router(webhooks.router)

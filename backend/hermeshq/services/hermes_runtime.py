@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -11,6 +10,7 @@ from hermeshq.models.task import Task
 from hermeshq.services.credentials import require_secret_value
 from hermeshq.services.hermes_installation import HermesInstallationManager
 from hermeshq.services.provider_catalog import normalize_runtime_provider
+from hermeshq.services.runtime_base import RuntimeBase, RuntimeExecutionError, RuntimeExecutionResult
 from hermeshq.services.runtime_profiles import resolve_effective_toolsets
 from hermeshq.services.secret_vault import SecretVault
 
@@ -88,22 +88,7 @@ _MEDIA_EXT_MIME_MAP = {
 }
 
 
-@dataclass
-class RuntimeExecutionResult:
-    final_response: str
-    messages: list[dict]
-    tool_calls: list[dict]
-    tokens_used: int
-    iterations: int
-    engine: str
-    response_attachments: list[dict]
-
-
-class RuntimeExecutionError(RuntimeError):
-    pass
-
-
-class HermesRuntime:
+class HermesRuntime(RuntimeBase):
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],

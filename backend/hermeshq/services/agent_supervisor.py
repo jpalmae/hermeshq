@@ -150,14 +150,18 @@ class AgentSupervisor:
     ) -> None:
         self.session_factory = session_factory
         self.event_broker = event_broker
-        self.runtime = runtime
         self.secret_vault = secret_vault
+        self.runtimes: dict[str, object] = {"hermes": runtime}
         self.running_agents: set[str] = set()
         self.active_tasks: dict[str, asyncio.Task] = {}
         self.gateway_supervisor: object | None = None
         settings = get_settings()
         self._concurrency_semaphore = asyncio.Semaphore(settings.concurrency_semaphore)
         self._semaphore_value = settings.concurrency_semaphore
+
+    def register_runtime(self, runtime_type: str, runtime: object) -> None:
+        """Register an additional runtime (e.g. 'pi' for PiRuntime)."""
+        self.runtimes[runtime_type] = runtime
 
     def update_semaphore(self, new_value: int) -> None:
         """Update the concurrency semaphore at runtime.
@@ -420,7 +424,8 @@ class AgentSupervisor:
                 await stream_buffer.push(delta, index)
 
             try:
-                execution = await self.runtime.execute(
+                runtime = self.runtimes.get(agent.runtime_type or "hermes", self.runtimes["hermes"])
+                execution = await runtime.execute(
                     agent,
                     task,
                     stream_callback,
