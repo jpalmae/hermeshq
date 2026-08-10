@@ -26,16 +26,15 @@ async function handleInit(params) {
 
   // Set runtime API key from env vars (highest priority in Pi auth resolution)
   const apiKey = process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
-  if (apiKey && params.model && params.model.includes("/")) {
-    const providerName = params.model.split("/")[0];
-    try {
-      await modelRuntime.setRuntimeApiKey(providerName, apiKey);
-    } catch (e) {
-      // ignore if provider unknown
-    }
+  if (apiKey) {
+    try { await modelRuntime.setRuntimeApiKey("openai", apiKey); } catch (e) {}
   }
 
   const model = resolveModel(params.model, modelRuntime);
+  if (!model) {
+    send({ type: "error", error: "Could not resolve model: " + params.model });
+    return;
+  }
 
   const tools = params.tools || ["read", "bash", "edit"];
 

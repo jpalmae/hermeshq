@@ -83,22 +83,14 @@ class PiInstallationManager:
 
     def _write_models(self, agent: Agent, pi_home: Path) -> None:
         model_id = agent.model or "gpt-4o"
-        if "/" in model_id:
-            provider_name, short_id = model_id.split("/", 1)
-        else:
-            provider_name = agent.provider or "openai"
-            short_id = model_id
-
-        base_url = agent.base_url or ""
+        short_id = model_id.split("/")[-1] if "/" in model_id else model_id
+        base_url = agent.base_url or "https://api.openai.com/v1"
         api_key_env = "OPENAI_API_KEY"
-        if (agent.provider or "").startswith("anthropic"):
-            api_key_env = "ANTHROPIC_API_KEY"
-            base_url = base_url or "https://api.anthropic.com"
 
         models = {
             "providers": {
-                provider_name: {
-                    "baseUrl": base_url or "https://api.openai.com/v1",
+                "openai": {
+                    "baseUrl": base_url,
                     "api": "openai-completions",
                     "apiKey": "$" + api_key_env,
                     "models": [{
