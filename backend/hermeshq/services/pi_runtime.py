@@ -17,7 +17,7 @@ from hermeshq.services.secret_vault import SecretVault
 
 logger = logging.getLogger(__name__)
 
-PI_RUNNER_SCRIPT = Path(__file__).parent / "scripts" / "pi_runner.mjs"
+PI_RUNNER_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "pi_runner.mjs"
 
 
 class PiRuntime(RuntimeBase):
