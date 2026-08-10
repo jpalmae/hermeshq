@@ -299,8 +299,45 @@ class PiInstallationManager:
 
         if agent.model:
             env["PI_MODEL"] = agent.model
+            self._write_default_models_json(agent)
 
         return env
+
+    def _write_default_models_json(self, agent: Agent) -> None:
+        """Write models.json to ~/.pi/agent/ so ModelRuntime.create() picks it up."""
+        import os
+        home = os.path.expanduser("~")
+        pi_agent_dir = os.path.join(home, ".pi", "agent")
+        os.makedirs(pi_agent_dir, exist_ok=True)
+        models_path = os.path.join(pi_agent_dir, "models.json")
+
+        model_id = agent.model or "gpt-4o"
+        short_id = model_id.split("/")[-1] if "/" in model_id else model_id
+        base_url = agent.base_url or "https://api.openai.com/v1"
+
+        provider_name = "nvidia" if "nvidia" in (agent.provider or "") else "openai"
+        api_key_env = "NVIDIA_API_KEY" if provider_name == "nvidia" else "OPENAI_API_KEY"
+
+        models = {
+            "providers": {
+                provider_name: {
+                    "baseUrl": base_url,
+                    "api": "openai-completions",
+                    "apiKey": "$" + api_key_env,
+                    "models": [{
+                        "id": short_id,
+                        "name": short_id,
+                        "reasoning": False,
+                        "input": ["text"],
+                        "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+                        "contextWindow": 128000,
+                        "maxTokens": 4096,
+                    }],
+                }
+            }
+        }
+        with open(models_path, "w") as f:
+            json.dump(models, f, indent=2)
 
     def compose_system_prompt(self, agent: Agent) -> str:
         parts = []

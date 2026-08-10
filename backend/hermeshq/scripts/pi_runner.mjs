@@ -17,10 +17,8 @@ async function handleInit(params) {
     const { createAgentSession, SessionManager } = await import("@earendil-works/pi-coding-agent");
     send({ type: "debug", message: "imports done" });
     const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
-    const { InMemoryCredentialStore } = await import("@earendil-works/pi-ai");
 
-    const credStore = new InMemoryCredentialStore();
-    const modelRuntime = await ModelRuntime.create({ credentials: credStore });
+    const modelRuntime = await ModelRuntime.create();
     send({ type: "debug", message: "ModelRuntime created" });
 
     const nvidiaKey = process.env.NVIDIA_API_KEY;
