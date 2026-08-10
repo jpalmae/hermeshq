@@ -12,20 +12,17 @@ function send(msg) {
 }
 
 async function handleInit(params) {
+  send({ type: "debug", message: "init started" });
   try {
     const { createAgentSession, SessionManager } = await import("@earendil-works/pi-coding-agent");
+    send({ type: "debug", message: "imports done" });
     const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
-    const { existsSync } = await import("fs");
-    const { join } = await import("path");
+    const { InMemoryCredentialStore } = await import("@earendil-works/pi-ai");
 
-    const modelsPath = join(process.cwd(), ".pi", "models.json");
-    const authPath = join(process.cwd(), ".pi", "auth.json");
-    const rtOpts = {};
-    if (existsSync(modelsPath)) rtOpts.modelsPath = modelsPath;
-    if (existsSync(authPath)) rtOpts.authPath = authPath;
-    const modelRuntime = await ModelRuntime.create(rtOpts);
+    const credStore = new InMemoryCredentialStore();
+    const modelRuntime = await ModelRuntime.create({ credentials: credStore });
+    send({ type: "debug", message: "ModelRuntime created" });
 
-    // Set runtime API key from env vars
     const nvidiaKey = process.env.NVIDIA_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
     if (nvidiaKey) {
@@ -34,8 +31,10 @@ async function handleInit(params) {
     if (openaiKey) {
       try { await modelRuntime.setRuntimeApiKey("openai", openaiKey); } catch (e) {}
     }
+    send({ type: "debug", message: "keys set" });
 
     const model = resolveModel(params.model, modelRuntime);
+    send({ type: "debug", message: "model resolved: " + (model ? model.provider + "/" + model.id : "NONE") });
     if (!model) {
       send({ type: "error", error: "Could not resolve model: " + params.model + ". Available: " + modelRuntime.getProviders().filter(p => p.models?.length).map(p => p.id).join(", ") });
       return;
@@ -45,6 +44,7 @@ async function handleInit(params) {
 
     const tools = params.tools || ["read", "bash", "edit"];
 
+    send({ type: "debug", message: "Creating session..." });
     const result = await createAgentSession({
       model,
       thinkingLevel: params.thinking_level || "medium",
