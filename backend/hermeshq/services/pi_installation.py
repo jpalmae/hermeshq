@@ -312,12 +312,13 @@ class PiInstallationManager:
         models_path = os.path.join(pi_agent_dir, "models.json")
 
         model_id = agent.model or "gpt-4o"
-        short_id = model_id.split("/")[-1] if "/" in model_id else model_id
         base_url = agent.base_url or "https://api.openai.com/v1"
 
         provider_name = "nvidia" if "nvidia" in (agent.provider or "") else "openai"
         api_key_env = "NVIDIA_API_KEY" if provider_name == "nvidia" else "OPENAI_API_KEY"
 
+        # NIM expects the full model ID (deepseek-ai/deepseek-v4-flash-0731)
+        # Pi resolves by model ID within the provider, so use the full spec
         models = {
             "providers": {
                 provider_name: {
@@ -325,8 +326,8 @@ class PiInstallationManager:
                     "api": "openai-completions",
                     "apiKey": "$" + api_key_env,
                     "models": [{
-                        "id": short_id,
-                        "name": short_id,
+                        "id": model_id,
+                        "name": model_id.split("/")[-1],
                         "reasoning": False,
                         "input": ["text"],
                         "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},

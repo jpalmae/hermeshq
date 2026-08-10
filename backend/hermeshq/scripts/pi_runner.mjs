@@ -18,7 +18,9 @@ async function handleInit(params) {
     send({ type: "debug", message: "imports done" });
     const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
 
-    const modelRuntime = await ModelRuntime.create();
+    send({ type: "debug", message: "creating ModelRuntime..." });
+    const { getAgentDir } = await import("@earendil-works/pi-coding-agent");
+    const modelRuntime = await ModelRuntime.create({ agentDir: getAgentDir() });
     send({ type: "debug", message: "ModelRuntime created" });
 
     const nvidiaKey = process.env.NVIDIA_API_KEY;
@@ -30,13 +32,20 @@ async function handleInit(params) {
       try { await modelRuntime.setRuntimeApiKey("openai", openaiKey); } catch (e) {}
     }
     send({ type: "debug", message: "keys set" });
-
     const model = resolveModel(params.model, modelRuntime);
     send({ type: "debug", message: "model resolved: " + (model ? model.provider + "/" + model.id : "NONE") });
+
     if (!model) {
-      send({ type: "error", error: "Could not resolve model: " + params.model + ". Available: " + modelRuntime.getProviders().filter(p => p.models?.length).map(p => p.id).join(", ") });
+      send({ type: "error", error: "Could not resolve model: " + params.model });
       return;
     }
+
+    // Set API key for the resolved model's provider
+    const apiKey = process.env.NVIDIA_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
+    if (apiKey && model.provider) {
+      try { await modelRuntime.setRuntimeApiKey(model.provider, apiKey); } catch (e) {}
+    }
+    send({ type: "debug", message: "key set for provider: " + model.provider });
 
     send({ type: "debug", message: "Using model: " + model.provider + "/" + model.id });
 
