@@ -76,6 +76,33 @@ function resolveModel(modelSpec, modelRuntime) {
     const id = rest.join("/");
     const m = modelRuntime.getModel(provider, id);
     if (m) return m;
+
+    // Model not in built-in registry — register as custom OpenAI-compatible
+    const baseUrl = process.env.OPENAI_BASE_URL || process.env.PI_BASE_URL;
+    const apiKey = process.env.OPENAI_API_KEY || process.env.PI_API_KEY;
+    if (baseUrl && apiKey) {
+      const providerId = provider.replace(/[^a-z0-9]/gi, "-").toLowerCase();
+      try {
+        modelRuntime.registerProvider(providerId, {
+          baseUrl,
+          apiKey,
+          api: "openai-completions",
+          models: [{
+            id: modelSpec,
+            name: modelSpec,
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 128000,
+            maxTokens: 4096,
+          }],
+        });
+        const custom = modelRuntime.getModel(providerId, modelSpec);
+        if (custom) return custom;
+      } catch (e) {
+        send({ type: "warning", message: "Could not register custom provider: " + e.message });
+      }
+    }
   }
 
   return undefined;
