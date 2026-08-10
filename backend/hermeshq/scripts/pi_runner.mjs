@@ -12,62 +12,68 @@ function send(msg) {
 }
 
 async function handleInit(params) {
-  const { createAgentSession, SessionManager } = await import("@earendil-works/pi-coding-agent");
-  const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
-  const { existsSync } = await import("fs");
-  const { join } = await import("path");
+  try {
+    const { createAgentSession, SessionManager } = await import("@earendil-works/pi-coding-agent");
+    const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
+    const { existsSync } = await import("fs");
+    const { join } = await import("path");
 
-  const modelsPath = join(process.cwd(), ".pi", "models.json");
-  const authPath = join(process.cwd(), ".pi", "auth.json");
-  const rtOpts = {};
-  if (existsSync(modelsPath)) rtOpts.modelsPath = modelsPath;
-  if (existsSync(authPath)) rtOpts.authPath = authPath;
-  const modelRuntime = await ModelRuntime.create(rtOpts);
+    const modelsPath = join(process.cwd(), ".pi", "models.json");
+    const authPath = join(process.cwd(), ".pi", "auth.json");
+    const rtOpts = {};
+    if (existsSync(modelsPath)) rtOpts.modelsPath = modelsPath;
+    if (existsSync(authPath)) rtOpts.authPath = authPath;
+    const modelRuntime = await ModelRuntime.create(rtOpts);
 
-  // Set runtime API key from env vars (highest priority in Pi auth resolution)
-  const nvidiaKey = process.env.NVIDIA_API_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
-  if (nvidiaKey) {
-    try { await modelRuntime.setRuntimeApiKey("nvidia", nvidiaKey); } catch (e) {}
-  }
-  if (openaiKey) {
-    try { await modelRuntime.setRuntimeApiKey("openai", openaiKey); } catch (e) {}
-  }
-
-  const model = resolveModel(params.model, modelRuntime);
-  if (!model) {
-    send({ type: "error", error: "Could not resolve model: " + params.model });
-    return;
-  }
-
-  const tools = params.tools || ["read", "bash", "edit"];
-
-  const result = await createAgentSession({
-    model,
-    thinkingLevel: params.thinking_level || "medium",
-    tools,
-    sessionManager: SessionManager.inMemory(),
-    cwd: process.cwd(),
-  });
-
-  session = result.session;
-
-  session.subscribe((event) => {
-    if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") {
-      send({ type: "text_delta", delta: event.assistantMessageEvent.delta });
+    // Set runtime API key from env vars
+    const nvidiaKey = process.env.NVIDIA_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (nvidiaKey) {
+      try { await modelRuntime.setRuntimeApiKey("nvidia", nvidiaKey); } catch (e) {}
     }
-    if (event.type === "tool_execution_start") {
-      send({ type: "tool_call", tool: event.toolName, input: event.args });
+    if (openaiKey) {
+      try { await modelRuntime.setRuntimeApiKey("openai", openaiKey); } catch (e) {}
     }
-    if (event.type === "agent_settled") {
-      const messages = session.messages;
-      const response = extractResponse(messages);
-      const toolCalls = extractToolCalls(messages);
-      send({ type: "done", response, messages, tool_calls: toolCalls, tokens: 0, turns: messages.length, attachments: [] });
-    }
-  });
 
-  send({ type: "ready" });
+    const model = resolveModel(params.model, modelRuntime);
+    if (!model) {
+      send({ type: "error", error: "Could not resolve model: " + params.model + ". Available: " + modelRuntime.getProviders().filter(p => p.models?.length).map(p => p.id).join(", ") });
+      return;
+    }
+
+    send({ type: "debug", message: "Using model: " + model.provider + "/" + model.id });
+
+    const tools = params.tools || ["read", "bash", "edit"];
+
+    const result = await createAgentSession({
+      model,
+      thinkingLevel: params.thinking_level || "medium",
+      tools,
+      sessionManager: SessionManager.inMemory(),
+      cwd: process.cwd(),
+    });
+
+    session = result.session;
+
+    session.subscribe((event) => {
+      if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") {
+        send({ type: "text_delta", delta: event.assistantMessageEvent.delta });
+      }
+      if (event.type === "tool_execution_start") {
+        send({ type: "tool_call", tool: event.toolName, input: event.args });
+      }
+      if (event.type === "agent_settled") {
+        const messages = session.messages;
+        const response = extractResponse(messages);
+        const toolCalls = extractToolCalls(messages);
+        send({ type: "done", response, messages, tool_calls: toolCalls, tokens: 0, turns: messages.length, attachments: [] });
+      }
+    });
+
+    send({ type: "ready" });
+  } catch (err) {
+    send({ type: "error", error: "Init failed: " + err.message + "\n" + err.stack });
+  }
 }
 
 async function handlePrompt(params) {
