@@ -702,6 +702,8 @@ write_env_file() {
   local encoded_password
   encoded_password="$(printf '%s' "$db_password" | python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip(), safe=''))")"
   database_url="postgresql+asyncpg://${POSTGRES_USER}:${encoded_password}@postgres:5432/${POSTGRES_DB}"
+  local fernet_key
+  fernet_key="${FERNET_KEY:-$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null || python3 -c "import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")}"
 
   cat >"$INSTALL_DIR/.env" <<EOF
 POSTGRES_DB=${POSTGRES_DB}
@@ -710,6 +712,7 @@ POSTGRES_PASSWORD=${db_password}
 POSTGRES_PORT=${POSTGRES_PORT}
 DATABASE_URL=${database_url}
 JWT_SECRET=${jwt_secret}
+FERNET_KEY=${fernet_key}
 ADMIN_USERNAME=${ADMIN_USERNAME}
 ADMIN_PASSWORD=${admin_password}
 ADMIN_DISPLAY_NAME=${ADMIN_DISPLAY_NAME}

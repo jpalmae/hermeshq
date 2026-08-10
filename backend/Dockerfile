@@ -79,6 +79,9 @@ COPY VERSION /app/VERSION
 COPY backend/alembic.ini /app/alembic.ini
 COPY backend/hermeshq /app/hermeshq
 
+# Install Pi SDK (Node.js) for Pi agent runtime
+RUN cd /app && npm install --no-audit --no-fund @earendil-works/pi-coding-agent
+
 # Writable directories for appuser
 RUN mkdir -p /app/workspaces \
     && chown -R appuser:appuser /app
