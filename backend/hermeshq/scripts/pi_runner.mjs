@@ -76,38 +76,22 @@ async function handleAbort() {
 function resolveModel(modelSpec, modelRuntime) {
   if (!modelSpec) return undefined;
 
+  // Try direct provider/id lookup
   if (modelSpec.includes("/")) {
     const [provider, ...rest] = modelSpec.split("/");
     const id = rest.join("/");
     const m = modelRuntime.getModel(provider, id);
     if (m) return m;
+  }
 
-    // Model not in built-in registry — register as custom OpenAI-compatible
-    const baseUrl = process.env.OPENAI_BASE_URL || process.env.PI_BASE_URL;
-    const apiKey = process.env.OPENAI_API_KEY || process.env.PI_API_KEY;
-    if (baseUrl && apiKey) {
-      const providerId = provider.replace(/[^a-z0-9]/gi, "-").toLowerCase();
-      try {
-        modelRuntime.registerProvider(providerId, {
-          baseUrl,
-          apiKey,
-          api: "openai-completions",
-          models: [{
-            id: modelSpec,
-            name: modelSpec,
-            reasoning: false,
-            input: ["text"],
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            contextWindow: 128000,
-            maxTokens: 4096,
-          }],
-        });
-        const custom = modelRuntime.getModel(providerId, modelSpec);
-        if (custom) return custom;
-      } catch (e) {
-        send({ type: "warning", message: "Could not register custom provider: " + e.message });
-      }
-    }
+  // Search all providers for the model ID
+  for (const p of modelRuntime.getProviders()) {
+    const m = modelRuntime.getModel(p.id, modelSpec);
+    if (m) return m;
+    // Also try without provider prefix
+    const shortId = modelSpec.split("/").pop();
+    const m2 = modelRuntime.getModel(p.id, shortId);
+    if (m2) return m2;
   }
 
   return undefined;
