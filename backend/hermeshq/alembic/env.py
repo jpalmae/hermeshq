@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # from empty, regardless of when each migration was authored.
 _orig_create_table = Operations.create_table
 _orig_add_column = Operations.add_column
+_orig_create_index = Operations.create_index
 
 
 def _safe_create_table(self, table_name, *columns, **kw):
@@ -42,8 +43,18 @@ def _safe_add_column(self, table_name, column, **kw):
     return _orig_add_column(self, table_name, column, **kw)
 
 
+def _safe_create_index(self, index_name, table_name, *columns, **kw):
+    bind = self.get_bind()
+    if table_name in sa_inspect(bind).get_table_names():
+        existing_indexes = {idx["name"] for idx in sa_inspect(bind).get_indexes(table_name)}
+        if index_name in existing_indexes:
+            return None
+    return _orig_create_index(self, index_name, table_name, *columns, **kw)
+
+
 Operations.create_table = _safe_create_table
 Operations.add_column = _safe_add_column
+Operations.create_index = _safe_create_index
 
 # Import every model module so their tables are registered on Base.metadata.
 # This is required for autogenerate to "see" them.
