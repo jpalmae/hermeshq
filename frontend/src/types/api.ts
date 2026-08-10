@@ -130,6 +130,9 @@ export interface Agent {
   fallback_base_url: string | null;
   auxiliary_models: Record<string, AuxiliaryModelEntry> | null;
   system_prompt: string | null;
+  runtime_type?: string;
+  pi_config?: Record<string, unknown> | null;
+  permission_policy_id?: string | null;
   workspace_path: string;
   enabled_toolsets: string[];
   disabled_toolsets: string[];

@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import type { Agent, ProviderDefinition, Secret, HermesVersion, AuxiliaryModelEntry } from "../../types/api";
 import type { UseMutationResult } from "@tanstack/react-query";
 import { useUploadAgentAvatar, useGenerateAgentAvatar, useGenerateAIAgentAvatar, useDeleteAgentAvatar } from "../../api/agents";
+import { usePermissionPolicies } from "../../api/permissionPolicies";
 import { AgentAvatar } from "../../components/AgentAvatar";
 import { v2toast, extractErrorMessage } from "../toast";
 import { useI18n } from "../../lib/i18n";
@@ -48,6 +49,9 @@ export function V2AgentConfigTab({
   const generateAvatar = useGenerateAgentAvatar();
   const generateAIAvatar = useGenerateAIAgentAvatar();
   const removeAvatar = useDeleteAgentAvatar();
+  const { data: permissionPolicies } = usePermissionPolicies();
+  const [runtimeType, setRuntimeType] = useState(agent.runtime_type ?? "hermes");
+  const [permissionPolicyId, setPermissionPolicyId] = useState(agent.permission_policy_id ?? "");
   const AUX_TASKS = [
     { key: "vision", label: t("v2.vision") },
     { key: "compression", label: t("v2.compression") },
@@ -119,6 +123,8 @@ export function V2AgentConfigTab({
       fallback_api_key_ref: fbKeyRef || null,
       fallback_base_url: fbBaseUrl || null,
       auxiliary_models: Object.keys(auxDraft).length > 0 ? auxDraft : null,
+      runtime_type: runtimeType,
+      permission_policy_id: permissionPolicyId || null,
     };
     if (!useProviderDefault) payload.model = customModel || null;
     updateAgent
@@ -392,6 +398,32 @@ export function V2AgentConfigTab({
                 </div>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      <section className="v2-card" style={{ gridColumn: "1 / -1" }}>
+        <div className="v2-card-header"><h2 className="v2-card-title">{t("v2.runtimeEngine")}</h2></div>
+        <div className="v2-card-body">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div className="v2-field">
+              <label className="v2-field-label">{t("v2.runtimeType")}</label>
+              <select className="v2-select" value={runtimeType} onChange={(e) => setRuntimeType(e.target.value)} disabled={!isAdmin}>
+                <option value="hermes">{t("v2.runtimeHermes")}</option>
+                <option value="pi">{t("v2.runtimePi")}</option>
+              </select>
+            </div>
+            {runtimeType === "pi" ? (
+              <div className="v2-field">
+                <label className="v2-field-label">{t("v2.permissionPolicy")}</label>
+                <select className="v2-select" value={permissionPolicyId} onChange={(e) => setPermissionPolicyId(e.target.value)} disabled={!isAdmin}>
+                  <option value="">{t("v2.none")}</option>
+                  {(permissionPolicies ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
