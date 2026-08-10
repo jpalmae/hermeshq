@@ -875,4 +875,114 @@ async def resolve_channel_user_endpoint(
     user = await resolve_channel_user(db, platform, sender_id)
     if not user:
         raise HTTPException(status_code=404, detail="No HermesHQ user found for this sender ID")
+
+
+# ─── Pi agent approval endpoint ────────────────────────────────────────────
+
+
+class ApprovalRequest(BaseModel):
+    command: str = Field(..., description="The command or action requesting approval")
+
+
+class ApprovalResponse(BaseModel):
+    approved: bool
+    reason: str | None = None
+
+
+@router.post("/approval", response_model=ApprovalResponse, include_in_schema=False)
+async def pi_agent_approval(
+    request: Request,
+    payload: ApprovalRequest,
+    db: AsyncSession = Depends(get_db_session),
+) -> ApprovalResponse:
+    """Called by Pi security extension when a tool call requires human approval.
+
+    Uses HMAC agent auth. Returns approved=True if the agent's approval_mode
+    is 'off' or 'on_failure'. For 'on_request', returns False (would need
+    a human in the loop — not yet implemented for headless Pi agents).
+    """
+    agent_id = request.headers.get("X-HermesHQ-Agent-ID", "").strip()
+    agent_token = request.headers.get("X-HermesHQ-Agent-Token", "").strip()
+    if not agent_id or not agent_token:
+        raise HTTPException(status_code=401, detail="Missing agent credentials")
+    expected = create_agent_service_token(agent_id)
+    if not _hmac.compare_digest(agent_token, expected):
+        raise HTTPException(status_code=401, detail="Invalid agent credentials")
+
+    agent = await db.get(Agent, agent_id)
+    if not agent or agent.is_archived:
+        raise HTTPException(status_code=401, detail="Unknown agent")
+
+    mode = agent.approval_mode or "inherit"
+    if mode == "off":
+        return ApprovalResponse(approved=True)
+    if mode in ("on_failure", "inherit"):
+        return ApprovalResponse(approved=True, reason="Auto-approved (failure-based mode)")
+    return ApprovalResponse(approved=False, reason="Manual approval required but no human in loop")
+
+
+# ─── Pi integration action endpoint ────────────────────────────────────────
+
+
+@router.post(
+    "/agents/{agent_id}/integrations/{integration_slug}/actions/{action_slug}",
+    include_in_schema=False,
+)
+async def control_run_integration_action(
+    agent_id: str,
+    integration_slug: str,
+    action_slug: str,
+    payload: dict,
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Called by Pi integration extension to run managed integration actions.
+
+    Uses HMAC agent auth instead of JWT.
+    """
+    control_agent = await _get_control_agent(request, db)
+    agent = await db.get(Agent, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    from hermeshq.routers.agents_managed import run_agent_integration_action
+    from hermeshq.schemas.managed_integration import (
+        ManagedIntegrationActionRequest,
+        ManagedIntegrationActionResult,
+        ManagedIntegrationTestResult,
+    )
+    from hermeshq.core.security import get_current_user
+
+    enabled_slugs = await agents_router._load_enabled_integration_slugs(db)
+    from hermeshq.services.managed_capabilities import get_managed_integration
+
+    integration = get_managed_integration(integration_slug, enabled_slugs)
+    if not integration:
+        raise HTTPException(status_code=404, detail=f"Integration '{integration_slug}' not found")
+
+    async def _resolve_secret(secret_ref: str) -> str | None:
+        result = await db.execute(select(Secret).where(Secret.name == secret_ref))
+        secret = result.scalar_one_or_none()
+        if not secret:
+            return None
+        return request.app.state.secret_vault.decrypt(secret.value_enc)
+
+    from hermeshq.services.managed_integration_actions import (
+        ManagedIntegrationActionError,
+        run_managed_integration_action,
+    )
+
+    try:
+        success, message, details = await run_managed_integration_action(
+            agent,
+            integration_slug,
+            action_slug,
+            payload,
+            enabled_slugs,
+            _resolve_secret,
+        )
+    except ManagedIntegrationActionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"success": success, "message": message, "details": details}
     return {"hermeshq_user_id": user.id}

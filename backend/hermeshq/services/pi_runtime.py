@@ -32,7 +32,7 @@ class PiRuntime(RuntimeBase):
         self.session_factory = session_factory
         self.secret_vault = secret_vault
         self.workspace_manager = workspace_manager
-        self.installation_manager = PiInstallationManager(secret_vault, workspace_manager)
+        self.installation_manager = PiInstallationManager(secret_vault, workspace_manager, session_factory)
         self._active: dict[str, tuple[asyncio.subprocess.Process, PiRpcClient]] = {}
 
     @property

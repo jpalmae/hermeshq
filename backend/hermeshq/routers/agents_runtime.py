@@ -100,3 +100,32 @@ async def set_agent_mode(
     await db.commit()
     result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id))
     return _serialize_agent(request, result.scalar_one())
+
+
+@router.post("/{agent_id}/test-permission")
+async def test_permission(
+    agent_id: str,
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Dry-run: check if a tool/command would be allowed by the agent's permission policy."""
+    agent = await ensure_agent_access(db, current_user, agent_id)
+    if not agent.permission_policy_id:
+        return {"allowed": True, "reason": None, "policy_name": None, "requires_approval": False}
+
+    from hermeshq.models.permission_policy import PermissionPolicy
+    from hermeshq.services.permission_enforcer import PermissionEnforcer
+    from hermeshq.database import AsyncSessionLocal
+
+    policy = await db.get(PermissionPolicy, agent.permission_policy_id)
+    enforcer = PermissionEnforcer(AsyncSessionLocal)
+    tool_name = payload.get("tool", "")
+    tool_input = payload.get("input", {})
+    allowed, reason, requires_approval = await enforcer.evaluate(agent, tool_name, tool_input)
+    return {
+        "allowed": allowed,
+        "reason": reason,
+        "policy_name": policy.name if policy else None,
+        "requires_approval": requires_approval,
+    }
