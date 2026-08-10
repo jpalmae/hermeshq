@@ -12,16 +12,11 @@ function send(msg) {
 }
 
 async function handleInit(params) {
-  send({ type: "debug", message: "init started" });
   try {
     const { createAgentSession, SessionManager } = await import("@earendil-works/pi-coding-agent");
-    send({ type: "debug", message: "imports done" });
     const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
 
-    send({ type: "debug", message: "creating ModelRuntime..." });
-    const { getAgentDir } = await import("@earendil-works/pi-coding-agent");
-    const modelRuntime = await ModelRuntime.create({ agentDir: getAgentDir() });
-    send({ type: "debug", message: "ModelRuntime created" });
+    const modelRuntime = await ModelRuntime.create();
 
     const nvidiaKey = process.env.NVIDIA_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
@@ -31,28 +26,27 @@ async function handleInit(params) {
     if (openaiKey) {
       try { await modelRuntime.setRuntimeApiKey("openai", openaiKey); } catch (e) {}
     }
-    send({ type: "debug", message: "keys set" });
-    const model = resolveModel(params.model, modelRuntime);
-    send({ type: "debug", message: "model resolved: " + (model ? model.provider + "/" + model.id : "NONE") });
 
+    const model = resolveModel(params.model, modelRuntime);
     if (!model) {
       send({ type: "error", error: "Could not resolve model: " + params.model });
       return;
     }
 
-    // Set API key for the resolved model's provider
-    const apiKey = process.env.NVIDIA_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
+    const apiKey = nvidiaKey || openaiKey || process.env.ANTHROPIC_API_KEY;
     if (apiKey && model.provider) {
       try { await modelRuntime.setRuntimeApiKey(model.provider, apiKey); } catch (e) {}
     }
-    send({ type: "debug", message: "key set for provider: " + model.provider });
-
-    send({ type: "debug", message: "Using model: " + model.provider + "/" + model.id });
 
     const tools = params.tools || ["read", "bash", "edit"];
 
-    send({ type: "debug", message: "Creating session..." });
     const result = await createAgentSession({
+      model,
+      thinkingLevel: params.thinking_level || "medium",
+      tools,
+      sessionManager: SessionManager.inMemory(),
+      cwd: process.cwd(),
+    });
       model,
       thinkingLevel: params.thinking_level || "medium",
       tools,
