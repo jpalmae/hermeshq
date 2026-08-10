@@ -6,8 +6,9 @@ import {
   usePermissionPolicies,
   useUpdatePermissionPolicy,
   type PermissionPolicy,
+  type PermissionPolicyCreate,
 } from "../../api/permissionPolicies";
-import { v2toast, extractErrorMessage } from "../toast";
+import { v2toast, extractErrorMessage } from "../../v2/toast";
 import { useI18n } from "../../lib/i18n";
 
 export function PermissionPoliciesTab() {
@@ -133,7 +134,7 @@ function PolicyEditor({
 }: {
   policy?: PermissionPolicy;
   isNew?: boolean;
-  onSave: (data: Record<string, unknown>) => Promise<void>;
+  onSave: (data: PermissionPolicyCreate) => Promise<void>;
   onCancel: () => void;
 }) {
   const { t } = useI18n();
@@ -145,10 +146,10 @@ function PolicyEditor({
   const [requireApproval, setRequireApproval] = useState((policy?.approval_rules?.require_approval_for ?? []).join(", "));
   const [denyAllNet, setDenyAllNet] = useState(policy?.network_rules?.deny_all ?? false);
 
-  function buildPayload() {
+  function buildPayload(): PermissionPolicyCreate {
     return {
       name,
-      description: description || null,
+      description: description || undefined,
       tool_rules: { allow: allowTools.split(",").map((s) => s.trim()).filter(Boolean), deny: [] },
       path_rules: { allow_paths: ["/workspace/**"], deny_paths: denyPaths.split(",").map((s) => s.trim()).filter(Boolean) },
       command_rules: { allow: [], deny: denyCommands.split(",").map((s) => s.trim()).filter(Boolean) },
