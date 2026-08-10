@@ -23,6 +23,18 @@ async function handleInit(params) {
   if (existsSync(modelsPath)) rtOpts.modelsPath = modelsPath;
   if (existsSync(authPath)) rtOpts.authPath = authPath;
   const modelRuntime = await ModelRuntime.create(rtOpts);
+
+  // Set runtime API key from env vars (highest priority in Pi auth resolution)
+  const apiKey = process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
+  if (apiKey && params.model && params.model.includes("/")) {
+    const providerName = params.model.split("/")[0];
+    try {
+      await modelRuntime.setRuntimeApiKey(providerName, apiKey);
+    } catch (e) {
+      // ignore if provider unknown
+    }
+  }
+
   const model = resolveModel(params.model, modelRuntime);
 
   const tools = params.tools || ["read", "bash", "edit"];
