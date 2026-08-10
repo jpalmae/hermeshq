@@ -63,8 +63,13 @@ class PiInstallationManager:
         (pi_home / "settings.json").write_text(json.dumps(settings, indent=2))
 
     def _write_models(self, agent: Agent, pi_home: Path) -> None:
-        provider = (agent.provider or "openai").replace("-", "_").replace("/", "_")
         model_id = agent.model or "gpt-4o"
+        if "/" in model_id:
+            provider_name, short_id = model_id.split("/", 1)
+        else:
+            provider_name = agent.provider or "openai"
+            short_id = model_id
+
         base_url = agent.base_url or ""
         api_key_env = "OPENAI_API_KEY"
         if (agent.provider or "").startswith("anthropic"):
@@ -73,13 +78,13 @@ class PiInstallationManager:
 
         models = {
             "providers": {
-                provider: {
+                provider_name: {
                     "baseUrl": base_url or "https://api.openai.com/v1",
                     "api": "openai-completions",
                     "apiKey": "$" + api_key_env,
                     "models": [{
-                        "id": model_id,
-                        "name": model_id.split("/")[-1],
+                        "id": short_id,
+                        "name": short_id,
                         "reasoning": False,
                         "input": ["text"],
                         "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
