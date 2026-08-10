@@ -18,9 +18,11 @@ async function handleInit(params) {
   const { join } = await import("path");
 
   const modelsPath = join(process.cwd(), ".pi", "models.json");
-  const modelRuntime = existsSync(modelsPath)
-    ? await ModelRuntime.create({ modelsPath })
-    : await ModelRuntime.create();
+  const authPath = join(process.cwd(), ".pi", "auth.json");
+  const rtOpts = {};
+  if (existsSync(modelsPath)) rtOpts.modelsPath = modelsPath;
+  if (existsSync(authPath)) rtOpts.authPath = authPath;
+  const modelRuntime = await ModelRuntime.create(rtOpts);
   const model = resolveModel(params.model, modelRuntime);
 
   const tools = params.tools || ["read", "bash", "edit"];

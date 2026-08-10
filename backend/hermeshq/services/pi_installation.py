@@ -42,8 +42,10 @@ class PiInstallationManager:
         (pi_home / "sessions").mkdir(exist_ok=True)
 
         policy = await self._load_policy(agent)
+        api_key = await self._resolve_api_key(agent)
         self._write_settings(agent, pi_home)
         self._write_models(agent, pi_home)
+        self._write_auth(agent, pi_home, api_key)
         self._write_security_extension(agent, pi_home, policy)
         self._write_integration_extension(agent, pi_home)
 
@@ -52,6 +54,23 @@ class PiInstallationManager:
             return None
         async with self.session_factory() as session:
             return await session.get(PermissionPolicy, agent.permission_policy_id)
+
+    async def _resolve_api_key(self, agent: Agent) -> str | None:
+        if not agent.api_key_ref or not self.session_factory:
+            return None
+        async with self.session_factory() as session:
+            return await require_secret_value(session, self.secret_vault, agent.api_key_ref)
+
+    def _write_auth(self, agent: Agent, pi_home: Path, api_key: str | None) -> None:
+        if not api_key:
+            return
+        model_id = agent.model or ""
+        if "/" in model_id:
+            provider_name = model_id.split("/")[0]
+        else:
+            provider_name = agent.provider or "openai"
+        auth = {provider_name: {"type": "api_key", "key": api_key}}
+        (pi_home / "auth.json").write_text(json.dumps(auth, indent=2))
 
     def _write_settings(self, agent: Agent, pi_home: Path) -> None:
         config = agent.pi_config or {}
