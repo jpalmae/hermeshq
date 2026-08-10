@@ -25,9 +25,13 @@ async function handleInit(params) {
   const modelRuntime = await ModelRuntime.create(rtOpts);
 
   // Set runtime API key from env vars (highest priority in Pi auth resolution)
-  const apiKey = process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
-  if (apiKey) {
-    try { await modelRuntime.setRuntimeApiKey("openai", apiKey); } catch (e) {}
+  const nvidiaKey = process.env.NVIDIA_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (nvidiaKey) {
+    try { await modelRuntime.setRuntimeApiKey("nvidia", nvidiaKey); } catch (e) {}
+  }
+  if (openaiKey) {
+    try { await modelRuntime.setRuntimeApiKey("openai", openaiKey); } catch (e) {}
   }
 
   const model = resolveModel(params.model, modelRuntime);

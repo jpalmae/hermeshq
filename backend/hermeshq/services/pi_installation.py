@@ -85,11 +85,12 @@ class PiInstallationManager:
         model_id = agent.model or "gpt-4o"
         short_id = model_id.split("/")[-1] if "/" in model_id else model_id
         base_url = agent.base_url or "https://api.openai.com/v1"
-        api_key_env = "OPENAI_API_KEY"
+        provider_name = "nvidia" if "nvidia" in (agent.provider or "") else "openai"
+        api_key_env = "NVIDIA_API_KEY" if provider_name == "nvidia" else "OPENAI_API_KEY"
 
         models = {
             "providers": {
-                "openai": {
+                provider_name: {
                     "baseUrl": base_url,
                     "api": "openai-completions",
                     "apiKey": "$" + api_key_env,
@@ -288,7 +289,8 @@ class PiInstallationManager:
             provider = agent.provider or "openai"
             if provider.startswith("anthropic"):
                 env["ANTHROPIC_API_KEY"] = api_key
-            elif provider.startswith("openai"):
+            elif "nvidia" in provider:
+                env["NVIDIA_API_KEY"] = api_key
                 env["OPENAI_API_KEY"] = api_key
             else:
                 env["OPENAI_API_KEY"] = api_key
