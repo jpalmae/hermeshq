@@ -4,11 +4,17 @@
 import * as readline from "readline";
 
 let session = null;
+let queue = Promise.resolve();
 
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 
 function send(msg) {
   process.stdout.write(JSON.stringify(msg) + "\n");
+}
+
+function enqueue(fn) {
+  queue = queue.then(fn);
+  return queue;
 }
 
 async function handleInit(params) {
@@ -143,23 +149,25 @@ function extractToolCalls(messages) {
   return calls;
 }
 
-rl.on("line", async (line) => {
-  try {
-    const msg = JSON.parse(line);
-    switch (msg.method) {
-      case "init":
-        await handleInit(msg.params || {});
-        break;
-      case "prompt":
-        await handlePrompt(msg.params || {});
-        break;
-      case "abort":
-        await handleAbort();
-        break;
+rl.on("line", (line) => {
+  enqueue(async () => {
+    try {
+      const msg = JSON.parse(line);
+      switch (msg.method) {
+        case "init":
+          await handleInit(msg.params || {});
+          break;
+        case "prompt":
+          await handlePrompt(msg.params || {});
+          break;
+        case "abort":
+          await handleAbort();
+          break;
+      }
+    } catch (err) {
+      send({ type: "error", error: `Runner error: ${err.message}` });
     }
-  } catch (err) {
-    send({ type: "error", error: `Runner error: ${err.message}` });
-  }
+  });
 });
 
 rl.on("close", () => {
