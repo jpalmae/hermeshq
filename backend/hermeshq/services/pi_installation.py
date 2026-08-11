@@ -286,35 +286,32 @@ class PiInstallationManager:
 
         if agent.model:
             env["PI_MODEL"] = agent.model
-            env["PI_AGENT_DIR"] = self._write_default_models_json(agent)
+            self._write_default_models_json(agent)
 
         return env
 
-    def _write_default_models_json(self, agent: Agent) -> str:
-        """Write models.json to ~/.pi/agent/{agent_id}/ and set PI_AGENT_DIR env var."""
+    def _write_default_models_json(self, agent: Agent) -> None:
+        """Write models.json to ~/.pi/agent/ so ModelRuntime.create() picks it up."""
         import os
         home = os.path.expanduser("~")
-        pi_agent_dir = os.path.join(home, ".pi", "agent", agent.id)
+        pi_agent_dir = os.path.join(home, ".pi", "agent")
         os.makedirs(pi_agent_dir, exist_ok=True)
         models_path = os.path.join(pi_agent_dir, "models.json")
 
         model_id = agent.model or "gpt-4o"
+        # Use short ID for Pi SDK (openai provider expects short), NIM accepts short via openai baseUrl
+        short_id = model_id.split("/")[-1] if "/" in model_id else model_id
         base_url = agent.base_url or "https://api.openai.com/v1"
 
-        provider_name = "nvidia" if "nvidia" in (agent.provider or "") else "openai"
-        api_key_env = "NVIDIA_API_KEY" if provider_name == "nvidia" else "OPENAI_API_KEY"
-
-        # NIM expects the full model ID (deepseek-ai/deepseek-v4-flash-0731)
-        # Pi resolves by model ID within the provider, so use the full spec
         models = {
             "providers": {
-                provider_name: {
+                "openai": {
                     "baseUrl": base_url,
                     "api": "openai-completions",
-                    "apiKey": "$" + api_key_env,
+                    "apiKey": "$OPENAI_API_KEY",
                     "models": [{
-                        "id": model_id,
-                        "name": model_id.split("/")[-1],
+                        "id": short_id,
+                        "name": short_id,
                         "reasoning": False,
                         "input": ["text"],
                         "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
@@ -326,7 +323,6 @@ class PiInstallationManager:
         }
         with open(models_path, "w") as f:
             json.dump(models, f, indent=2)
-        return pi_agent_dir
 
     def compose_system_prompt(self, agent: Agent) -> str:
         parts = []
