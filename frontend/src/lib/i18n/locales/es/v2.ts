@@ -386,8 +386,8 @@ const v2: Record<string, string> = {
   "v2.networkOpen": "Abierto",
   "v2.runtimeEngine": "Motor de Runtime",
   "v2.runtimeType": "Runtime del agente",
-  "v2.runtimeHermes": "Hermes (Python)",
-  "v2.runtimePi": "Pi (TypeScript)",
+  "v2.runtimeHermes": "Hermes",
+  "v2.runtimePi": "Pi",
   "v2.permissionPolicy": "Política de permisos",
 };
 
