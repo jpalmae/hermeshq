@@ -5,6 +5,7 @@ import { useAgents, useAgentAction, useCreateAgent } from "../../api/agents";
 import { AgentAvatar } from "../../components/AgentAvatar";
 import { useNodes } from "../../api/nodes";
 import { useProviders } from "../../api/providers";
+import { usePermissionPolicies } from "../../api/permissionPolicies";
 import { useSecrets } from "../../api/secrets";
 import { useSessionStore } from "../../stores/sessionStore";
 import { v2toast, extractErrorMessage } from "../toast";
@@ -48,6 +49,9 @@ export function V2AgentsPage() {
   const [apiKeyRef, setApiKeyRef] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
+  const [runtimeType, setRuntimeType] = useState("hermes");
+  const [permissionPolicyId, setPermissionPolicyId] = useState("");
+  const { data: permissionPolicies } = usePermissionPolicies();
 
   const filtered = useMemo(() => {
     const list = agents ?? [];
@@ -79,6 +83,8 @@ export function V2AgentsPage() {
     setApiKeyRef("");
     setBaseUrl("");
     setSystemPrompt("");
+    setRuntimeType("hermes");
+    setPermissionPolicyId("");
     setCreateError(null);
   }
 
@@ -103,8 +109,13 @@ export function V2AgentsPage() {
         slug: slugify(name),
         run_mode: "hybrid",
         runtime_profile: "standard",
+        runtime_type: runtimeType,
         use_provider_default: !provider,
       };
+      if (runtimeType === "pi") {
+        payload.pi_config = { tools: ["read", "bash", "edit"], thinking_level: "off", project_trust: "always" };
+        payload.permission_policy_id = permissionPolicyId || null;
+      }
       if (provider) {
         payload.provider = provider;
         payload.model = model || selectedProvider?.default_model || null;
@@ -180,6 +191,24 @@ export function V2AgentsPage() {
                 <input className="v2-input" value={friendlyName} onChange={(e) => setFriendlyName(e.target.value)} required placeholder={t("v2.namePlaceholder")} autoFocus />
                 <span className="v2-field-hint">{t("v2.slug")}: {friendlyName.trim() ? slugify(friendlyName) : "—"}</span>
               </div>
+              <div className="v2-field">
+                <label className="v2-field-label">{t("v2.runtimeType")}</label>
+                <select className="v2-select" value={runtimeType} onChange={(e) => setRuntimeType(e.target.value)}>
+                  <option value="hermes">{t("v2.runtimeHermes")}</option>
+                  <option value="pi">{t("v2.runtimePi")}</option>
+                </select>
+              </div>
+              {runtimeType === "pi" ? (
+                <div className="v2-field">
+                  <label className="v2-field-label">{t("v2.permissionPolicy")}</label>
+                  <select className="v2-select" value={permissionPolicyId} onChange={(e) => setPermissionPolicyId(e.target.value)}>
+                    <option value="">{t("v2.none")}</option>
+                    {(permissionPolicies ?? []).map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
               <div className="v2-field">
                 <label className="v2-field-label">{t("v2.providerPreset")}</label>
                 <select
