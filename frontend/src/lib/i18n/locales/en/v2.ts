@@ -389,6 +389,11 @@ const v2: Record<string, string> = {
   "v2.runtimeHermes": "Hermes",
   "v2.runtimePi": "Pi",
   "v2.permissionPolicy": "Permission policy",
+  "v2.allowedDomains": "Allowed domains",
+  "v2.allowedDomainsHint": "Overrides policy domains for this agent only",
+  "v2.piTools": "Tools",
+  "v2.piThinking": "Thinking level",
+  "v2.agentDomainsHint": "Overrides policy domains for this agent",
 };
 
 export default v2;

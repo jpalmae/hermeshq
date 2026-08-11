@@ -145,6 +145,7 @@ function PolicyEditor({
   const [denyPaths, setDenyPaths] = useState((policy?.path_rules?.deny_paths ?? []).join(", "));
   const [requireApproval, setRequireApproval] = useState((policy?.approval_rules?.require_approval_for ?? []).join(", "));
   const [denyAllNet, setDenyAllNet] = useState(policy?.network_rules?.deny_all ?? false);
+  const [allowDomains, setAllowDomains] = useState((policy?.network_rules?.allow_domains ?? []).join(", "));
 
   function buildPayload(): PermissionPolicyCreate {
     return {
@@ -153,7 +154,7 @@ function PolicyEditor({
       tool_rules: { allow: allowTools.split(",").map((s) => s.trim()).filter(Boolean), deny: [] },
       path_rules: { allow_paths: ["/workspace/**"], deny_paths: denyPaths.split(",").map((s) => s.trim()).filter(Boolean) },
       command_rules: { allow: [], deny: denyCommands.split(",").map((s) => s.trim()).filter(Boolean) },
-      network_rules: { allow_domains: [], deny_all: denyAllNet },
+      network_rules: { allow_domains: allowDomains.split(",").map((s) => s.trim()).filter(Boolean), deny_all: denyAllNet },
       approval_rules: { require_approval_for: requireApproval.split(",").map((s) => s.trim()).filter(Boolean), auto_approve_threshold: "medium" },
     };
   }
@@ -193,6 +194,13 @@ function PolicyEditor({
                 <option value="blocked">{t("v2.networkBlocked")}</option>
               </select>
             </div>
+            {denyAllNet ? (
+              <div className="v2-field">
+                <label className="v2-field-label">{t("v2.allowedDomains")} <span style={{ fontSize: 11, color: "var(--v2-text-muted)" }}>(comma-separated, * wildcard)</span></label>
+                <input className="v2-input v2-mono" value={allowDomains} onChange={(e) => setAllowDomains(e.target.value)} placeholder="*.openai.com, graph.microsoft.com" />
+                <span className="v2-field-hint">{t("v2.allowedDomainsHint")}</span>
+              </div>
+            ) : null}
           </div>
         </section>
 

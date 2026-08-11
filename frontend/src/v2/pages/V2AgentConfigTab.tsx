@@ -52,6 +52,11 @@ export function V2AgentConfigTab({
   const { data: permissionPolicies } = usePermissionPolicies();
   const [runtimeType, setRuntimeType] = useState(agent.runtime_type ?? "hermes");
   const [permissionPolicyId, setPermissionPolicyId] = useState(agent.permission_policy_id ?? "");
+  const [piTools, setPiTools] = useState(((agent.pi_config as Record<string, unknown> | null)?.tools as string[]) ?? ["read", "bash", "edit"]);
+  const [piThinking, setPiThinking] = useState(((agent.pi_config as Record<string, unknown> | null)?.thinking_level as string) ?? "off");
+  const [piAllowDomains, setPiAllowDomains] = useState(((agent.pi_config as Record<string, unknown> | null)?.allow_domains as string[]) ?? []);
+  const selectedPolicy = (permissionPolicies ?? []).find((p) => p.id === permissionPolicyId);
+  const policyDenyAllNet = selectedPolicy?.network_rules?.deny_all ?? false;
   const AUX_TASKS = [
     { key: "vision", label: t("v2.vision") },
     { key: "compression", label: t("v2.compression") },
@@ -127,6 +132,17 @@ export function V2AgentConfigTab({
       permission_policy_id: permissionPolicyId || null,
     };
     if (!useProviderDefault) payload.model = customModel || null;
+    if (runtimeType === "pi") {
+      const piConfig: Record<string, unknown> = {
+        tools: piTools,
+        thinking_level: piThinking,
+        project_trust: "always",
+      };
+      if (policyDenyAllNet && piAllowDomains.length > 0) {
+        piConfig.allow_domains = piAllowDomains;
+      }
+      payload.pi_config = piConfig;
+    }
     updateAgent
       .mutateAsync({ agentId: agent.id, payload })
       .then(() => v2toast.success(t("v2.runtimeConfigSaved")))
@@ -425,6 +441,46 @@ export function V2AgentConfigTab({
               </div>
             ) : null}
           </div>
+          {runtimeType === "pi" ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginTop: 14 }}>
+              <div className="v2-field">
+                <label className="v2-field-label">{t("v2.piTools")}</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {["read", "bash", "edit", "write", "grep", "find", "ls"].map((tool) => (
+                    <label key={tool} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12.5 }}>
+                      <input type="checkbox" checked={piTools.includes(tool)} onChange={(e) => {
+                        if (e.target.checked) setPiTools([...piTools, tool]);
+                        else setPiTools(piTools.filter((t) => t !== tool));
+                      }} disabled={!isAdmin} />
+                      {tool}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="v2-field">
+                <label className="v2-field-label">{t("v2.piThinking")}</label>
+                <select className="v2-select" value={piThinking} onChange={(e) => setPiThinking(e.target.value)} disabled={!isAdmin}>
+                  <option value="off">Off</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+              {policyDenyAllNet ? (
+                <div className="v2-field">
+                  <label className="v2-field-label">{t("v2.allowedDomains")} <span style={{ fontSize: 11, color: "var(--v2-text-muted)" }}>(comma-separated)</span></label>
+                  <input
+                    className="v2-input v2-mono"
+                    value={piAllowDomains.join(", ")}
+                    onChange={(e) => setPiAllowDomains(e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                    placeholder="*.openai.com, graph.microsoft.com"
+                    disabled={!isAdmin}
+                  />
+                  <span className="v2-field-hint">{t("v2.agentDomainsHint")}</span>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </section>
 
