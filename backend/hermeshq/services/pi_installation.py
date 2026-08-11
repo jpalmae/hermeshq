@@ -299,19 +299,20 @@ class PiInstallationManager:
         models_path = os.path.join(pi_agent_dir, "models.json")
 
         model_id = agent.model or "gpt-4o"
-        # Use short ID for Pi SDK (openai provider expects short), NIM accepts short via openai baseUrl
-        short_id = model_id.split("/")[-1] if "/" in model_id else model_id
         base_url = agent.base_url or "https://api.openai.com/v1"
+        is_nvidia = "nvidia" in (agent.provider or "")
+        provider_name = "nvidia" if is_nvidia else "openai"
+        api_key_env = "NVIDIA_API_KEY" if is_nvidia else "OPENAI_API_KEY"
 
         models = {
             "providers": {
-                "openai": {
+                provider_name: {
                     "baseUrl": base_url,
                     "api": "openai-completions",
-                    "apiKey": "$OPENAI_API_KEY",
+                    "apiKey": "$" + api_key_env,
                     "models": [{
-                        "id": short_id,
-                        "name": short_id,
+                        "id": model_id,
+                        "name": model_id.split("/")[-1],
                         "reasoning": False,
                         "input": ["text"],
                         "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
