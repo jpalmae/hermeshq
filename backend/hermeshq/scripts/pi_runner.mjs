@@ -121,20 +121,45 @@ async function handleAbort() {
 function resolveModel(modelSpec, modelRuntime) {
   if (!modelSpec) return undefined;
 
-  // First: try providers from our custom models.json (highest priority)
+  // First: try our custom providers from models.json
   try {
-    const agentDir = process.env.PI_AGENT_DIR || (process.env.HOME || "/root") + "/.pi/agent";
+    const agentDir = (process.env.HOME || "/root") + "/.pi/agent";
     const config = JSON.parse(readFileSync(join(agentDir, "models.json"), "utf8"));
     for (const providerName of Object.keys(config.providers || {})) {
+      // Try exact ID match
       const m = modelRuntime.getModel(providerName, modelSpec);
       if (m) return m;
-      const shortId = modelSpec.split("/").pop();
+      // Try short ID
+      const shortId = modelSpec.includes("/") ? modelSpec.split("/").pop() : modelSpec;
       const m2 = modelRuntime.getModel(providerName, shortId);
       if (m2) return m2;
+      // Try full ID as-is (for NIM: deepseek-ai/deepseek-v4-flash-0731)
+      const providerConfig = config.providers[providerName];
+      if (providerConfig?.models) {
+        for (const modelDef of providerConfig.models) {
+          if (modelDef.id === modelSpec || modelDef.id === shortId) {
+            // Model is defined in our config but Pi SDK doesn't index it —
+            // construct a model object from our config
+            return {
+              id: modelDef.id,
+              name: modelDef.name || modelDef.id,
+              provider: providerName,
+              providerId: providerName,
+              reasoning: modelDef.reasoning || false,
+              input: modelDef.input || ["text"],
+              cost: modelDef.cost || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: modelDef.contextWindow || 128000,
+              maxTokens: modelDef.maxTokens || 4096,
+              api: providerConfig.api || "openai-completions",
+              baseUrl: providerConfig.baseUrl,
+            };
+          }
+        }
+      }
     }
   } catch {}
 
-  // Second: direct provider/id lookup
+  // Second: direct provider/id lookup on built-in providers
   if (modelSpec.includes("/")) {
     const [provider, ...rest] = modelSpec.split("/");
     const id = rest.join("/");
