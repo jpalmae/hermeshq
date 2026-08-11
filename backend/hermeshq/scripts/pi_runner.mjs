@@ -2,6 +2,8 @@
 // Communication: JSON-RPC over stdin/stdout (newline-delimited)
 
 import * as readline from "readline";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 let session = null;
 let queue = Promise.resolve();
@@ -121,22 +123,25 @@ async function handleAbort() {
 function resolveModel(modelSpec, modelRuntime) {
   if (!modelSpec) return undefined;
 
-  // Try direct provider/id lookup
+  // First: try providers from our custom models.json (highest priority)
+  try {
+    const agentDir = process.env.PI_AGENT_DIR || (process.env.HOME || "/root") + "/.pi/agent";
+    const config = JSON.parse(readFileSync(join(agentDir, "models.json"), "utf8"));
+    for (const providerName of Object.keys(config.providers || {})) {
+      const m = modelRuntime.getModel(providerName, modelSpec);
+      if (m) return m;
+      const shortId = modelSpec.split("/").pop();
+      const m2 = modelRuntime.getModel(providerName, shortId);
+      if (m2) return m2;
+    }
+  } catch {}
+
+  // Second: direct provider/id lookup
   if (modelSpec.includes("/")) {
     const [provider, ...rest] = modelSpec.split("/");
     const id = rest.join("/");
     const m = modelRuntime.getModel(provider, id);
     if (m) return m;
-  }
-
-  // Search all providers for the model ID
-  for (const p of modelRuntime.getProviders()) {
-    const m = modelRuntime.getModel(p.id, modelSpec);
-    if (m) return m;
-    // Also try without provider prefix
-    const shortId = modelSpec.split("/").pop();
-    const m2 = modelRuntime.getModel(p.id, shortId);
-    if (m2) return m2;
   }
 
   return undefined;
