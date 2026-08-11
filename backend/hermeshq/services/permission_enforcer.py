@@ -96,10 +96,15 @@ class PermissionEnforcer:
 
     @staticmethod
     def _glob_match(text: str, pattern: str) -> bool:
-        if "**" in pattern:
-            regex_pattern = pattern.replace("**", "\x00")
-            regex_pattern = fnmatch.translate(regex_pattern).replace("\\\x00", ".*").replace("\x00", ".*")
-            import re
+        import re
 
-            return bool(re.match(regex_pattern, text))
+        if "**" in pattern:
+            # Convert glob ** to regex: ** matches any path including /
+            regex = pattern.replace("**", "\x00DOUBLESTAR\x00")
+            regex = re.escape(regex)
+            regex = regex.replace("\x00DOUBLESTAR\x00", ".*")
+            # fnmatch-style single * (not crossing /)
+            regex = regex.replace(re.escape("*"), "[^/]*")
+            regex = regex.replace(re.escape("?"), ".")
+            return bool(re.match("^" + regex + "$", text))
         return fnmatch.fnmatch(text, pattern)

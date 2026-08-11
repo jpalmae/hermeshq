@@ -17,6 +17,12 @@ class PiRpcClient:
         self._read_task: asyncio.Task | None = None
         self._event_queue: asyncio.Queue[dict] = asyncio.Queue()
 
+    @staticmethod
+    def _task_timeout_seconds() -> int:
+        from hermeshq.config import get_settings
+
+        return max(60, int(get_settings().task_timeout_seconds))
+
     async def _send(self, method: str, params: dict | None = None) -> None:
         self._msg_id += 1
         msg = {"jsonrpc": "2.0", "id": self._msg_id, "method": method}
@@ -42,13 +48,16 @@ class PiRpcClient:
         self._read_task = asyncio.create_task(self._read_loop())
         await self._send("init", config)
 
-        # Wait for init confirmation
-        while True:
-            msg = await self._event_queue.get()
-            if msg.get("type") == "ready":
-                break
-            if msg.get("type") == "error":
-                raise RuntimeError(f"Pi init failed: {msg.get('error', 'unknown')}")
+        # Wait for init confirmation (with timeout)
+        try:
+            while True:
+                msg = await asyncio.wait_for(self._event_queue.get(), timeout=30.0)
+                if msg.get("type") == "ready":
+                    break
+                if msg.get("type") == "error":
+                    raise RuntimeError(f"Pi init failed: {msg.get('error', 'unknown')}")
+        except asyncio.TimeoutError:
+            raise RuntimeError("Pi init timed out after 30s") from None
 
     async def prompt(self, text: str) -> dict:
         """Send a prompt and return the final result."""
@@ -57,9 +66,13 @@ class PiRpcClient:
         messages: list[dict] = []
         tool_calls: list[dict] = []
         response_parts: list[str] = []
+        timeout = self._task_timeout_seconds()
 
         while True:
-            msg = await self._event_queue.get()
+            try:
+                msg = await asyncio.wait_for(self._event_queue.get(), timeout=timeout)
+            except asyncio.TimeoutError:
+                raise RuntimeError(f"Pi prompt timed out after {timeout}s") from None
 
             if msg.get("type") == "text_delta":
                 response_parts.append(msg.get("delta", ""))

@@ -16,7 +16,9 @@ async function handleInit(params) {
     const { createAgentSession, SessionManager } = await import("@earendil-works/pi-coding-agent");
     const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
 
-    const modelRuntime = await ModelRuntime.create();
+    const modelRuntime = await ModelRuntime.create({
+      agentDir: process.env.PI_AGENT_DIR || undefined,
+    });
 
     const nvidiaKey = process.env.NVIDIA_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
@@ -41,12 +43,6 @@ async function handleInit(params) {
     const tools = params.tools || ["read", "bash", "edit"];
 
     const result = await createAgentSession({
-      model,
-      thinkingLevel: params.thinking_level || "medium",
-      tools,
-      sessionManager: SessionManager.inMemory(),
-      cwd: process.cwd(),
-    });
       model,
       thinkingLevel: params.thinking_level || "medium",
       tools,

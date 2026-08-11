@@ -56,6 +56,9 @@ class PiRuntime(RuntimeBase):
         if not self.available:
             raise RuntimeExecutionError("Pi runtime is not available (node or runner script missing)")
 
+        if agent.id in self._active:
+            raise RuntimeExecutionError(f"Agent {agent.id} already has an active Pi session")
+
         await self.installation_manager.sync_agent_installation(agent)
         env = await self.installation_manager.build_process_env(agent)
         workspace = self.workspace_manager.build_workspace_path(agent.id)
