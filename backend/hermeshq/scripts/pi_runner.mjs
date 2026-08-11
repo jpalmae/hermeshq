@@ -28,6 +28,25 @@ async function handleInit(params) {
 
     const nvidiaKey = process.env.NVIDIA_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
+
+    // Set API key for ALL providers defined in our models.json
+    const { readFileSync, existsSync } = await import("fs");
+    const { join } = await import("path");
+    try {
+      const agentDir = process.env.PI_AGENT_DIR || join(process.env.HOME || "/root", ".pi", "agent");
+      const modelsFile = join(agentDir, "models.json");
+      if (existsSync(modelsFile)) {
+        const config = JSON.parse(readFileSync(modelsFile, "utf8"));
+        const key = nvidiaKey || openaiKey || process.env.ANTHROPIC_API_KEY;
+        if (key) {
+          for (const pName of Object.keys(config.providers || {})) {
+            try { await modelRuntime.setRuntimeApiKey(pName, key); } catch (e) {}
+          }
+        }
+      }
+    } catch {}
+
+    // Also set for known providers as fallback
     if (nvidiaKey) {
       try { await modelRuntime.setRuntimeApiKey("nvidia", nvidiaKey); } catch (e) {}
     }
