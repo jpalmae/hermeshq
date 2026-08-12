@@ -65,8 +65,11 @@ class Agent(TimestampMixin, Base):
     runtime_type: Mapped[str] = mapped_column(String(16), default="hermes")
     pi_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     permission_policy_id: Mapped[str | None] = mapped_column(
-        ForeignKey("permission_policies.id", ondelete="SET NULL"), nullable=True, index=True,
+        ForeignKey("permission_policies.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
+    service_token_version: Mapped[int] = mapped_column(Integer, default=1)
 
     __table_args__ = (
         CheckConstraint(

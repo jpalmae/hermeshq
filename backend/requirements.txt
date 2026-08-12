@@ -5,11 +5,12 @@ alembic>=1.13,<2.0
 asyncpg>=0.31.0,<1.0
 pydantic-settings>=2.2,<3.0
 python-jose[cryptography]>=3.5.0,<4.0
-cryptography>=44,<50
+PyJWT[crypto]==2.13.0
+cryptography>=50,<51
 passlib[argon2]>=1.7.4,<2.0
 argon2-cffi>=25.1.0,<26.0
 python-multipart>=0.0.18,<1.0
-croniter>=6.2.4,<7.0
+croniter==6.0.0
 psutil>=7.2.2,<8.0
 python-telegram-bot>=22.8,<23.0
 httpx>=0.28.1,<1.0
@@ -19,7 +20,7 @@ av>=14.0,<18.0
 edge-tts>=7.2,<8.0
 piper-tts>=1.4,<2.0
 aiofiles>=25.1.0,<26.0
-weasyprint>=62.0,<66.0
+weasyprint>=68.0,<69.0
 nh3>=0.3.6,<1.0
 prometheus-fastapi-instrumentator>=8.1.0,<9.0
-Pillow>=10.4,<12.0
+Pillow>=12.3,<13.0

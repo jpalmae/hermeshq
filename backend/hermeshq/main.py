@@ -15,6 +15,7 @@ from sqlalchemy import select
 from starlette.websockets import WebSocketState
 
 from hermeshq.config import get_settings
+from hermeshq.core.csrf import CSRFMiddleware
 from hermeshq.core.events import EventBroker
 from hermeshq.core.public_chat_cors import PublicChatCORSMiddleware
 from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
@@ -96,17 +97,16 @@ DEFAULT_ENABLED_INTEGRATION_PACKAGES = (
 async def bootstrap_defaults(secret_vault: SecretVault | None = None) -> None:
     import secrets as _secrets
 
+    from hermeshq.models.oidc_provider import OidcProvider
     from hermeshq.services.auxiliary_models import migrate_auxiliary_models
     from hermeshq.services.secret_vault import encrypt_value, is_encrypted_value
 
-    # Generate random admin password if not set
     admin_password = settings.admin_password
     if not admin_password or not admin_password.strip():
+        if not settings.debug:
+            raise RuntimeError("ADMIN_PASSWORD must be configured before the initial administrator is created")
         admin_password = _secrets.token_urlsafe(16)
-        logger.warning(
-            "⚠️ ADMIN_PASSWORD was not set — auto-generated a secure password. "
-            "Set ADMIN_PASSWORD in your environment to control this value."
-        )
+        logger.warning("Using an ephemeral development-only administrator password")
 
     async with AsyncSessionLocal() as session:
         user_result = await session.execute(select(User).where(User.username == settings.admin_username))
@@ -172,6 +172,11 @@ async def bootstrap_defaults(secret_vault: SecretVault | None = None) -> None:
         obsolete_openai_oauth = await session.get(ProviderDefinition, "openai-oauth")
         if obsolete_openai_oauth:
             await session.delete(obsolete_openai_oauth)
+        if secret_vault:
+            oidc_result = await session.execute(select(OidcProvider))
+            for oidc_provider in oidc_result.scalars().all():
+                if oidc_provider.client_secret and not is_encrypted_value(oidc_provider.client_secret):
+                    oidc_provider.client_secret = encrypt_value(secret_vault, oidc_provider.client_secret)
         agent_result = await session.execute(select(Agent).order_by(Agent.created_at.asc()))
         seen_slugs: set[str] = set()
         for agent in agent_result.scalars().all():
@@ -329,7 +334,9 @@ async def lifespan(app: FastAPI):
         from hermeshq.services.pi_runtime import PiRuntime
 
         app.state.pi_runtime = PiRuntime(
-            AsyncSessionLocal, app.state.secret_vault, app.state.workspace_manager,
+            AsyncSessionLocal,
+            app.state.secret_vault,
+            app.state.workspace_manager,
         )
         app.state.supervisor.register_runtime("pi", app.state.pi_runtime)
         logger.info("Pi runtime registered")
@@ -387,13 +394,14 @@ from hermeshq.core.structured_errors import StructuredErrorMiddleware
 
 app.add_middleware(StructuredErrorMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(CSRFMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With", "X-CSRF-Token", "Accept", "Origin"],
 )
 
 app.add_middleware(PublicChatCORSMiddleware)
@@ -470,8 +478,7 @@ async def health() -> HealthResponse:
 async def stream(websocket: WebSocket) -> None:
     broker: EventBroker = app.state.event_broker
 
-    # --- Authentication: support both query-param (legacy) and first-message auth ---
-    token: str | None = websocket.query_params.get("token")
+    token: str | None = websocket.cookies.get("hermeshq_token")
 
     if not token:
         # Accept the connection provisionally and wait for an auth message.
@@ -528,6 +535,9 @@ async def stream(websocket: WebSocket) -> None:
             msg = await websocket.receive_text()
             try:
                 data = json.loads(msg)
+                if data.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+                    continue
                 if data.get("type") == "pong":
                     continue
             except (json.JSONDecodeError, KeyError, TypeError):
@@ -544,9 +554,7 @@ async def stream(websocket: WebSocket) -> None:
 @app.websocket("/ws/pty/{agent_id}")
 async def pty_stream(websocket: WebSocket, agent_id: str) -> None:
     mode = "hybrid"
-    # Authentication: prefer first-message auth so tokens never appear in
-    # URLs/access logs; query-param token still accepted for legacy clients.
-    token: str | None = websocket.query_params.get("token")
+    token: str | None = websocket.cookies.get("hermeshq_token")
     if not token:
         await websocket.accept()
         try:

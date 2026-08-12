@@ -14,12 +14,12 @@ describe("sessionStore", () => {
     expect(state.user).toBeNull();
   });
 
-  it("setSession stores token in localStorage and state", () => {
+  it("setSession keeps token in memory only", () => {
     const fakeUser = { id: "u1", username: "admin", role: "admin" } as unknown as User;
     useSessionStore.getState().setSession("tok-123", fakeUser);
     expect(useSessionStore.getState().token).toBe("tok-123");
     expect(useSessionStore.getState().user).toEqual(fakeUser);
-    expect(localStorage.getItem("hermeshq.token")).toBe("tok-123");
+    expect(localStorage.getItem("hermeshq.token")).toBeNull();
   });
 
   it("logout clears token and user", () => {

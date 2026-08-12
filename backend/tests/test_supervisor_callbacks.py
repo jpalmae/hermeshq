@@ -1,9 +1,10 @@
 """Tests for AgentSupervisor._drain_callbacks — post-commit callback isolation."""
 
+import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from hermeshq.services.agent_supervisor import AgentSupervisor
+from hermeshq.services.agent_supervisor import AgentSupervisor, _ResizableLimiter, _StreamBuffer
 
 
 def _make_supervisor() -> AgentSupervisor:
@@ -51,6 +52,45 @@ class TestDrainCallbacks(unittest.IsolatedAsyncioTestCase):
         cb = AsyncMock(side_effect=ValueError("boom"))
         await supervisor._drain_callbacks([cb])
         cb.assert_awaited_once()
+
+
+class TestResizableLimiter(unittest.IsolatedAsyncioTestCase):
+    async def test_shrink_waits_for_existing_work_to_drain(self) -> None:
+        limiter = _ResizableLimiter(2)
+        await limiter.acquire()
+        await limiter.acquire()
+        await limiter.resize(1)
+        waiter = asyncio.create_task(limiter.acquire())
+        await asyncio.sleep(0)
+        self.assertFalse(waiter.done())
+        await limiter.release()
+        await asyncio.sleep(0)
+        self.assertFalse(waiter.done())
+        await limiter.release()
+        await asyncio.wait_for(waiter, timeout=1)
+        await limiter.release()
+
+
+class TestStreamBuffer(unittest.IsolatedAsyncioTestCase):
+    async def test_failed_flush_requeues_deltas(self) -> None:
+        class FailingSessionContext:
+            async def __aenter__(self):
+                raise RuntimeError("database unavailable")
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        buffer = _StreamBuffer(
+            session_factory=lambda: FailingSessionContext(),
+            task_id="task-1",
+            agent_id="agent-1",
+            log_func=AsyncMock(),
+            event_broker=MagicMock(),
+        )
+        buffer._deltas = [("hello", 1)]
+        with self.assertRaisesRegex(RuntimeError, "database unavailable"):
+            await buffer.flush()
+        self.assertEqual(buffer._deltas, [("hello", 1)])
 
 
 if __name__ == "__main__":

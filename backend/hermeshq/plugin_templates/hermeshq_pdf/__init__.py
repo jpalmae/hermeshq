@@ -179,7 +179,7 @@ def _handle_generate_pdf(args, **_kwargs):
 
     try:
         from weasyprint import CSS, HTML
-    except ImportError:
+    except (ImportError, OSError):
         return json.dumps({"success": False, "error": "weasyprint is not installed. PDF generation is unavailable."})
 
     if not filename:

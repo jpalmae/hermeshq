@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hermeshq.core.security import is_admin, get_current_user
+from hermeshq.core.security import get_current_user, is_admin
 from hermeshq.database import get_db_session
 from hermeshq.models.permission_policy import PermissionPolicy
 from hermeshq.models.user import User
@@ -20,7 +20,9 @@ async def list_policies(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> list[PermissionPolicy]:
-    result = await db.execute(select(PermissionPolicy).order_by(PermissionPolicy.is_system.desc(), PermissionPolicy.name.asc()))
+    result = await db.execute(
+        select(PermissionPolicy).order_by(PermissionPolicy.is_system.desc(), PermissionPolicy.name.asc())
+    )
     return list(result.scalars().all())
 
 

@@ -1,7 +1,6 @@
 import fnmatch
 import logging
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hermeshq.models.agent import Agent
@@ -72,18 +71,12 @@ class PermissionEnforcer:
     def _check_command_rules(self, policy: PermissionPolicy, command: str) -> bool:
         rules = policy.command_rules or {}
         deny = rules.get("deny", [])
-        for pattern in deny:
-            if pattern == "*" or self._glob_match(command.strip(), pattern):
-                return True
-        return False
+        return any(pattern == "*" or self._glob_match(command.strip(), pattern) for pattern in deny)
 
     def _check_path_rules(self, policy: PermissionPolicy, path: str) -> bool:
         rules = policy.path_rules or {}
         deny_paths = rules.get("deny_paths", [])
-        for pattern in deny_paths:
-            if self._glob_match(path, pattern):
-                return True
-        return False
+        return any(self._glob_match(path, pattern) for pattern in deny_paths)
 
     def _requires_approval(self, policy: PermissionPolicy, tool_name: str, value: str) -> bool:
         rules = policy.approval_rules or {}

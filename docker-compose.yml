@@ -39,9 +39,11 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://hermeshq:hermeshq@postgres:5432/hermeshq}
-      JWT_SECRET: ${JWT_SECRET:-}
-      FERNET_KEY: ${FERNET_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      FERNET_KEY: ${FERNET_KEY:?FERNET_KEY must be set in .env}
+      DEBUG: ${DEBUG:-false}
       TASK_TIMEOUT_SECONDS: ${TASK_TIMEOUT_SECONDS:-3600}
+      AGENT_SERVICE_TOKEN_DAYS: ${AGENT_SERVICE_TOKEN_DAYS:-30}
       AUTH_MODE: ${AUTH_MODE:-local}
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
       OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-}
@@ -58,7 +60,7 @@ services:
       OIDC_PROVIDER_LOGIN_URL_MICROSOFT: ${OIDC_PROVIDER_LOGIN_URL_MICROSOFT:-}
 
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in .env}
       ADMIN_DISPLAY_NAME: ${ADMIN_DISPLAY_NAME:-Hermes Operator}
       WORKSPACES_ROOT: ${WORKSPACES_ROOT:-/app/workspaces}
       BRANDING_ROOT: ${BRANDING_ROOT:-/app/workspaces/_branding}

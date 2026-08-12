@@ -157,7 +157,7 @@ class HermesInstallationManager:
             "TERM": "xterm-256color",
         }
         env["HERMESHQ_AGENT_ID"] = agent.id
-        env["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id)
+        env["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id, agent.service_token_version or 1)
         env["HERMESHQ_INTERNAL_API_URL"] = get_settings().internal_api_base_url.rstrip("/")
         env["HERMESHQ_RUNTIME_PROFILE"] = profile["slug"]
         env["HERMESHQ_RUNTIME_PROFILE_NAME"] = profile["name"]

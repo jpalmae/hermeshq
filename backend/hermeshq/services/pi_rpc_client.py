@@ -56,7 +56,7 @@ class PiRpcClient:
                     break
                 if msg.get("type") == "error":
                     raise RuntimeError(f"Pi init failed: {msg.get('error', 'unknown')}")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise RuntimeError("Pi init timed out after 30s") from None
 
     async def prompt(self, text: str) -> dict:
@@ -71,7 +71,7 @@ class PiRpcClient:
         while True:
             try:
                 msg = await asyncio.wait_for(self._event_queue.get(), timeout=timeout)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 raise RuntimeError(f"Pi prompt timed out after {timeout}s") from None
 
             if msg.get("type") == "text_delta":

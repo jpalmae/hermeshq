@@ -37,6 +37,7 @@ def _make_db(scalar=None):
     result_mock.scalar_one_or_none.return_value = scalar
     result_mock.scalars.return_value.all.return_value = []
     db = AsyncMock()
+    db.add = MagicMock()
     db.execute.return_value = result_mock
     db.get.return_value = None
     return db

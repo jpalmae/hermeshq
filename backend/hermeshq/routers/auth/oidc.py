@@ -1,5 +1,6 @@
 """OIDC endpoints and helpers for the auth router package."""
 
+import hmac
 import secrets
 import time
 from datetime import UTC, datetime, timedelta
@@ -34,6 +35,7 @@ from .helpers import (
 )
 
 router = APIRouter()
+OIDC_STATE_COOKIE = "hermeshq_oidc_state"
 
 
 def _oidc_enabled() -> bool:
@@ -117,14 +119,30 @@ def _create_oidc_state() -> str:
     )
 
 
-def _validate_oidc_state(state: str | None) -> bool:
+def _validate_oidc_state(state: str | None) -> dict | None:
     if not state:
-        return False
+        return None
     try:
-        jwt.decode(state, get_settings().jwt_secret, algorithms=[get_settings().jwt_algorithm])
+        payload = jwt.decode(state, get_settings().jwt_secret, algorithms=[get_settings().jwt_algorithm])
     except JWTError:
-        return False
-    return True
+        return None
+    return payload if payload.get("nonce") else None
+
+
+def _set_oidc_state_cookie(response: RedirectResponse, state: str) -> None:
+    response.set_cookie(
+        OIDC_STATE_COOKIE,
+        state,
+        max_age=OIDC_STATE_EXPIRY_MINUTES * 60,
+        httponly=True,
+        secure=get_settings().cookie_secure,
+        samesite="lax",
+        path="/api/auth/oidc",
+    )
+
+
+def _clear_oidc_state_cookie(response: RedirectResponse) -> None:
+    response.delete_cookie(OIDC_STATE_COOKIE, path="/api/auth/oidc")
 
 
 async def _fetch_oidc_discovery() -> dict:
@@ -206,13 +224,30 @@ async def _resolve_or_create_oidc_user(db: AsyncSession, claims: dict) -> User:
     email = _normalize_email(_extract_claim(claims, "email"))
     subject = str(_extract_claim(claims, "sub") or "").strip()
     display_name = _derive_display_name(claims)
+    email_verified_claim = _extract_claim(claims, "email_verified")
+    email_verified = email_verified_claim is True or str(email_verified_claim or "").lower() == "true"
 
+    if not subject:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="OIDC identity has no subject")
+    if email and not email_verified:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="OIDC email address is not verified")
+
+    composite_subject = f"{(get_settings().oidc_provider_slug or 'generic').strip().lower()}:{subject}"
     user: User | None = None
-    if subject:
-        result = await db.execute(select(User).where(User.oidc_subject == subject))
-        user = result.scalars().first()
+    result = await db.execute(select(User).where(User.oidc_subject == composite_subject))
+    user = result.scalars().first()
     if not user:
-        user = await _get_local_user_by_email(db, email)
+        legacy_result = await db.execute(select(User).where(User.oidc_subject == subject))
+        user = legacy_result.scalars().first()
+    if not user:
+        email_user = await _get_local_user_by_email(db, email)
+        if (
+            email_user
+            and email_user.auth_source == "oidc"
+            and not email_user.oidc_subject
+            and email_user.role != "admin"
+        ):
+            user = email_user
 
     if not user and not _oidc_auto_provision_enabled():
         raise HTTPException(
@@ -227,7 +262,7 @@ async def _resolve_or_create_oidc_user(db: AsyncSession, claims: dict) -> User:
             display_name=display_name,
             password_hash=hash_password(secrets.token_urlsafe(32)),
             auth_source="oidc",
-            oidc_subject=subject or None,
+            oidc_subject=composite_subject,
             role="user",
             is_active=True,
         )
@@ -240,8 +275,8 @@ async def _resolve_or_create_oidc_user(db: AsyncSession, claims: dict) -> User:
         user.email = email
     if display_name and user.display_name != display_name:
         user.display_name = display_name
-    if subject and user.oidc_subject != subject:
-        user.oidc_subject = subject
+    if user.oidc_subject != composite_subject:
+        user.oidc_subject = composite_subject
     user.auth_source = "oidc"
     await db.commit()
     await db.refresh(user)
@@ -326,8 +361,15 @@ async def oidc_login(
             try:
                 redirect_uri = _build_oidc_redirect_uri(request)
                 state = oidc_svc.create_oidc_state(requested_provider, get_settings().jwt_secret)
-                auth_url = await oidc_svc.build_authorization_url(db_provider, redirect_uri, state)
-                return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
+                state_payload = oidc_svc.verify_oidc_state(state, get_settings().jwt_secret)
+                if not state_payload:
+                    raise ValueError("Could not create OIDC login state")
+                auth_url = await oidc_svc.build_authorization_url(
+                    db_provider, redirect_uri, state, state_payload["nonce"]
+                )
+                redirect = RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
+                _set_oidc_state_cookie(redirect, state)
+                return redirect
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Failed to build authorization URL for provider %r", requested_provider)
                 return RedirectResponse(
@@ -370,16 +412,21 @@ async def oidc_login(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="OIDC discovery missing authorization endpoint"
         )
+    oidc_state = _create_oidc_state()
+    oidc_state_payload = _validate_oidc_state(oidc_state)
     params = urlencode(
         {
             "client_id": get_settings().oidc_client_id,
             "redirect_uri": _build_oidc_redirect_uri(request),
             "response_type": "code",
             "scope": get_settings().oidc_scope,
-            "state": _create_oidc_state(),
+            "state": oidc_state,
+            "nonce": oidc_state_payload["nonce"],
         }
     )
-    return RedirectResponse(url=f"{authorization_endpoint}?{params}", status_code=status.HTTP_302_FOUND)
+    redirect = RedirectResponse(url=f"{authorization_endpoint}?{params}", status_code=status.HTTP_302_FOUND)
+    _set_oidc_state_cookie(redirect, oidc_state)
+    return redirect
 
 
 @router.get("/oidc/logout", include_in_schema=False)
@@ -454,6 +501,13 @@ async def oidc_callback(
             status_code=status.HTTP_302_FOUND,
         )
 
+    state_cookie = request.cookies.get(OIDC_STATE_COOKIE, "")
+    if not state or not state_cookie or not hmac.compare_digest(state, state_cookie):
+        return RedirectResponse(
+            _build_frontend_redirect(request, auth_error="Invalid OIDC login state"),
+            status_code=status.HTTP_302_FOUND,
+        )
+
     # --- Try DB-provider state first (includes provider slug) ---
     from hermeshq.services import oidc_provider as oidc_svc
 
@@ -466,7 +520,12 @@ async def oidc_callback(
             provider = await oidc_svc.get_provider_by_slug(db, state_payload["provider"])
             if not provider:
                 raise ValueError(f"Provider '{state_payload['provider']}' not found or disabled")
-            claims = await oidc_svc.exchange_code_and_get_claims(provider, code, _build_oidc_redirect_uri(request))
+            claims = await oidc_svc.exchange_code_and_get_claims(
+                provider,
+                code,
+                _build_oidc_redirect_uri(request),
+                state_payload["nonce"],
+            )
             local_user = await oidc_svc.resolve_or_create_user(db, claims, provider)
         except Exception:  # noqa: BLE001  # OIDC multi-provider flow — surface any failure to user
             logger.exception("OIDC authentication failed (DB provider flow)")
@@ -476,7 +535,7 @@ async def oidc_callback(
                 ),
                 status_code=status.HTTP_302_FOUND,
             )
-    elif _validate_oidc_state(state):
+    elif legacy_state_payload := _validate_oidc_state(state):
         # Legacy env-based flow
         try:
             discovery = await _fetch_oidc_discovery()
@@ -498,7 +557,11 @@ async def oidc_callback(
             )
             token_response.raise_for_status()
             token_payload = token_response.json()
+            if not token_payload.get("id_token"):
+                raise ValueError("OIDC token response did not include an id_token")
             claims = await _extract_id_token_claims(token_payload)
+            if claims and not hmac.compare_digest(str(claims.get("nonce") or ""), legacy_state_payload["nonce"]):
+                raise ValueError("OIDC nonce mismatch")
             access_token = token_payload.get("access_token")
             if userinfo_endpoint and access_token:
                 userinfo_response = await client.get(
@@ -536,4 +599,5 @@ async def oidc_callback(
         _build_frontend_redirect(request, oidc_complete=True), status_code=status.HTTP_302_FOUND
     )
     _set_auth_cookie(redirect, token)
+    _clear_oidc_state_cookie(redirect)
     return redirect

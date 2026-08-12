@@ -1,5 +1,3 @@
-import hashlib
-import hmac
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Cookie, Depends, HTTPException, WebSocket, status
@@ -66,13 +64,31 @@ def decode_access_token_claims(token: str) -> dict | None:
         return None
 
 
-def create_agent_service_token(agent_id: str) -> str:
-    digest = hmac.new(
-        settings.jwt_secret.encode("utf-8"),
-        f"agent:{agent_id}".encode(),
-        hashlib.sha256,
+def create_agent_service_token(agent_id: str, token_version: int = 1) -> str:
+    now = datetime.now(UTC)
+    return jwt.encode(
+        {
+            "sub": agent_id,
+            "sub_kind": "agent",
+            "token_version": token_version,
+            "iat": now,
+            "exp": now + timedelta(days=settings.agent_service_token_days),
+        },
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
     )
-    return digest.hexdigest()
+
+
+def verify_agent_service_token(token: str, agent_id: str, token_version: int = 1) -> bool:
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except JWTError:
+        return False
+    return (
+        payload.get("sub") == agent_id
+        and payload.get("sub_kind") == "agent"
+        and payload.get("token_version") == token_version
+    )
 
 
 async def get_user_by_username(db: AsyncSession, username: str | None) -> User | None:
@@ -132,7 +148,7 @@ async def get_current_user(
 
 
 async def get_websocket_user(websocket: WebSocket, db: AsyncSession, token: str | None = None) -> User | None:
-    token = token or websocket.query_params.get("token")
+    token = token or websocket.cookies.get("hermeshq_token")
     subject, subject_kind = decode_access_token_subject(token or "")
     user = await get_user_by_subject(db, subject, subject_kind)
     if not user or not user.is_active:

@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import { useSessionStore } from "../stores/sessionStore";
 
 export interface AgentDraft {
   name?: string;
@@ -106,7 +107,7 @@ export async function sendBuilderMessage(
 }
 
 function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem("hermeshq.token");
+  const token = useSessionStore.getState().token;
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

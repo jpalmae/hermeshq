@@ -25,7 +25,7 @@ const BACKOFF_DELAYS = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000];
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
 /** If no pong (or any message) arrives within this window, consider the connection dead. */
-const HEARTBEAT_TIMEOUT_MS = 10_000;
+const HEARTBEAT_TIMEOUT_MS = 15_000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -55,6 +55,7 @@ export function useWebSocket() {
   );
   const backoffIndexRef = useRef(0);
   const intentionalCloseRef = useRef(false);
+  const scheduleReconnectRef = useRef<() => void>(() => {});
 
   // -----------------------------------------------------------------------
   // Cleanup helper – clears *all* pending timers and the socket.
@@ -86,7 +87,7 @@ export function useWebSocket() {
   // -----------------------------------------------------------------------
   // Heartbeat helpers
   // -----------------------------------------------------------------------
-  const resetHeartbeatTimeout = useCallback(() => {
+  const armHeartbeatTimeout = useCallback(() => {
     if (heartbeatTimeoutRef.current !== null) {
       clearTimeout(heartbeatTimeoutRef.current);
     }
@@ -95,9 +96,16 @@ export function useWebSocket() {
       console.warn("[WS] Heartbeat timeout – closing stale connection");
       cleanup();
       setConnectionState("reconnecting");
-      scheduleReconnect();
+      scheduleReconnectRef.current();
     }, HEARTBEAT_TIMEOUT_MS);
   }, [cleanup]);
+
+  const acknowledgeHeartbeat = useCallback(() => {
+    if (heartbeatTimeoutRef.current !== null) {
+      clearTimeout(heartbeatTimeoutRef.current);
+      heartbeatTimeoutRef.current = null;
+    }
+  }, []);
 
   const startHeartbeat = useCallback(() => {
     // Clear any previous interval
@@ -105,16 +113,19 @@ export function useWebSocket() {
       clearInterval(heartbeatTimerRef.current);
     }
 
-    resetHeartbeatTimeout();
-
     heartbeatTimerRef.current = setInterval(() => {
       const ws = socketRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "ping" }));
+        armHeartbeatTimeout();
       }
-      resetHeartbeatTimeout();
     }, HEARTBEAT_INTERVAL_MS);
-  }, [resetHeartbeatTimeout]);
+    const ws = socketRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "ping" }));
+      armHeartbeatTimeout();
+    }
+  }, [armHeartbeatTimeout]);
 
   const stopHeartbeat = useCallback(() => {
     if (heartbeatTimerRef.current !== null) {
@@ -145,6 +156,7 @@ export function useWebSocket() {
       connectRef.current();
     }, delay);
   }, []);
+  scheduleReconnectRef.current = scheduleReconnect;
 
   // -----------------------------------------------------------------------
   // Connect
@@ -169,9 +181,6 @@ export function useWebSocket() {
 
     // ------ open ------
     ws.onopen = () => {
-      // Send authentication as the first message instead of a query param.
-      ws.send(JSON.stringify({ type: "auth", token }));
-
       // Reset back-off on successful connection.
       backoffIndexRef.current = 0;
       setConnectionState("connected");
@@ -183,7 +192,7 @@ export function useWebSocket() {
     // ------ message ------
     ws.onmessage = (event) => {
       // Any inbound message proves the connection is alive.
-      resetHeartbeatTimeout();
+      acknowledgeHeartbeat();
 
       try {
         const data = JSON.parse(event.data);
@@ -216,7 +225,7 @@ export function useWebSocket() {
     ws.onerror = () => {
       // The `onclose` handler will fire after an error, which handles reconnect.
     };
-  }, [token, pushEvent, startHeartbeat, stopHeartbeat, resetHeartbeatTimeout, scheduleReconnect]);
+  }, [token, pushEvent, startHeartbeat, stopHeartbeat, acknowledgeHeartbeat, scheduleReconnect]);
 
   // Keep the ref in sync so `scheduleReconnect` always calls the latest `connect`.
   connectRef.current = connect;

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import shutil
 from pathlib import Path
@@ -64,7 +63,8 @@ class PiRuntime(RuntimeBase):
         workspace = self.workspace_manager.build_workspace_path(agent.id)
 
         process = await asyncio.create_subprocess_exec(
-            "node", str(PI_RUNNER_SCRIPT),
+            "node",
+            str(PI_RUNNER_SCRIPT),
             cwd=str(workspace),
             env=env,
             stdin=asyncio.subprocess.PIPE,
@@ -77,18 +77,19 @@ class PiRuntime(RuntimeBase):
 
         try:
             config = agent.pi_config or {}
-            await client.init({
-                "tools": config.get("tools", ["read", "bash", "edit"]),
-                "thinking_level": config.get("thinking_level", "medium"),
-                "system_prompt": self.installation_manager.compose_system_prompt(agent),
-                "model": agent.model or "anthropic/claude-sonnet-4",
-            })
+            await client.init(
+                {
+                    "tools": config.get("tools", ["read", "bash", "edit"]),
+                    "thinking_level": config.get("thinking_level", "medium"),
+                    "system_prompt": self.installation_manager.compose_system_prompt(agent),
+                    "model": agent.model or "anthropic/claude-sonnet-4",
+                }
+            )
 
             prompt = task.prompt or ""
             if conversation_history:
                 history_text = "\n\n".join(
-                    f"[{m.get('role', 'unknown')}]: {m.get('content', '')}"
-                    for m in conversation_history[-10:]
+                    f"[{m.get('role', 'unknown')}]: {m.get('content', '')}" for m in conversation_history[-10:]
                 )
                 if history_text.strip():
                     prompt = f"Previous conversation:\n{history_text}\n\n---\n\n{prompt}"
@@ -109,7 +110,7 @@ class PiRuntime(RuntimeBase):
 
             raise RuntimeExecutionError("Pi agent ended without producing a result")
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise RuntimeExecutionError("Pi agent timed out")
         except Exception as exc:
             if isinstance(exc, RuntimeExecutionError):
@@ -125,6 +126,6 @@ class PiRuntime(RuntimeBase):
         try:
             process.terminate()
             await asyncio.wait_for(process.wait(), timeout=5)
-        except (ProcessLookupError, asyncio.TimeoutError):
+        except (TimeoutError, ProcessLookupError):
             with __import__("contextlib").suppress(ProcessLookupError):
                 process.kill()

@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src",
-    "gen:types": "openapi-typescript http://localhost:8000/openapi.json -o src/types/openapi.d.ts"
+    "gen:types": "openapi-typescript ../openapi.json -o src/types/openapi.d.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

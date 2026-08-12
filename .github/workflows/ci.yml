@@ -71,6 +71,8 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://hermeshq:hermeshq@localhost:5432/hermeshq
       JWT_SECRET: ci-test-secret-${{ github.run_id }}
+      FERNET_KEY: ci-fernet-secret-${{ github.run_id }}
+      ADMIN_PASSWORD: ci-admin-password-${{ github.run_id }}
       AUTH_MODE: local
 
     steps:
@@ -84,12 +86,24 @@ jobs:
 
       - name: Install Python dependencies
         run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglib2.0-0 libpango-1.0-0 libpangocairo-1.0-0 libcairo2 libgdk-pixbuf-2.0-0
           pip install --quiet -r backend/requirements.txt
           pip install --quiet pytest pytest-asyncio pytest-cov
 
       - name: Run backend tests
         working-directory: backend
         run: python -m pytest tests/ -v --tb=short --cov=hermeshq --cov-report=xml --cov-fail-under=27
+
+      - name: Export OpenAPI contract
+        working-directory: backend
+        run: python -m hermeshq.scripts.export_openapi "$RUNNER_TEMP/openapi.json"
+
+      - name: Upload OpenAPI contract
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-contract
+          path: ${{ runner.temp }}/openapi.json
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -102,7 +116,7 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [lint]
+    needs: [lint, backend]
     steps:
       - uses: actions/checkout@v7
 
@@ -116,6 +130,18 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm ci --no-audit --no-fund
+
+      - name: Download OpenAPI contract
+        uses: actions/download-artifact@v4
+        with:
+          name: openapi-contract
+          path: openapi-contract
+
+      - name: Check generated API types
+        working-directory: frontend
+        run: |
+          npx openapi-typescript ../openapi-contract/openapi.json -o "$RUNNER_TEMP/openapi.d.ts"
+          diff -u src/types/openapi.d.ts "$RUNNER_TEMP/openapi.d.ts"
 
       - name: TypeScript check
         working-directory: frontend
@@ -168,7 +194,7 @@ jobs:
           input: /tmp/hermeshq-backend.tar
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: "0"
+          exit-code: "1"
 
       - name: Scan frontend image with Trivy
         uses: aquasecurity/trivy-action@0.28.0
@@ -176,7 +202,7 @@ jobs:
           input: /tmp/hermeshq-frontend.tar
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: "0"
+          exit-code: "1"
 
   # ── Dependency security audit ─────────────────────────────────────────────
   security:
@@ -193,7 +219,9 @@ jobs:
       - name: Run pip-audit on backend requirements
         run: |
           pip install --quiet pip-audit
-          pip-audit -r backend/requirements.txt --progress-spinner=off || true
+          pip-audit -r backend/requirements.txt --progress-spinner=off \
+            --ignore-vuln PYSEC-2026-1325 \
+            --ignore-vuln PYSEC-2026-3412
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -202,4 +230,9 @@ jobs:
 
       - name: Run npm audit on frontend
         working-directory: frontend
-        run: npm audit --audit-level=high || true
+        run: npm audit --audit-level=high
+
+      - name: Run npm audit on runtime bridges
+        run: |
+          npm audit --prefix backend/hermeshq/assets/whatsapp-bridge --omit=dev --audit-level=high
+          npm audit --prefix backend/hermeshq/assets/pi-runtime --omit=dev --audit-level=high

@@ -2,10 +2,12 @@
 
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import AsyncMock
 
 from fastapi import HTTPException, UploadFile
+from PIL import Image
 
 from hermeshq.services.avatar import (
     ALLOWED_AVATAR_TYPES,
@@ -38,7 +40,7 @@ class TestResolveMediaType(unittest.TestCase):
         self.assertEqual(resolve_media_type(Path("avatar.webp")), "image/webp")
 
     def test_svg(self) -> None:
-        self.assertEqual(resolve_media_type(Path("avatar.svg")), "image/svg+xml")
+        self.assertEqual(resolve_media_type(Path("avatar.svg")), "application/octet-stream")
 
     def test_unknown_returns_octet_stream(self) -> None:
         self.assertEqual(resolve_media_type(Path("avatar.unknown")), "application/octet-stream")
@@ -171,14 +173,21 @@ class TestDeleteAvatarFiles(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
+def _valid_image(content_type: str = "image/png") -> bytes:
+    output = BytesIO()
+    image_format = {"image/png": "PNG", "image/jpeg": "JPEG", "image/webp": "WEBP"}[content_type]
+    Image.new("RGB", (2, 2), color=(20, 40, 60)).save(output, format=image_format)
+    return output.getvalue()
+
+
 def _make_upload_file(
     content_type: str = "image/png",
-    content: bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100,
+    content: bytes | None = None,
 ) -> AsyncMock:
     """Create a mock UploadFile with the given content_type and content."""
     file = AsyncMock(spec=UploadFile)
     file.content_type = content_type
-    file.read = AsyncMock(return_value=content)
+    file.read = AsyncMock(return_value=content if content is not None else _valid_image(content_type))
     return file
 
 
@@ -188,7 +197,7 @@ class TestValidateAndSaveAvatar(unittest.IsolatedAsyncioTestCase):
     async def test_valid_png_saves_and_returns_filename(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp) / "avatars"
-            content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+            content = _valid_image("image/png")
             file = _make_upload_file("image/png", content)
 
             result = await validate_and_save_avatar(base, "user-1", file)
@@ -200,7 +209,7 @@ class TestValidateAndSaveAvatar(unittest.IsolatedAsyncioTestCase):
     async def test_valid_jpeg_saves_and_returns_filename(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp) / "avatars"
-            content = b"\xff\xd8\xff\xe0" + b"\x00" * 100
+            content = _valid_image("image/jpeg")
             file = _make_upload_file("image/jpeg", content)
 
             result = await validate_and_save_avatar(base, "user-2", file)
@@ -212,22 +221,21 @@ class TestValidateAndSaveAvatar(unittest.IsolatedAsyncioTestCase):
     async def test_valid_webp_saves_and_returns_filename(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp) / "avatars"
-            content = b"RIFF" + b"\x00" * 100
+            content = _valid_image("image/webp")
             file = _make_upload_file("image/webp", content)
 
             result = await validate_and_save_avatar(base, "user-3", file)
 
             self.assertEqual(result, "avatar.webp")
 
-    async def test_valid_svg_saves_and_returns_filename(self) -> None:
+    async def test_svg_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp) / "avatars"
             content = b'<svg xmlns="http://www.w3.org/2000/svg"></svg>'
             file = _make_upload_file("image/svg+xml", content)
 
-            result = await validate_and_save_avatar(base, "user-4", file)
-
-            self.assertEqual(result, "avatar.svg")
+            with self.assertRaises(HTTPException):
+                await validate_and_save_avatar(base, "user-4", file)
 
     async def test_invalid_content_type_raises_400(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -272,7 +280,7 @@ class TestValidateAndSaveAvatar(unittest.IsolatedAsyncioTestCase):
             (avatar_dir / "avatar.jpg").write_bytes(b"old-avatar-data")
             (avatar_dir / "extra.txt").write_bytes(b"extra-file")
 
-            new_content = b"\x89PNG\r\n\x1a\nnew-data"
+            new_content = _valid_image("image/png")
             file = _make_upload_file("image/png", new_content)
 
             result = await validate_and_save_avatar(base, "user-8", file)
@@ -287,7 +295,8 @@ class TestValidateAndSaveAvatar(unittest.IsolatedAsyncioTestCase):
     async def test_exact_2mb_file_is_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp) / "avatars"
-            exact = b"\x89PNG" + b"\x00" * (MAX_AVATAR_BYTES - 4)
+            image = _valid_image("image/png")
+            exact = image + b"\x00" * (MAX_AVATAR_BYTES - len(image))
             file = _make_upload_file("image/png", exact)
 
             result = await validate_and_save_avatar(base, "user-9", file)
@@ -306,7 +315,7 @@ class TestSaveAvatarBytes(unittest.TestCase):
     def test_saves_png_bytes_and_returns_filename(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp) / "avatars"
-            content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
+            content = _valid_image("image/png")
 
             result = save_avatar_bytes(base, "agent-1", content, "image/png")
 
@@ -317,7 +326,7 @@ class TestSaveAvatarBytes(unittest.TestCase):
     def test_saves_jpeg_bytes_and_returns_filename(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp) / "avatars"
-            content = b"\xff\xd8\xff\xe0" + b"\x00" * 50
+            content = _valid_image("image/jpeg")
 
             result = save_avatar_bytes(base, "agent-2", content, "image/jpeg")
 
@@ -328,7 +337,7 @@ class TestSaveAvatarBytes(unittest.TestCase):
     def test_default_content_type_is_png(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp) / "avatars"
-            content = b"some-bytes"
+            content = _valid_image("image/png")
 
             result = save_avatar_bytes(base, "agent-3", content)
 
@@ -344,7 +353,7 @@ class TestSaveAvatarBytes(unittest.TestCase):
             (avatar_dir / "avatar.png").write_bytes(b"old-data")
             (avatar_dir / "stale.jpg").write_bytes(b"stale")
 
-            new_content = b"\xff\xd8\xff\xe0new-jpeg"
+            new_content = _valid_image("image/jpeg")
             result = save_avatar_bytes(base, "agent-4", new_content, "image/jpeg")
 
             self.assertEqual(result, "avatar.jpg")
@@ -356,7 +365,7 @@ class TestSaveAvatarBytes(unittest.TestCase):
     def test_creates_directory_if_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp) / "deep" / "new" / "path"
-            content = b"data"
+            content = _valid_image("image/png")
 
             save_avatar_bytes(base, "agent-5", content)
 
@@ -374,12 +383,11 @@ class TestConstants(unittest.TestCase):
     def test_allowed_types_keys_and_values(self) -> None:
         self.assertEqual(
             set(ALLOWED_AVATAR_TYPES.keys()),
-            {"image/png", "image/jpeg", "image/webp", "image/svg+xml"},
+            {"image/png", "image/jpeg", "image/webp"},
         )
         self.assertEqual(ALLOWED_AVATAR_TYPES["image/png"], ".png")
         self.assertEqual(ALLOWED_AVATAR_TYPES["image/jpeg"], ".jpg")
         self.assertEqual(ALLOWED_AVATAR_TYPES["image/webp"], ".webp")
-        self.assertEqual(ALLOWED_AVATAR_TYPES["image/svg+xml"], ".svg")
 
     def test_max_avatar_bytes_is_2mb(self) -> None:
         self.assertEqual(MAX_AVATAR_BYTES, 2 * 1024 * 1024)
@@ -389,7 +397,7 @@ class TestConstants(unittest.TestCase):
         self.assertIn(".jpg", AVATAR_MEDIA_TYPES)
         self.assertIn(".jpeg", AVATAR_MEDIA_TYPES)
         self.assertIn(".webp", AVATAR_MEDIA_TYPES)
-        self.assertIn(".svg", AVATAR_MEDIA_TYPES)
+        self.assertNotIn(".svg", AVATAR_MEDIA_TYPES)
 
 
 if __name__ == "__main__":

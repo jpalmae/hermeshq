@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     # Max wall-clock seconds a single task runner subprocess may run before
     # being killed. Prevents hung LLM calls from occupying slots forever.
     task_timeout_seconds: int = 3600
+    agent_service_token_days: int = Field(default=30, gt=0)
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -70,6 +71,11 @@ class Settings(BaseSettings):
 
     def model_post_init(self, __context) -> None:
         if self.jwt_secret == "":
+            if not self.debug:
+                raise RuntimeError(
+                    "JWT_SECRET is not set. Set a persistent JWT_SECRET before running in production, "
+                    "or set DEBUG=true for development."
+                )
             import secrets as _secrets
 
             self.jwt_secret = _secrets.token_urlsafe(32)
@@ -127,10 +133,17 @@ class Settings(BaseSettings):
                 "This is insecure for production. To rotate, set FERNET_KEY first "
                 "and then use the rotate-secrets CLI command."
             )
-        if self.admin_password in ("", "admin123"):
-            if not self.debug and self.admin_password == "admin123":
+        if not self.fernet_key:
+            if not self.debug:
                 raise RuntimeError(
-                    "ADMIN_PASSWORD is using default value 'admin123'. "
+                    "FERNET_KEY is not set. Set an independent, persistent FERNET_KEY "
+                    "before running in production, or set DEBUG=true for development."
+                )
+            logger.warning("⚠️ FERNET_KEY is not set; JWT_SECRET will be used for development-only encryption.")
+        if self.admin_password in ("", "admin123") or len(self.admin_password) < 12:
+            if not self.debug:
+                raise RuntimeError(
+                    "ADMIN_PASSWORD is empty, too short, or uses the default value. "
                     "Set a secure ADMIN_PASSWORD before running in production, "
                     "or set DEBUG=true to bypass this check."
                 )

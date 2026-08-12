@@ -11,6 +11,28 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 logger = logging.getLogger(__name__)
 
 
+class _ResizableLimiter:
+    def __init__(self, limit: int) -> None:
+        self._limit = limit
+        self._active = 0
+        self._condition = asyncio.Condition()
+
+    async def acquire(self) -> None:
+        async with self._condition:
+            await self._condition.wait_for(lambda: self._active < self._limit)
+            self._active += 1
+
+    async def release(self) -> None:
+        async with self._condition:
+            self._active -= 1
+            self._condition.notify_all()
+
+    async def resize(self, limit: int) -> None:
+        async with self._condition:
+            self._limit = limit
+            self._condition.notify_all()
+
+
 class _StreamBuffer:
     """Accumulates streaming deltas and flushes them to the DB in batches."""
 
@@ -80,35 +102,39 @@ class _StreamBuffer:
             if idx is not None:
                 max_index = idx if max_index is None else max(max_index, idx)
 
-        async with self._session_factory() as session:
-            task_row = await session.get(Task, self._task_id)
-            agent_row = await session.get(Agent, task_row.agent_id) if task_row else None
-            if not task_row or not agent_row:
-                return
+        try:
+            async with self._session_factory() as session:
+                task_row = await session.get(Task, self._task_id)
+                agent_row = await session.get(Agent, task_row.agent_id) if task_row else None
+                if not task_row or not agent_row:
+                    return
 
-            task_row.messages_json = [
-                *task_row.messages_json,
-                {"role": "assistant", "content": combined_content},
-            ]
-            if max_index is not None:
-                task_row.iterations = max(task_row.iterations, max_index)
-            await self._log_func(
-                session,
-                "agent.output",
-                agent=agent_row,
-                task=task_row,
-                message=combined_content[:240],
-                details=(
-                    {"step": max_index}
-                    if max_index is not None
-                    else {
-                        "engine": "hermes-agent",
-                        "batch_size": len(snapshots),
-                    }
-                ),
-            )
-            agent_row.last_activity = utcnow()
-            await session.commit()
+                task_row.messages_json = [
+                    *task_row.messages_json,
+                    {"role": "assistant", "content": combined_content},
+                ]
+                if max_index is not None:
+                    task_row.iterations = max(task_row.iterations, max_index)
+                await self._log_func(
+                    session,
+                    "agent.output",
+                    agent=agent_row,
+                    task=task_row,
+                    message=combined_content[:240],
+                    details=(
+                        {"step": max_index}
+                        if max_index is not None
+                        else {
+                            "engine": "hermes-agent",
+                            "batch_size": len(snapshots),
+                        }
+                    ),
+                )
+                agent_row.last_activity = utcnow()
+                await session.commit()
+        except Exception:
+            self._deltas = snapshots + self._deltas
+            raise
 
     # -- internals -----------------------------------------------------------
 
@@ -156,22 +182,16 @@ class AgentSupervisor:
         self.active_tasks: dict[str, asyncio.Task] = {}
         self.gateway_supervisor: object | None = None
         settings = get_settings()
-        self._concurrency_semaphore = asyncio.Semaphore(settings.concurrency_semaphore)
+        self._concurrency_limiter = _ResizableLimiter(settings.concurrency_semaphore)
         self._semaphore_value = settings.concurrency_semaphore
 
     def register_runtime(self, runtime_type: str, runtime: object) -> None:
         """Register an additional runtime (e.g. 'pi' for PiRuntime)."""
         self.runtimes[runtime_type] = runtime
 
-    def update_semaphore(self, new_value: int) -> None:
-        """Update the concurrency semaphore at runtime.
-
-        Creates a new semaphore with the given value. Tasks currently
-        waiting on the old semaphore will continue waiting; new tasks
-        will use the new one.  This is safe to call from any thread.
-        """
+    async def update_semaphore(self, new_value: int) -> None:
         self._semaphore_value = new_value
-        self._concurrency_semaphore = asyncio.Semaphore(new_value)
+        await self._concurrency_limiter.resize(new_value)
 
     def _build_conversation_assistant_content(self, task: Task) -> str:
         if task.response and task.response.strip():
@@ -335,8 +355,11 @@ class AgentSupervisor:
         self.active_tasks[task_id] = runner
 
     async def _run_task_with_semaphore(self, task_id: str) -> None:
-        async with self._concurrency_semaphore:
+        await self._concurrency_limiter.acquire()
+        try:
             await self._run_task(task_id)
+        finally:
+            await self._concurrency_limiter.release()
 
     async def cancel_task(self, task_id: str) -> None:
         runner = self.active_tasks.get(task_id)
@@ -825,7 +848,7 @@ class AgentSupervisor:
             return
 
         # Find image files (png, jpg, jpeg, webp, svg) sorted newest first
-        image_extensions = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
+        image_extensions = {".png", ".jpg", ".jpeg", ".webp"}
         candidates = sorted(
             [f for f in operator_workspace.rglob("*") if f.is_file() and f.suffix.lower() in image_extensions],
             key=lambda f: f.stat().st_mtime,

@@ -457,7 +457,7 @@ async def update_semaphore(
         from hermeshq.services.agent_supervisor import get_supervisor
 
         supervisor = get_supervisor()
-        supervisor.update_semaphore(payload.semaphore)
+        await supervisor.update_semaphore(payload.semaphore)
     except Exception:  # noqa: BLE001  # supervisor update best-effort
         logger.warning("Failed to update concurrency semaphore", exc_info=True)
 

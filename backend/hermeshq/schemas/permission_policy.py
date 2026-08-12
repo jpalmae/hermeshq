@@ -10,7 +10,9 @@ class PermissionPolicyBase(BaseModel):
     path_rules: dict = Field(default_factory=lambda: {"allow_paths": ["/workspace/**"], "deny_paths": []})
     command_rules: dict = Field(default_factory=lambda: {"allow": [], "deny": []})
     network_rules: dict = Field(default_factory=lambda: {"deny_all": False})
-    approval_rules: dict = Field(default_factory=lambda: {"require_approval_for": [], "auto_approve_threshold": "medium"})
+    approval_rules: dict = Field(
+        default_factory=lambda: {"require_approval_for": [], "auto_approve_threshold": "medium"}
+    )
 
 
 class PermissionPolicyCreate(PermissionPolicyBase):

@@ -18,7 +18,11 @@ from hermeshq.models.agent import Agent
 from hermeshq.models.base import utcnow
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.services.gateway_types import GatewayProcessHandle
-from hermeshq.services.hermes_installation import HermesInstallationError, HermesInstallationManager, _invalidate_install_cached
+from hermeshq.services.hermes_installation import (
+    HermesInstallationError,
+    HermesInstallationManager,
+    _invalidate_install_cached,
+)
 
 logger = logging.getLogger(__name__)
 

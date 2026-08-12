@@ -3,7 +3,6 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from sqlalchemy import inspect as sa_inspect
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from hermeshq.config import get_settings
@@ -54,71 +53,8 @@ async def _detect_db_state() -> str:
         return await conn.run_sync(_inspect)
 
 
-async def _stamp_head() -> None:
-    """Stamp the database at the latest Alembic revision without running migrations.
-
-    Used when tables already exist (created by create_all or a prior version)
-    but alembic_version is missing.
-    """
-    import subprocess
-    import sys
-
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", "-c", "alembic.ini", "stamp", "head"],
-        capture_output=True,
-        text=True,
-        cwd=str(Path(__file__).resolve().parent.parent),
-    )
-    if result.returncode != 0:
-        logger.error("Alembic stamp failed:\n%s", result.stderr)
-        raise RuntimeError(f"Alembic stamp failed: {result.stderr}")
-    logger.info("Alembic: stamped existing database at head")
-
-
-async def _ensure_missing_objects() -> None:
-    """Create any tables/columns that exist in models but not in the DB.
-
-    Uses create_all (IF NOT EXISTS) for tables, then inspects each model
-    table for missing columns and adds them with sensible defaults.
-    """
-    import hermeshq.models  # noqa: F401
-    from hermeshq.models.base import Base
-
-    async with engine.begin() as conn:
-
-        def _sync_schema(sync_conn):
-            Base.metadata.create_all(bind=sync_conn, checkfirst=True)
-
-            insp = sa_inspect(sync_conn)
-            for table in Base.metadata.sorted_tables:
-                if not insp.has_table(table.name):
-                    continue
-                existing_cols = {c["name"] for c in insp.get_columns(table.name)}
-                for col in table.columns:
-                    if col.name not in existing_cols:
-                        col_type = col.type.compile(sync_conn.dialect)
-                        nullable = "NULL" if col.nullable else "NOT NULL"
-                        default = ""
-                        if col.server_default is not None:
-                            default = f" DEFAULT {col.server_default.arg}"
-                        elif col.nullable:
-                            default = " DEFAULT NULL"
-                        stmt = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type} {nullable}{default}'
-                        sync_conn.execute(text(stmt))
-                        logger.info("Added missing column %s.%s", table.name, col.name)
-
-        await conn.run_sync(_sync_schema)
-
-
 async def init_database() -> None:
-    """Bring the database schema up to date, handling all starting states.
-
-    Handles three scenarios:
-    1. Fresh install (empty DB): run all Alembic migrations from scratch
-    2. Existing DB with alembic_version: run pending migrations normally
-    3. Existing DB without alembic_version (legacy/manual): create missing
-       objects, stamp at head, then run any pending migrations
-    """
+    """Bring a fresh or Alembic-managed database schema up to date."""
     import subprocess
     import sys
 
@@ -126,10 +62,11 @@ async def init_database() -> None:
     logger.info("Database state: %s", state)
 
     if state == "unstamped":
-        logger.warning("Database has tables but no alembic_version — syncing schema and stamping at head")
-        await _ensure_missing_objects()
-        await _stamp_head()
-        return
+        raise RuntimeError(
+            "Database contains HermesHQ tables but has no Alembic revision. "
+            "Refusing to stamp it at head because that can skip data migrations and constraints. "
+            "Back up the database and run the explicit legacy adoption procedure."
+        )
 
     # For "empty" and "stamped" states, run alembic upgrade head normally.
     result = subprocess.run(

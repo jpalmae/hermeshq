@@ -5,7 +5,6 @@ import logging
 import textwrap
 from pathlib import Path
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hermeshq.config import get_settings
@@ -42,7 +41,7 @@ class PiInstallationManager:
         (pi_home / "sessions").mkdir(exist_ok=True)
 
         policy = await self._load_policy(agent)
-        api_key = await self._resolve_api_key(agent)
+        await self._resolve_api_key(agent)
         self._write_settings(agent, pi_home)
         self._write_models(agent, pi_home)
         self._write_security_extension(agent, pi_home, policy)
@@ -81,22 +80,27 @@ class PiInstallationManager:
                     "baseUrl": base_url,
                     "api": "openai-completions",
                     "apiKey": "$" + api_key_env,
-                    "models": [{
-                        "id": model_id,
-                        "name": model_id.split("/")[-1],
-                        "reasoning": False,
-                        "input": ["text"],
-                        "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
-                        "contextWindow": 128000,
-                        "maxTokens": 4096,
-                    }],
+                    "models": [
+                        {
+                            "id": model_id,
+                            "name": model_id.split("/")[-1],
+                            "reasoning": False,
+                            "input": ["text"],
+                            "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+                            "contextWindow": 128000,
+                            "maxTokens": 4096,
+                        }
+                    ],
                 }
             }
         }
         (pi_home / "models.json").write_text(json.dumps(models, indent=2))
 
     def _write_security_extension(
-        self, agent: Agent, pi_home: Path, policy: PermissionPolicy | None,
+        self,
+        agent: Agent,
+        pi_home: Path,
+        policy: PermissionPolicy | None,
     ) -> None:
         tool_rules = (policy.tool_rules if policy else {}) or {}
         command_rules = (policy.command_rules if policy else {}) or {}
@@ -207,7 +211,7 @@ class PiInstallationManager:
 
     def _write_integration_extension(self, agent: Agent, pi_home: Path) -> None:
         integrations = agent.integration_configs or {}
-        integrations_json = json.dumps({k: True for k in integrations.keys()})
+        integrations_json = json.dumps({k: True for k in integrations})
         agent_id = agent.id
 
         extension = textwrap.dedent(f"""\
@@ -262,7 +266,7 @@ class PiInstallationManager:
     async def build_process_env(self, agent: Agent) -> dict[str, str]:
         env = build_safe_env()
         env["HERMESHQ_AGENT_ID"] = agent.id
-        env["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id)
+        env["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id, agent.service_token_version or 1)
         settings = get_settings()
         env["HERMESHQ_INTERNAL_API_URL"] = settings.internal_api_base_url.rstrip("/")
 
@@ -293,6 +297,7 @@ class PiInstallationManager:
     def _write_default_models_json(self, agent: Agent) -> None:
         """Write models.json to ~/.pi/agent/ so ModelRuntime.create() picks it up."""
         import os
+
         home = os.path.expanduser("~")
         pi_agent_dir = os.path.join(home, ".pi", "agent")
         os.makedirs(pi_agent_dir, exist_ok=True)
@@ -310,15 +315,17 @@ class PiInstallationManager:
                     "baseUrl": base_url,
                     "api": "openai-completions",
                     "apiKey": "$" + api_key_env,
-                    "models": [{
-                        "id": model_id,
-                        "name": model_id.split("/")[-1],
-                        "reasoning": False,
-                        "input": ["text"],
-                        "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
-                        "contextWindow": 128000,
-                        "maxTokens": 4096,
-                    }],
+                    "models": [
+                        {
+                            "id": model_id,
+                            "name": model_id.split("/")[-1],
+                            "reasoning": False,
+                            "input": ["text"],
+                            "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+                            "contextWindow": 128000,
+                            "maxTokens": 4096,
+                        }
+                    ],
                 }
             }
         }

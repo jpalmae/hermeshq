@@ -127,7 +127,8 @@ class GatewaySupervisor:
             if stale_disabled:
                 logger.info(
                     "Bootstrap: clearing stale runtime_disabled for %s/%s (enabled in DB)",
-                    agent.id, channel.platform,
+                    agent.id,
+                    channel.platform,
                 )
                 metadata.pop("runtime_disabled", None)
                 channel.metadata_json = metadata

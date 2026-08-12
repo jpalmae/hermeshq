@@ -448,6 +448,7 @@ async def delete_agent(
     was_already_archived = agent.is_archived
     agent.status = "stopped"
     agent.is_archived = True
+    agent.service_token_version = (agent.service_token_version or 1) + 1
     agent.archived_at = datetime.now(UTC)
     agent.archive_reason = f"Archived by {current_user.username}"
     agent.last_activity = agent.archived_at

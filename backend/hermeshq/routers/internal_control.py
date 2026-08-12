@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hmac as _hmac
 import logging
 from typing import Any
 
@@ -10,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from hermeshq.core.security import create_agent_service_token
+from hermeshq.core.security import verify_agent_service_token
 from hermeshq.database import get_db_session
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
@@ -90,12 +89,11 @@ async def _load_internal_system_agent(
 ) -> Agent:
     if not service_agent_id or not service_agent_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing agent credentials")
-    expected = create_agent_service_token(service_agent_id)
-    if not _hmac.compare_digest(service_agent_token, expected):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid agent credentials")
     agent = await db.get(Agent, service_agent_id)
     if not agent or agent.is_archived:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown agent")
+    if not verify_agent_service_token(service_agent_token, service_agent_id, agent.service_token_version or 1):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid agent credentials")
     return agent
 
 
@@ -855,9 +853,7 @@ async def resolve_channel_user_endpoint(
     sender_id: str,
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
-    """Called by gateway hooks to resolve a platform sender ID to a HermesHQ user.
-    Uses hmac-based agent validation so any agent can call it."""
-    import hmac as _hmac
+    """Called by gateway hooks to resolve a platform sender ID to a HermesHQ user."""
 
     from hermeshq.services.channel_user_resolver import resolve_channel_user
 
@@ -865,16 +861,16 @@ async def resolve_channel_user_endpoint(
     agent_token = request.headers.get("X-HermesHQ-Agent-Token", "").strip()
     if not agent_id or not agent_token:
         raise HTTPException(status_code=401, detail="Missing agent credentials")
-    expected = create_agent_service_token(agent_id)
-    if not _hmac.compare_digest(agent_token, expected):
-        raise HTTPException(status_code=401, detail="Invalid agent credentials")
     agent = await db.get(Agent, agent_id)
     if not agent or agent.is_archived:
         raise HTTPException(status_code=401, detail="Unknown agent")
+    if not verify_agent_service_token(agent_token, agent_id, agent.service_token_version or 1):
+        raise HTTPException(status_code=401, detail="Invalid agent credentials")
 
     user = await resolve_channel_user(db, platform, sender_id)
     if not user:
         raise HTTPException(status_code=404, detail="No HermesHQ user found for this sender ID")
+    return {"hermeshq_user_id": user.id}
 
 
 # ─── Pi agent approval endpoint ────────────────────────────────────────────
@@ -905,13 +901,11 @@ async def pi_agent_approval(
     agent_token = request.headers.get("X-HermesHQ-Agent-Token", "").strip()
     if not agent_id or not agent_token:
         raise HTTPException(status_code=401, detail="Missing agent credentials")
-    expected = create_agent_service_token(agent_id)
-    if not _hmac.compare_digest(agent_token, expected):
-        raise HTTPException(status_code=401, detail="Invalid agent credentials")
-
     agent = await db.get(Agent, agent_id)
     if not agent or agent.is_archived:
         raise HTTPException(status_code=401, detail="Unknown agent")
+    if not verify_agent_service_token(agent_token, agent_id, agent.service_token_version or 1):
+        raise HTTPException(status_code=401, detail="Invalid agent credentials")
 
     mode = agent.approval_mode or "inherit"
     if mode == "off":
@@ -938,20 +932,19 @@ async def control_run_integration_action(
 ) -> dict:
     """Called by Pi integration extension to run managed integration actions.
 
-    Uses HMAC agent auth instead of JWT.
+    Uses the calling agent's revocable service JWT.
     """
-    control_agent = await _get_control_agent(request, db)
+    caller_agent_id = request.headers.get("X-HermesHQ-Agent-ID", "").strip()
+    caller_token = request.headers.get("X-HermesHQ-Agent-Token", "").strip()
+    if not caller_agent_id or not caller_token:
+        raise HTTPException(status_code=401, detail="Missing agent credentials")
+    if caller_agent_id != agent_id:
+        raise HTTPException(status_code=403, detail="Agent credentials do not match target agent")
     agent = await db.get(Agent, agent_id)
-    if not agent:
+    if not agent or agent.is_archived:
         raise HTTPException(status_code=404, detail="Agent not found")
-
-    from hermeshq.routers.agents_managed import run_agent_integration_action
-    from hermeshq.schemas.managed_integration import (
-        ManagedIntegrationActionRequest,
-        ManagedIntegrationActionResult,
-        ManagedIntegrationTestResult,
-    )
-    from hermeshq.core.security import get_current_user
+    if not verify_agent_service_token(caller_token, agent_id, agent.service_token_version or 1):
+        raise HTTPException(status_code=401, detail="Invalid agent credentials")
 
     enabled_slugs = await agents_router._load_enabled_integration_slugs(db)
     from hermeshq.services.managed_capabilities import get_managed_integration
@@ -985,4 +978,3 @@ async def control_run_integration_action(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"success": success, "message": message, "details": details}
-    return {"hermeshq_user_id": user.id}

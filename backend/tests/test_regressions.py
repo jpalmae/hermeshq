@@ -64,6 +64,15 @@ class AuthRegressionTests(unittest.IsolatedAsyncioTestCase):
 
 
 class DatabaseInitRegressionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_init_database_rejects_unstamped_schema(self) -> None:
+        with (
+            patch("hermeshq.database._detect_db_state", new=AsyncMock(return_value="unstamped")),
+            patch("subprocess.run") as run,
+            self.assertRaisesRegex(RuntimeError, "Refusing to stamp"),
+        ):
+            await init_database()
+        run.assert_not_called()
+
     async def test_init_database_propagates_alembic_failures(self) -> None:
         # init_database() now detects DB state before running migrations.
         # Mock _detect_db_state to return "stamped" so it proceeds to subprocess.

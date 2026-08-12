@@ -1,5 +1,6 @@
 """OIDC service — handles multi-provider OIDC flows with discovery caching."""
 
+import hmac
 import logging
 import secrets
 import time
@@ -9,6 +10,7 @@ from urllib.parse import urlencode
 import httpx
 import jwt
 from fastapi import HTTPException, status
+from jwt.exceptions import InvalidTokenError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -95,34 +97,27 @@ async def get_provider_by_slug(db: AsyncSession, slug: str) -> OidcProvider | No
 # OIDC state management (includes provider slug)
 # ---------------------------------------------------------------------------
 def create_oidc_state(provider_slug: str, jwt_secret: str) -> str:
-    """Create a signed state token that includes the provider slug."""
-    import base64
-    import json
-
     payload = {
         "provider": provider_slug,
         "nonce": secrets.token_urlsafe(16),
     }
-    raw = json.dumps(payload).encode()
     exp = datetime.now(UTC) + timedelta(minutes=10)
-    sig = jwt.encode(
-        {"data": base64.b64encode(raw).decode(), "exp": exp},
+    return jwt.encode(
+        {**payload, "exp": exp},
         jwt_secret,
         algorithm="HS256",
     )
-    return sig
 
 
-def verify_oidc_state(state: str, jwt_secret: str) -> dict | None:
-    """Verify state token and return the payload dict (with 'provider')."""
+def verify_oidc_state(state: str | None, jwt_secret: str) -> dict | None:
+    if not state:
+        return None
     try:
         decoded = jwt.decode(state, jwt_secret, algorithms=["HS256"])
-        import base64
-        import json
-
-        raw = base64.b64decode(decoded["data"])
-        return json.loads(raw)
-    except (jwt.JWTError, KeyError, ValueError, TypeError):
+        if not decoded.get("provider") or not decoded.get("nonce"):
+            return None
+        return decoded
+    except (InvalidTokenError, KeyError, ValueError, TypeError):
         logger.warning("Invalid OIDC state token", exc_info=True)
         return None
 
@@ -134,6 +129,7 @@ async def build_authorization_url(
     provider: OidcProvider,
     redirect_uri: str,
     state: str,
+    nonce: str,
 ) -> str:
     """Build the full authorization URL for a given OIDC provider."""
     discovery = await _fetch_discovery(provider.discovery_url)
@@ -147,6 +143,7 @@ async def build_authorization_url(
             "response_type": "code",
             "scope": provider.scopes,
             "state": state,
+            "nonce": nonce,
         }
     )
     return f"{auth_endpoint}?{params}"
@@ -159,12 +156,20 @@ async def exchange_code_and_get_claims(
     provider: OidcProvider,
     code: str,
     redirect_uri: str,
+    expected_nonce: str,
 ) -> dict:
     """Exchange auth code for tokens, validate id_token, fetch userinfo."""
     discovery = await _fetch_discovery(provider.discovery_url)
     token_endpoint = discovery.get("token_endpoint")
     if not token_endpoint:
         raise HTTPException(status_code=502, detail="OIDC discovery missing token_endpoint")
+
+    from hermeshq.config import get_settings
+    from hermeshq.services.secret_vault import build_vault_from_settings, decrypt_value
+
+    client_secret = decrypt_value(build_vault_from_settings(get_settings()), provider.client_secret)
+    if not client_secret:
+        raise ValueError(f"OIDC client secret for '{provider.slug}' cannot be decrypted")
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         # Exchange code for tokens
@@ -175,24 +180,20 @@ async def exchange_code_and_get_claims(
                 "code": code,
                 "redirect_uri": redirect_uri,
                 "client_id": provider.client_id,
-                "client_secret": provider.client_secret,
+                "client_secret": client_secret,
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         token_resp.raise_for_status()
         token_payload = token_resp.json()
 
-        claims: dict = {}
-
         logger.debug("OIDC token_payload keys: %s", list(token_payload.keys()))
 
-        # Validate id_token if present
         id_token = token_payload.get("id_token")
-        if id_token and isinstance(id_token, str):
-            claims = await _validate_id_token(id_token, provider, discovery)
-            logger.debug("OIDC id_token claims keys: %s", list(claims.keys()))
-        else:
-            logger.debug("OIDC: no id_token in token response")
+        if not id_token or not isinstance(id_token, str):
+            raise ValueError("OIDC token response did not include an id_token")
+        claims = await _validate_id_token(id_token, provider, discovery, expected_nonce)
+        logger.debug("OIDC id_token claims keys: %s", list(claims.keys()))
 
         # Fetch userinfo for additional claims
         access_token = token_payload.get("access_token")
@@ -207,7 +208,9 @@ async def exchange_code_and_get_claims(
                 ui_resp.raise_for_status()
                 userinfo = ui_resp.json()
                 logger.debug("OIDC userinfo keys: %s", list(userinfo.keys()))
-                claims = {**claims, **userinfo}
+                if userinfo.get("sub") != claims.get("sub"):
+                    raise ValueError("OIDC userinfo subject does not match id_token subject")
+                claims = {**userinfo, **claims}
             except (httpx.HTTPError, ValueError, KeyError) as exc:
                 logger.warning("Failed to fetch OIDC userinfo from %s: %s", provider.slug, exc, exc_info=True)
         else:
@@ -221,20 +224,20 @@ async def exchange_code_and_get_claims(
         return claims
 
 
-async def _validate_id_token(id_token: str, provider: OidcProvider, discovery: dict) -> dict:
+async def _validate_id_token(
+    id_token: str,
+    provider: OidcProvider,
+    discovery: dict,
+    expected_nonce: str,
+) -> dict:
     """Validate id_token signature using provider's JWKS."""
     jwks_uri = discovery.get("jwks_uri")
     if not jwks_uri:
-        logger.warning("No jwks_uri in discovery for %s; skipping validation", provider.slug)
-        try:
-            return jwt.decode(id_token, options={"verify_signature": False})
-        except jwt.JWTError:
-            return {}
+        raise ValueError(f"OIDC provider '{provider.slug}' discovery is missing jwks_uri")
 
     keys = await _fetch_jwks(jwks_uri)
     if not keys:
-        logger.warning("No JWKS keys for %s", provider.slug)
-        return {}
+        raise ValueError(f"OIDC provider '{provider.slug}' returned no JWKS keys")
 
     for key_data in keys:
         try:
@@ -245,7 +248,7 @@ async def _validate_id_token(id_token: str, provider: OidcProvider, discovery: d
                 public_key = jwt.algorithms.ECAlgorithm.from_jwk(key_data)
             else:
                 continue
-            return jwt.decode(
+            claims = jwt.decode(
                 id_token,
                 key=public_key,
                 algorithms=["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
@@ -253,12 +256,14 @@ async def _validate_id_token(id_token: str, provider: OidcProvider, discovery: d
                 issuer=discovery.get("issuer"),
                 options={"verify_exp": True},
             )
+            if not hmac.compare_digest(str(claims.get("nonce") or ""), expected_nonce):
+                raise ValueError("OIDC nonce mismatch")
+            return claims
         except jwt.ExpiredSignatureError:
             raise
-        except (jwt.JWTError, jwt.InvalidTokenError):
+        except InvalidTokenError:
             continue
-    logger.warning("Could not validate id_token for provider %s", provider.slug)
-    return {}
+    raise ValueError(f"Could not validate id_token for provider '{provider.slug}'")
 
 
 # ---------------------------------------------------------------------------
@@ -275,10 +280,18 @@ async def resolve_or_create_user(
     subject = str(claims.get("sub", "")).strip()
     email = (claims.get("email") or "").strip().lower()
     display_name = claims.get("name") or claims.get("display_name") or email.split("@")[0]
+    email_verified = claims.get("email_verified") is True or str(claims.get("email_verified", "")).lower() == "true"
+
+    if not subject:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="OIDC identity has no subject")
+    if email and not email_verified:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="OIDC email address is not verified")
 
     # Check allowed domains
     if provider.allowed_domains:
         allowed = [d.strip().lower() for d in provider.allowed_domains.split(",") if d.strip()]
+        if allowed and not email:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="A verified email address is required")
         if allowed and email:
             domain = email.split("@")[-1]
             if domain not in allowed:
@@ -287,16 +300,22 @@ async def resolve_or_create_user(
                     detail=f"Email domain '{domain}' is not allowed. Allowed: {', '.join(allowed)}",
                 )
 
-    # Find by OIDC subject
+    composite_subject = f"{provider.slug}:{subject}"
     user: User | None = None
-    if subject:
-        result = await db.execute(select(User).where(User.oidc_subject == f"{provider.slug}:{subject}"))
-        user = result.scalar_one_or_none()
+    result = await db.execute(select(User).where(User.oidc_subject == composite_subject))
+    user = result.scalar_one_or_none()
 
     # Find by email
     if not user and email:
         result = await db.execute(select(User).where(User.email == email))
-        user = result.scalar_one_or_none()
+        email_user = result.scalar_one_or_none()
+        if (
+            email_user
+            and email_user.auth_source == "oidc"
+            and not email_user.oidc_subject
+            and email_user.role != "admin"
+        ):
+            user = email_user
 
     # Auto-provision
     if not user and not provider.auto_provision:
@@ -324,7 +343,7 @@ async def resolve_or_create_user(
             display_name=display_name,
             password_hash=hash_password(secrets.token_urlsafe(32)),
             auth_source="oidc",
-            oidc_subject=f"{provider.slug}:{subject}" if subject else None,
+            oidc_subject=composite_subject,
             role="user",
             is_active=True,
         )
@@ -338,10 +357,8 @@ async def resolve_or_create_user(
         user.email = email
     if display_name and user.display_name != display_name:
         user.display_name = display_name
-    if subject:
-        composite = f"{provider.slug}:{subject}"
-        if user.oidc_subject != composite:
-            user.oidc_subject = composite
+    if user.oidc_subject != composite_subject:
+        user.oidc_subject = composite_subject
     user.auth_source = "oidc"
     await db.commit()
     await db.refresh(user)

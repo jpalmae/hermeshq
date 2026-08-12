@@ -228,7 +228,7 @@ export function AgentTerminal({
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [agentId, mode, token, reconnectNonce, terminalDisabledByProfile]);
+  }, [agentId, mode, token, reconnectNonce, terminalDisabledByProfile, t]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
