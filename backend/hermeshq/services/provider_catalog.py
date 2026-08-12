@@ -45,7 +45,7 @@ BUILTIN_PROVIDERS: list[dict] = [
             "mistralai/mistral-large-2-instruct",
             "mistralai/ministral-14b-instruct-2512",
             "deepseek-ai/deepseek-v4-pro",
-            "deepseek-ai/deepseek-v4-flash",
+            "deepseek-ai/deepseek-v4-flash-0731",
             "google/gemma-3-12b-it",
             "google/gemma-3-4b-it",
             "microsoft/phi-4-mini-instruct",

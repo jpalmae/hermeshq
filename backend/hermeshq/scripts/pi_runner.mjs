@@ -86,6 +86,11 @@ async function handleInit(params) {
       }
       if (event.type === "agent_settled") {
         const messages = session.messages;
+        const error = extractAssistantError(messages);
+        if (error) {
+          send({ type: "error", error });
+          return;
+        }
         const response = extractResponse(messages);
         const toolCalls = extractToolCalls(messages);
         send({ type: "done", response, messages, tool_calls: toolCalls, tokens: 0, turns: messages.length, attachments: [] });
@@ -177,6 +182,16 @@ function extractResponse(messages) {
       if (typeof msg.content === "string") return msg.content;
       const textParts = msg.content.filter((c) => c.type === "text").map((c) => c.text);
       if (textParts.length) return textParts.join("\n");
+    }
+  }
+  return "";
+}
+
+function extractAssistantError(messages) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role === "assistant" && (msg.stopReason === "error" || msg.errorMessage)) {
+      return msg.errorMessage || "Pi model execution failed";
     }
   }
   return "";
