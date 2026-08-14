@@ -255,7 +255,7 @@ async def poll_connect_status(
     except M365TokenError as exc:
         error_msg = str(exc)
         logger.warning("M365 poll error for user %s: %s", current_user.id, error_msg)
-        if "authorization_pending" in error_msg or "authorization_declined" in error_msg.lower():
+        if exc.error_code in ("authorization_pending", "authorization_declined"):
             return M365ConnectStatusRead(status="pending")
         _pending_flows.pop(current_user.id, None)
         raise HTTPException(status_code=400, detail=error_msg) from exc
