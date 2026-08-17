@@ -7,54 +7,12 @@ engine and declarative models.  It imports ALL model modules so that
 """
 
 import asyncio
+import os
 from logging.config import fileConfig
 
 from alembic import context
-from alembic.operations import Operations
-from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
-
-# --- Idempotency guard ------------------------------------------------------
-# The initial migration (d39fa7cf25af) builds its schema from the CURRENT
-# SQLAlchemy models via Base.metadata.create_all(), which means it creates
-# every table/column that exists in the models today — including ones that
-# later, chronologically-separate migrations also try to create. On a fresh
-# database this causes "already exists" errors. Make create_table/add_column
-# no-ops when the target already exists so the full chain is safe to replay
-# from empty, regardless of when each migration was authored.
-_orig_create_table = Operations.create_table
-_orig_add_column = Operations.add_column
-_orig_create_index = Operations.create_index
-
-
-def _safe_create_table(self, table_name, *columns, **kw):
-    bind = self.get_bind()
-    if table_name in sa_inspect(bind).get_table_names():
-        return None
-    return _orig_create_table(self, table_name, *columns, **kw)
-
-
-def _safe_add_column(self, table_name, column, **kw):
-    bind = self.get_bind()
-    existing_cols = {c["name"] for c in sa_inspect(bind).get_columns(table_name)}
-    if column.name in existing_cols:
-        return None
-    return _orig_add_column(self, table_name, column, **kw)
-
-
-def _safe_create_index(self, index_name, table_name, *columns, **kw):
-    bind = self.get_bind()
-    if table_name in sa_inspect(bind).get_table_names():
-        existing_indexes = {idx["name"] for idx in sa_inspect(bind).get_indexes(table_name)}
-        if index_name in existing_indexes:
-            return None
-    return _orig_create_index(self, index_name, table_name, *columns, **kw)
-
-
-Operations.create_table = _safe_create_table
-Operations.add_column = _safe_add_column
-Operations.create_index = _safe_create_index
 
 # Import every model module so their tables are registered on Base.metadata.
 # This is required for autogenerate to "see" them.
@@ -98,9 +56,8 @@ target_metadata = Base.metadata
 
 
 def _get_url() -> str:
-    """Resolve the database URL from project settings (honours .env)."""
-    settings = get_settings()
-    return settings.database_url
+    """Resolve the database URL from the environment or project settings."""
+    return os.environ.get("DATABASE_URL") or get_settings().database_url
 
 
 def run_migrations_offline() -> None:
