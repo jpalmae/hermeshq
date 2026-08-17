@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import inspect
 from pathlib import Path
 from types import ModuleType
 from uuid import uuid4
@@ -9,6 +10,11 @@ from uuid import uuid4
 from hermeshq.config import get_settings
 from hermeshq.models.agent import Agent
 from hermeshq.services.managed_capabilities import get_managed_integration
+from hermeshq.services.managed_integration_config import (
+    build_scoped_secret_resolver,
+    build_trusted_integration_config,
+    validate_action_arguments,
+)
 
 
 class ManagedIntegrationActionError(RuntimeError):
@@ -19,11 +25,11 @@ async def run_managed_integration_action(
     agent: Agent,
     integration_slug: str,
     action_slug: str,
-    config: dict[str, str] | None,
+    arguments: dict[str, object] | None,
     enabled_integration_slugs: list[str],
     resolve_secret,
 ) -> tuple[bool, str, dict | None]:
-    integration = get_managed_integration(integration_slug, enabled_integration_slugs, include_uninstalled=True)
+    integration = get_managed_integration(integration_slug, enabled_integration_slugs)
     if not integration:
         raise ManagedIntegrationActionError("Managed integration not found")
 
@@ -31,15 +37,15 @@ async def run_managed_integration_action(
     if not action:
         raise ManagedIntegrationActionError("Managed integration action not found")
 
-    merged = {
-        **{key: str(value) for key, value in (integration.get("defaults") or {}).items()},
-        **{
-            key: str(value)
-            for key, value in ((agent.integration_configs or {}).get(integration_slug) or {}).items()
-            if isinstance(key, str)
-        },
-        **{key: str(value) for key, value in (config or {}).items() if isinstance(key, str)},
-    }
+    try:
+        safe_arguments = validate_action_arguments(integration, arguments)
+    except ValueError as exc:
+        raise ManagedIntegrationActionError(str(exc)) from exc
+
+    trusted_config = build_trusted_integration_config(agent, integration_slug, integration)
+    if trusted_config is None:
+        raise ManagedIntegrationActionError("Managed integration is not enabled for this agent")
+    scoped_resolve_secret = build_scoped_secret_resolver(integration, trusted_config, resolve_secret)
 
     module = _load_actions_module(integration)
     if not module:
@@ -48,14 +54,16 @@ async def run_managed_integration_action(
     if not callable(run_action):
         raise ManagedIntegrationActionError("Managed integration actions module is missing run_action()")
 
-    result = run_action(
-        action_slug,
-        agent=agent,
-        config=merged,
-        resolve_secret=resolve_secret,
-        workspaces_root=get_settings().workspaces_root,
-        package_root=integration.get("package_root"),
-    )
+    kwargs = {
+        "agent": agent,
+        "config": trusted_config,
+        "resolve_secret": scoped_resolve_secret,
+        "workspaces_root": get_settings().workspaces_root,
+        "package_root": integration.get("package_root"),
+    }
+    if "arguments" in inspect.signature(run_action).parameters:
+        kwargs["arguments"] = safe_arguments
+    result = run_action(action_slug, **kwargs)
     if asyncio.iscoroutine(result):
         result = await result
     if not isinstance(result, tuple) or len(result) != 3:

@@ -750,7 +750,7 @@ async def control_test_agent_integration(
     return await agents_router.test_agent_integration(
         agent_id,
         integration_slug,
-        ManagedIntegrationTestRequest(config=payload.config),
+        ManagedIntegrationTestRequest(),
         request,
         admin_user,
         db,

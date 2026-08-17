@@ -16,6 +16,7 @@ POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3420}"
+RUNTIME_RUNNER_TOKEN="${RUNTIME_RUNNER_TOKEN:-}"
 SKIP_START="${SKIP_START:-0}"
 TMP_DIR=""
 DOCKER_PREFIX=()
@@ -691,7 +692,7 @@ configure_docker_access() {
 
 write_env_file() {
   local install_host="$1"
-  local jwt_secret db_password admin_password api_base cors_json database_url
+  local jwt_secret db_password admin_password api_base cors_json database_url runner_token
 
   jwt_secret="$(random_hex)"
   db_password="${POSTGRES_PASSWORD:-$(random_password)}"
@@ -702,6 +703,10 @@ write_env_file() {
   local encoded_password
   encoded_password="$(printf '%s' "$db_password" | python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip(), safe=''))")"
   database_url="postgresql+asyncpg://${POSTGRES_USER}:${encoded_password}@postgres:5432/${POSTGRES_DB}"
+  runner_token="${RUNTIME_RUNNER_TOKEN:-$(random_hex)}"
+  if ! printf '%s' "$runner_token" | grep -Eq '^[A-Za-z0-9_-]{32,256}$'; then
+    fail "RUNTIME_RUNNER_TOKEN must be a 32-256 character URL-safe token"
+  fi
   local fernet_key
   fernet_key="${FERNET_KEY:-$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null || python3 -c "import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")}"
 
@@ -713,6 +718,7 @@ POSTGRES_PORT=${POSTGRES_PORT}
 DATABASE_URL=${database_url}
 JWT_SECRET=${jwt_secret}
 FERNET_KEY=${fernet_key}
+RUNTIME_RUNNER_TOKEN=${runner_token}
 ADMIN_USERNAME=${ADMIN_USERNAME}
 ADMIN_PASSWORD=${admin_password}
 ADMIN_DISPLAY_NAME=${ADMIN_DISPLAY_NAME}
@@ -724,6 +730,28 @@ BRANDING_ROOT=./workspaces/_branding
 PTY_SHELL=/bin/sh
 VITE_API_BASE_URL=${api_base}
 EOF
+}
+
+ensure_runtime_runner_token() {
+  local env_file="$INSTALL_DIR/.env"
+  local current_token replacement
+  chmod 600 "$env_file"
+  current_token="$(read_env_value RUNTIME_RUNNER_TOKEN "$env_file")"
+  if [ "${#current_token}" -ge 32 ]; then
+    return
+  fi
+  replacement="${RUNTIME_RUNNER_TOKEN:-$(random_hex)}"
+  if ! printf '%s' "$replacement" | grep -Eq '^[A-Za-z0-9_-]{32,256}$'; then
+    fail "RUNTIME_RUNNER_TOKEN must be a 32-256 character URL-safe token"
+  fi
+  if grep -q '^RUNTIME_RUNNER_TOKEN=' "$env_file" 2>/dev/null; then
+    sed -i.bak "s/^RUNTIME_RUNNER_TOKEN=.*/RUNTIME_RUNNER_TOKEN=${replacement}/" "$env_file"
+    rm -f "$env_file.bak"
+  else
+    printf 'RUNTIME_RUNNER_TOKEN=%s\n' "$replacement" >> "$env_file"
+  fi
+  chmod 600 "$env_file"
+  printf 'Added isolated runtime credentials to the existing .env\n'
 }
 
 main() {
@@ -794,6 +822,7 @@ main() {
   if [ -n "$preserve_cloudflared_env" ]; then
     cp "$preserve_cloudflared_env" "$INSTALL_DIR/.cloudflared.env"
   fi
+  ensure_runtime_runner_token
 
   # ── Phase 3: Sizing ─────────────────────────────────────────────────
   if [ "$SKIP_SIZING" != "1" ]; then

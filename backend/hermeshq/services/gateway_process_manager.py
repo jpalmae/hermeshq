@@ -23,6 +23,7 @@ from hermeshq.services.hermes_installation import (
     HermesInstallationManager,
     _invalidate_install_cached,
 )
+from hermeshq.services.runtime_runner_client import RuntimeRunnerClient
 
 logger = logging.getLogger(__name__)
 
@@ -44,12 +45,14 @@ class GatewayProcessManager:
         installation_manager: HermesInstallationManager,
         processes: dict[str, GatewayProcessHandle],
         enterprise_gateways: object | None = None,
+        runtime_runner_client: RuntimeRunnerClient | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.event_broker = event_broker
         self.installation_manager = installation_manager
         self.processes = processes
         self._enterprise_gateways = enterprise_gateways
+        self.runtime_runner_client = runtime_runner_client
         self._restart_tasks: dict[str, asyncio.Task] = {}
         self._shutting_down = False
 
@@ -508,15 +511,24 @@ class GatewayProcessManager:
         self._rotate_gateway_log(log_path)
         log_handle = log_path.open("a", encoding="utf-8")
         try:
-            process = subprocess.Popen(
-                [runtime_selection.hermes_bin, "gateway", "run", "--replace"],
-                cwd=str(workspace_path),
-                env=env,
-                stdin=subprocess.DEVNULL,
-                stdout=log_handle,
-                stderr=subprocess.STDOUT,
-                close_fds=True,
-            )
+            if self.runtime_runner_client is not None:
+                process = await self.runtime_runner_client.start_gateway(
+                    agent_id=agent.id,
+                    environment=env,
+                    hermes_version=(
+                        runtime_selection.effective_version if runtime_selection.source == "managed" else None
+                    ),
+                )
+            else:
+                process = subprocess.Popen(
+                    [runtime_selection.hermes_bin, "gateway", "run", "--replace"],
+                    cwd=str(workspace_path),
+                    env=env,
+                    stdin=subprocess.DEVNULL,
+                    stdout=log_handle,
+                    stderr=subprocess.STDOUT,
+                    close_fds=True,
+                )
         except Exception:
             log_handle.close()
             raise

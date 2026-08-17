@@ -4365,10 +4365,10 @@ export interface components {
         };
         /** ManagedIntegrationActionRequest */
         ManagedIntegrationActionRequest: {
-            /** Config */
-            config?: {
-                [key: string]: string;
-            } | null;
+            /** Arguments */
+            arguments?: {
+                [key: string]: unknown;
+            };
         };
         /** ManagedIntegrationActionResult */
         ManagedIntegrationActionResult: {
@@ -4450,12 +4450,7 @@ export interface components {
             version: string;
         };
         /** ManagedIntegrationTestRequest */
-        ManagedIntegrationTestRequest: {
-            /** Config */
-            config?: {
-                [key: string]: string;
-            } | null;
-        };
+        ManagedIntegrationTestRequest: Record<string, never>;
         /** ManagedIntegrationTestResult */
         ManagedIntegrationTestResult: {
             /** Details */

@@ -80,6 +80,7 @@ from hermeshq.services.runtime_profiles import (
     normalize_runtime_profile_slug,
     terminal_allowed_for_profile,
 )
+from hermeshq.services.runtime_runner_client import RuntimeRunnerClient
 from hermeshq.services.scheduler import SchedulerService
 from hermeshq.services.secret_vault import SecretVault, build_vault_from_settings
 from hermeshq.services.workspace_manager import WorkspaceManager
@@ -244,7 +245,21 @@ async def lifespan(app: FastAPI):
         app.state.secret_vault,
         app.state.hermes_version_manager,
     )
-    app.state.runtime = HermesRuntime(AsyncSessionLocal, app.state.secret_vault, app.state.installation_manager)
+    app.state.runtime_runner_client = None
+    if settings.runtime_isolation_mode == "required":
+        app.state.runtime_runner_client = RuntimeRunnerClient(
+            settings.runtime_runner_url,
+            settings.runtime_runner_token,
+        )
+        if not await app.state.runtime_runner_client.health():
+            await app.state.runtime_runner_client.close()
+            raise RuntimeError("Required isolated runtime runner is unavailable")
+    app.state.runtime = HermesRuntime(
+        AsyncSessionLocal,
+        app.state.secret_vault,
+        app.state.installation_manager,
+        app.state.runtime_runner_client,
+    )
     app.state.supervisor = AgentSupervisor(
         AsyncSessionLocal,
         app.state.event_broker,
@@ -255,6 +270,7 @@ async def lifespan(app: FastAPI):
         AsyncSessionLocal,
         app.state.event_broker,
         app.state.installation_manager,
+        app.state.runtime_runner_client,
     )
     app.state.enterprise_gateways = EnterpriseGatewayManager(
         AsyncSessionLocal,
@@ -329,7 +345,7 @@ async def lifespan(app: FastAPI):
     app.state.supervisor.pty_manager = app.state.pty_manager
     app.state.supervisor.gateway_supervisor = app.state.gateway_supervisor
 
-    pi_available = shutil.which("node") is not None
+    pi_available = app.state.runtime_runner_client is not None or shutil.which("node") is not None
     if pi_available:
         from hermeshq.services.pi_runtime import PiRuntime
 
@@ -337,6 +353,7 @@ async def lifespan(app: FastAPI):
             AsyncSessionLocal,
             app.state.secret_vault,
             app.state.workspace_manager,
+            app.state.runtime_runner_client,
         )
         app.state.supervisor.register_runtime("pi", app.state.pi_runtime)
         logger.info("Pi runtime registered")
@@ -384,6 +401,8 @@ async def lifespan(app: FastAPI):
     await app.state.scheduler.stop()
     await app.state.gateway_supervisor.shutdown()
     await app.state.enterprise_gateways.shutdown()
+    if app.state.runtime_runner_client is not None:
+        await app.state.runtime_runner_client.close()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

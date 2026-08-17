@@ -1,6 +1,8 @@
 # ============================================================
 # Stage 1 – builder: compile everything heavy
 # ============================================================
+FROM docker:29.2.1-cli AS docker-cli
+
 FROM python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -93,6 +95,7 @@ WORKDIR /app
 # Copy Python packages from builder
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /opt/hermes-agent /opt/hermes-agent
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 
 # Copy node_modules from builder
 COPY --from=builder /app/hermeshq/assets/whatsapp-bridge/node_modules \

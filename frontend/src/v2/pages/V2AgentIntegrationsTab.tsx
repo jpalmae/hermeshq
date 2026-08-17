@@ -63,14 +63,10 @@ export function V2AgentIntegrationsTab({ agent, isAdmin }: { agent: Agent; isAdm
   }
 
   async function onTestIntegration(integration: ManagedIntegrationDefinition) {
-    const current = configs[integration.slug] ?? {};
-    const draft = drafts[integration.slug] ?? {};
-    const merged = { ...current, ...draft } as Record<string, string>;
     try {
       const result = await testIntegration.mutateAsync({
         agentId: agent.id,
         integrationSlug: integration.slug,
-        config: merged,
       });
       setTestResults((prev) => ({ ...prev, [integration.slug]: result }));
       if (result.success) {
@@ -85,13 +81,12 @@ export function V2AgentIntegrationsTab({ agent, isAdmin }: { agent: Agent; isAdm
   }
 
   async function onRunAction(integration: ManagedIntegrationDefinition, actionSlug: string) {
-    const current = configs[integration.slug] ?? {};
     try {
       const result = await runAction.mutateAsync({
         agentId: agent.id,
         integrationSlug: integration.slug,
         actionSlug,
-        config: current as Record<string, string>,
+        arguments: {},
       });
       if (result.success) {
         v2toast.success(`${integration.name}: ${result.message}`);
@@ -187,7 +182,7 @@ export function V2AgentIntegrationsTab({ agent, isAdmin }: { agent: Agent; isAdm
                     className="v2-btn v2-btn-secondary"
                     style={{ padding: "6px 12px", fontSize: 12.5 }}
                     onClick={() => void onTestIntegration(integration)}
-                    disabled={testIntegration.isPending}
+                    disabled={!enabled || testIntegration.isPending}
                   >
                     {testIntegration.isPending ? "Testing…" : "Test connection"}
                   </button>

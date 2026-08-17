@@ -265,8 +265,11 @@ class PiInstallationManager:
 
     async def build_process_env(self, agent: Agent) -> dict[str, str]:
         env = build_safe_env()
+        pi_home = self.workspace_manager.build_workspace_path(agent.id) / ".pi"
         env["HERMESHQ_AGENT_ID"] = agent.id
         env["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id, agent.service_token_version or 1)
+        env["PI_AGENT_DIR"] = str(pi_home)
+        env["PI_CODING_AGENT_DIR"] = str(pi_home)
         settings = get_settings()
         env["HERMESHQ_INTERNAL_API_URL"] = settings.internal_api_base_url.rstrip("/")
 
@@ -290,47 +293,8 @@ class PiInstallationManager:
 
         if agent.model:
             env["PI_MODEL"] = agent.model
-            self._write_default_models_json(agent)
 
         return env
-
-    def _write_default_models_json(self, agent: Agent) -> None:
-        """Write models.json to ~/.pi/agent/ so ModelRuntime.create() picks it up."""
-        import os
-
-        home = os.path.expanduser("~")
-        pi_agent_dir = os.path.join(home, ".pi", "agent")
-        os.makedirs(pi_agent_dir, exist_ok=True)
-        models_path = os.path.join(pi_agent_dir, "models.json")
-
-        model_id = agent.model or "gpt-4o"
-        base_url = agent.base_url or "https://api.openai.com/v1"
-        is_nvidia = "nvidia" in (agent.provider or "")
-        provider_name = "nvidia" if is_nvidia else "openai"
-        api_key_env = "NVIDIA_API_KEY" if is_nvidia else "OPENAI_API_KEY"
-
-        models = {
-            "providers": {
-                provider_name: {
-                    "baseUrl": base_url,
-                    "api": "openai-completions",
-                    "apiKey": "$" + api_key_env,
-                    "models": [
-                        {
-                            "id": model_id,
-                            "name": model_id.split("/")[-1],
-                            "reasoning": False,
-                            "input": ["text"],
-                            "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
-                            "contextWindow": 128000,
-                            "maxTokens": 4096,
-                        }
-                    ],
-                }
-            }
-        }
-        with open(models_path, "w") as f:
-            json.dump(models, f, indent=2)
 
     def compose_system_prompt(self, agent: Agent) -> str:
         parts = []

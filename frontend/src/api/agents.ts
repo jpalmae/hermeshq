@@ -286,15 +286,13 @@ export function useTestAgentIntegration() {
     mutationFn: async ({
       agentId,
       integrationSlug,
-      config,
     }: {
       agentId: string;
       integrationSlug: string;
-      config: Record<string, string>;
     }) => {
       const { data } = await apiClient.post<{ success: boolean; message: string; details: Record<string, unknown> | null }>(
         `/agents/${agentId}/integrations/${integrationSlug}/test`,
-        { config },
+        {},
       );
       return data;
     },
@@ -307,16 +305,16 @@ export function useRunAgentIntegrationAction() {
       agentId,
       integrationSlug,
       actionSlug,
-      config,
+      arguments: actionArguments,
     }: {
       agentId: string;
       integrationSlug: string;
       actionSlug: string;
-      config: Record<string, string>;
+      arguments?: Record<string, unknown>;
     }) => {
       const { data } = await apiClient.post<{ success: boolean; message: string; details: Record<string, unknown> | null }>(
         `/agents/${agentId}/integrations/${integrationSlug}/actions/${actionSlug}`,
-        { config },
+        { arguments: actionArguments ?? {} },
       );
       return data;
     },

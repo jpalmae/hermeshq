@@ -9,6 +9,9 @@ class WorkspaceManager:
     def build_workspace_path(self, agent_id: str) -> Path:
         return self.root / f"agent-{agent_id}"
 
+    def build_editable_workspace_path(self, agent_id: str) -> Path:
+        return self.build_workspace_path(agent_id) / "work"
+
     def create_workspace(
         self,
         agent_id: str,
@@ -54,7 +57,8 @@ class WorkspaceManager:
         (workspace / "SOUL.md").write_text(soul_md or "# Soul\n\nOperational.", encoding="utf-8")
 
     def list_workspace_files(self, agent_id: str, relative_path: str = ".") -> list[dict]:
-        workspace = self.build_workspace_path(agent_id)
+        workspace = self.build_editable_workspace_path(agent_id)
+        workspace.mkdir(parents=True, exist_ok=True)
         target = (workspace / relative_path).resolve()
         self._ensure_within_workspace(workspace, target)
         if not target.exists():
@@ -72,7 +76,7 @@ class WorkspaceManager:
         return entries
 
     def read_workspace_file(self, agent_id: str, relative_path: str) -> str:
-        workspace = self.build_workspace_path(agent_id)
+        workspace = self.build_editable_workspace_path(agent_id)
         target = (workspace / relative_path).resolve()
         self._ensure_within_workspace(workspace, target)
         if not target.exists():
@@ -80,14 +84,14 @@ class WorkspaceManager:
         return target.read_text(encoding="utf-8")
 
     def write_workspace_file(self, agent_id: str, relative_path: str, content: str) -> None:
-        workspace = self.build_workspace_path(agent_id)
+        workspace = self.build_editable_workspace_path(agent_id)
         target = (workspace / relative_path).resolve()
         self._ensure_within_workspace(workspace, target)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
 
     def get_workspace_size(self, agent_id: str) -> int:
-        workspace = self.build_workspace_path(agent_id)
+        workspace = self.build_editable_workspace_path(agent_id)
         if not workspace.exists():
             return 0
         total = 0

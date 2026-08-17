@@ -30,12 +30,17 @@ services:
       - internal
 
   backend:
+    image: ${RUNTIME_IMAGE:-hermeshq-runtime:local}
     build:
       context: .
       dockerfile: backend/Dockerfile
     container_name: hermeshq-backend
     depends_on:
       postgres:
+        condition: service_healthy
+      runtime-runner:
+        condition: service_healthy
+      runtime-egress:
         condition: service_healthy
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://hermeshq:hermeshq@postgres:5432/hermeshq}
@@ -44,6 +49,9 @@ services:
       DEBUG: ${DEBUG:-false}
       TASK_TIMEOUT_SECONDS: ${TASK_TIMEOUT_SECONDS:-3600}
       AGENT_SERVICE_TOKEN_DAYS: ${AGENT_SERVICE_TOKEN_DAYS:-30}
+      RUNTIME_ISOLATION_MODE: required
+      RUNTIME_RUNNER_URL: http://runtime-runner:8080
+      RUNTIME_RUNNER_TOKEN: ${RUNTIME_RUNNER_TOKEN:?RUNTIME_RUNNER_TOKEN must be set in .env}
       AUTH_MODE: ${AUTH_MODE:-local}
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
       OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-}
@@ -97,6 +105,101 @@ services:
     networks:
       - internal
       - default
+      - runtime-control
+
+  runtime-runner:
+    image: ${RUNTIME_IMAGE:-hermeshq-runtime:local}
+    pull_policy: never
+    container_name: hermeshq-runtime-runner
+    user: "0:0"
+    command: ["uvicorn", "hermeshq.runtime_runner:app", "--host", "0.0.0.0", "--port", "8080"]
+    environment:
+      RUNTIME_RUNNER_TOKEN: ${RUNTIME_RUNNER_TOKEN:?RUNTIME_RUNNER_TOKEN must be set in .env}
+      RUNTIME_IMAGE: ${RUNTIME_IMAGE:-hermeshq-runtime:local}
+      RUNTIME_BACKEND_CONTAINER: hermeshq-backend
+      RUNTIME_EGRESS_CONTAINER: hermeshq-runtime-egress
+      RUNTIME_INTERNAL_API_URL: http://backend:8000/api/internal
+      RUNTIME_EGRESS_PROXY_URL: http://runtime-egress:3128
+      RUNTIME_CONTAINER_MEMORY: ${RUNTIME_CONTAINER_MEMORY:-768m}
+      RUNTIME_CONTAINER_CPUS: ${RUNTIME_CONTAINER_CPUS:-1.0}
+      RUNTIME_CONTAINER_PIDS: ${RUNTIME_CONTAINER_PIDS:-256}
+      RUNTIME_MAX_SECONDS: ${TASK_TIMEOUT_SECONDS:-3600}
+      RUNTIME_RUNNER_MAX_CONCURRENCY: ${CONCURRENCY_SEMAPHORE:-8}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    expose:
+      - "8080"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "-H",
+          "X-Runtime-Runner-Token: ${RUNTIME_RUNNER_TOKEN}",
+          "http://localhost:8080/health",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    networks:
+      - runtime-control
+
+  runtime-egress:
+    build:
+      context: .
+      dockerfile: backend/runtime-egress/Dockerfile
+    container_name: hermeshq-runtime-egress
+    environment:
+      RUNTIME_EGRESS_ALLOWLIST: ${RUNTIME_EGRESS_ALLOWLIST:-.api.openai.com,.api.anthropic.com,.openrouter.ai,.integrate.api.nvidia.com,.inference-api.nousresearch.com,.api.kimi.com,.api.moonshot.ai,.api.z.ai,.generativelanguage.googleapis.com,.chatgpt.com,.api.telegram.org,bedrock-runtime.us-east-1.amazonaws.com}
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /tmp/squid.pid && kill -0 $$(cat /tmp/squid.pid)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=13,gid=13,mode=0770
+      - /run:rw,noexec,nosuid,nodev,size=4m,uid=13,gid=13,mode=0770
+      - /var/log/squid:rw,noexec,nosuid,nodev,size=16m,uid=13,gid=13,mode=0770
+      - /var/spool/squid:rw,noexec,nosuid,nodev,size=16m,uid=13,gid=13,mode=0770
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    networks:
+      - default
 
   frontend:
     build:
@@ -125,5 +228,8 @@ volumes:
 
 networks:
   internal:
+    internal: true
+  runtime-control:
+    name: hermeshq_runtime_control
     internal: true
   default:

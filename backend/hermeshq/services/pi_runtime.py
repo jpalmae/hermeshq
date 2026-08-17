@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import shutil
 from pathlib import Path
@@ -12,6 +13,7 @@ from hermeshq.models.task import Task
 from hermeshq.services.pi_installation import PiInstallationManager
 from hermeshq.services.pi_rpc_client import PiRpcClient
 from hermeshq.services.runtime_base import RuntimeBase, RuntimeExecutionError, RuntimeExecutionResult
+from hermeshq.services.runtime_runner_client import RuntimeRunnerClient
 from hermeshq.services.secret_vault import SecretVault
 
 logger = logging.getLogger(__name__)
@@ -27,16 +29,20 @@ class PiRuntime(RuntimeBase):
         session_factory: async_sessionmaker[AsyncSession],
         secret_vault: SecretVault,
         workspace_manager,
+        runtime_runner_client: RuntimeRunnerClient | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.secret_vault = secret_vault
         self.workspace_manager = workspace_manager
         self.installation_manager = PiInstallationManager(secret_vault, workspace_manager, session_factory)
-        self._active: dict[str, tuple[asyncio.subprocess.Process, PiRpcClient]] = {}
+        self.runtime_runner_client = runtime_runner_client
+        self._active: set[str] = set()
 
     @property
     def available(self) -> bool:
-        return shutil.which("node") is not None and PI_RUNNER_SCRIPT.exists()
+        return self.runtime_runner_client is not None or (
+            shutil.which("node") is not None and PI_RUNNER_SCRIPT.exists()
+        )
 
     @staticmethod
     def _task_timeout_seconds() -> int:
@@ -61,6 +67,92 @@ class PiRuntime(RuntimeBase):
         await self.installation_manager.sync_agent_installation(agent)
         env = await self.installation_manager.build_process_env(agent)
         workspace = self.workspace_manager.build_workspace_path(agent.id)
+        config = agent.pi_config or {}
+        prompt = task.prompt or ""
+        if conversation_history:
+            history_text = "\n\n".join(
+                f"[{message.get('role', 'unknown')}]: {message.get('content', '')}"
+                for message in conversation_history[-10:]
+            )
+            if history_text.strip():
+                prompt = f"Previous conversation:\n{history_text}\n\n---\n\n{prompt}"
+
+        self._active.add(agent.id)
+        try:
+            if self.runtime_runner_client is not None:
+                return await self._execute_isolated(agent, config, prompt, env, stream_callback)
+            return await self._execute_subprocess(agent, config, prompt, env, workspace, stream_callback)
+        finally:
+            self._active.discard(agent.id)
+
+    async def _execute_isolated(
+        self,
+        agent: Agent,
+        config: dict,
+        prompt: str,
+        env: dict[str, str],
+        stream_callback,
+    ) -> RuntimeExecutionResult:
+        assert self.runtime_runner_client is not None
+        input_data = "\n".join(
+            [
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "init",
+                        "params": {
+                            "tools": config.get("tools", ["read", "bash", "edit"]),
+                            "thinking_level": config.get("thinking_level", "medium"),
+                            "system_prompt": self.installation_manager.compose_system_prompt(agent),
+                            "model": agent.model or "anthropic/claude-sonnet-4",
+                        },
+                    }
+                ),
+                json.dumps({"jsonrpc": "2.0", "id": 2, "method": "prompt", "params": {"text": prompt}}),
+                "",
+            ]
+        )
+        try:
+            async with asyncio.timeout(self._task_timeout_seconds()):
+                async for line in self.runtime_runner_client.run(
+                    engine="pi",
+                    agent_id=agent.id,
+                    environment=env,
+                    input_data=input_data,
+                ):
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        logger.warning("Pi isolated runtime returned invalid JSON")
+                        continue
+                    if event.get("type") == "text_delta" and stream_callback:
+                        await stream_callback(str(event.get("delta") or ""))
+                    elif event.get("type") == "done":
+                        return RuntimeExecutionResult(
+                            final_response=str(event.get("response") or ""),
+                            messages=list(event.get("messages") or []),
+                            tool_calls=list(event.get("tool_calls") or []),
+                            tokens_used=int(event.get("tokens") or 0),
+                            iterations=int(event.get("turns") or 1),
+                            engine="pi",
+                            response_attachments=list(event.get("attachments") or []),
+                        )
+                    elif event.get("type") == "error":
+                        raise RuntimeExecutionError(f"Pi execution error: {event.get('error')}")
+        except TimeoutError as exc:
+            raise RuntimeExecutionError("Pi agent timed out") from exc
+        raise RuntimeExecutionError("Pi agent ended without producing a result")
+
+    async def _execute_subprocess(
+        self,
+        agent: Agent,
+        config: dict,
+        prompt: str,
+        env: dict[str, str],
+        workspace: Path,
+        stream_callback,
+    ) -> RuntimeExecutionResult:
 
         process = await asyncio.create_subprocess_exec(
             "node",
@@ -73,10 +165,8 @@ class PiRuntime(RuntimeBase):
         )
 
         client = PiRpcClient(process.stdin, process.stdout)
-        self._active[agent.id] = (process, client)
 
         try:
-            config = agent.pi_config or {}
             await client.init(
                 {
                     "tools": config.get("tools", ["read", "bash", "edit"]),
@@ -85,14 +175,6 @@ class PiRuntime(RuntimeBase):
                     "model": agent.model or "anthropic/claude-sonnet-4",
                 }
             )
-
-            prompt = task.prompt or ""
-            if conversation_history:
-                history_text = "\n\n".join(
-                    f"[{m.get('role', 'unknown')}]: {m.get('content', '')}" for m in conversation_history[-10:]
-                )
-                if history_text.strip():
-                    prompt = f"Previous conversation:\n{history_text}\n\n---\n\n{prompt}"
 
             async for event in client.prompt(prompt):
                 if event["type"] == "text_delta" and stream_callback:
@@ -120,7 +202,6 @@ class PiRuntime(RuntimeBase):
             client_task = asyncio.create_task(client.close())
             kill_task = asyncio.create_task(self._terminate(process))
             await asyncio.gather(client_task, kill_task, return_exceptions=True)
-            self._active.pop(agent.id, None)
 
     async def _terminate(self, process: asyncio.subprocess.Process) -> None:
         try:

@@ -1,6 +1,8 @@
 import contextlib
 import logging
+import re
 from pathlib import Path
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -53,14 +55,15 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     pty_shell: str = "/bin/sh"
     internal_api_base_url: str = "http://127.0.0.1:8000/api/internal"
-    # Max concurrent hermes_task_runner subprocesses.
-    # Each process uses ~50MB RAM. Default: 8 (safe for 1GB container).
-    # For production sizing: available_RAM_MB / 60 (50MB per process + 20% headroom)
+    # Max concurrent agent task executions.
+    # Each isolated runtime is limited independently by Docker in production.
     concurrency_semaphore: int = 8
-    # Max wall-clock seconds a single task runner subprocess may run before
-    # being killed. Prevents hung LLM calls from occupying slots forever.
+    # Max wall-clock seconds a single task execution may run.
     task_timeout_seconds: int = 3600
     agent_service_token_days: int = Field(default=30, gt=0)
+    runtime_isolation_mode: Literal["required", "subprocess"] = "subprocess"
+    runtime_runner_url: str = "http://runtime-runner:8080"
+    runtime_runner_token: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -148,6 +151,12 @@ class Settings(BaseSettings):
                     "or set DEBUG=true to bypass this check."
                 )
             logger.warning("⚠️ ADMIN_PASSWORD is not set or using default value. This is insecure for production!")
+        if not self.debug and self.runtime_isolation_mode != "required":
+            raise RuntimeError("RUNTIME_ISOLATION_MODE=required is mandatory outside DEBUG mode")
+        if self.runtime_isolation_mode == "required" and not re.fullmatch(
+            r"[A-Za-z0-9_-]{32,256}", self.runtime_runner_token
+        ):
+            raise RuntimeError("RUNTIME_RUNNER_TOKEN must be a 32-256 character URL-safe token")
         self.workspaces_root = self.workspaces_root.resolve()
         if self.branding_root is None:
             self.branding_root = self.workspaces_root / "_branding"

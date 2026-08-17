@@ -209,8 +209,16 @@ HERMESHQ_HOST=your-server-ip-or-dns curl -fsSL https://raw.githubusercontent.com
 ## Run With Docker Manually
 
 ```bash
+cp .env.example .env
+# Set JWT_SECRET, FERNET_KEY, ADMIN_PASSWORD and RUNTIME_RUNNER_TOKEN.
 docker compose up --build -d
 ```
+
+Generate the runner credential with `openssl rand -hex 32`. Production tasks
+run in ephemeral containers, while native messaging gateways use isolated
+long-lived containers. Each receives only its own workspace, a private network,
+a read-only root filesystem, resource limits, and allowlisted outbound access.
+Add custom model-provider domains through `RUNTIME_EGRESS_ALLOWLIST`.
 
 Default URLs:
 

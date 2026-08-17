@@ -28,6 +28,7 @@ from hermeshq.services.gateway_log_manager import GatewayLogManager
 from hermeshq.services.gateway_process_manager import GatewayProcessManager
 from hermeshq.services.gateway_types import GatewayProcessHandle
 from hermeshq.services.hermes_installation import HermesInstallationManager
+from hermeshq.services.runtime_runner_client import RuntimeRunnerClient
 
 logger = logging.getLogger(__name__)
 BOOTSTRAP_CONCURRENCY = 3
@@ -44,6 +45,7 @@ class GatewaySupervisor:
         session_factory: async_sessionmaker[AsyncSession],
         event_broker: EventBroker,
         installation_manager: HermesInstallationManager,
+        runtime_runner_client: RuntimeRunnerClient | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.event_broker = event_broker
@@ -58,6 +60,7 @@ class GatewaySupervisor:
             event_broker=event_broker,
             installation_manager=installation_manager,
             processes=self.processes,
+            runtime_runner_client=runtime_runner_client,
         )
         self._log_mgr = GatewayLogManager(
             session_factory=session_factory,

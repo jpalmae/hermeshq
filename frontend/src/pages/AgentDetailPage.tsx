@@ -301,13 +301,11 @@ export function AgentDetailPage() {
   }
 
   async function onTestIntegration(integrationSlug: string) {
-    const currentDraft = drafts.integrationDrafts[integrationSlug] ?? {};
     setIntegrationPending((p) => ({ ...p, [integrationSlug]: "test" }));
     try {
       const result = await testAgentIntegration.mutateAsync({
         agentId: currentAgent.id,
         integrationSlug,
-        config: currentDraft,
       });
       drafts.setIntegrationTestResults((current) => ({ ...current, [integrationSlug]: result }));
     } catch (error) {
@@ -318,14 +316,13 @@ export function AgentDetailPage() {
   }
 
   async function onRunIntegrationAction(integrationSlug: string, actionSlug: string) {
-    const currentDraft = drafts.integrationDrafts[integrationSlug] ?? {};
     setIntegrationPending((p) => ({ ...p, [integrationSlug]: actionSlug }));
     try {
       const result = await runAgentIntegrationAction.mutateAsync({
         agentId: currentAgent.id,
         integrationSlug,
         actionSlug,
-        config: currentDraft,
+        arguments: {},
       });
       drafts.setIntegrationActionResults((current) => ({
         ...current,

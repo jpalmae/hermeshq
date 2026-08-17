@@ -4,6 +4,12 @@
 import * as readline from "readline";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { EnvHttpProxyAgent, install, setGlobalDispatcher } from "undici";
+
+if (process.env.HTTP_PROXY || process.env.HTTPS_PROXY) {
+  setGlobalDispatcher(new EnvHttpProxyAgent());
+  install();
+}
 
 let session = null;
 let queue = Promise.resolve();
@@ -24,7 +30,12 @@ async function handleInit(params) {
     const { createAgentSession, SessionManager } = await import("@earendil-works/pi-coding-agent");
     const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
 
-    const modelRuntime = await ModelRuntime.create();
+    const agentDir = process.env.PI_CODING_AGENT_DIR || process.env.PI_AGENT_DIR || join(process.env.HOME || "/root", ".pi", "agent");
+    const modelRuntime = await ModelRuntime.create({
+      authPath: join(agentDir, "auth.json"),
+      modelsPath: join(agentDir, "models.json"),
+      modelsStorePath: join(agentDir, "models-store.json"),
+    });
 
     const nvidiaKey = process.env.NVIDIA_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
@@ -33,7 +44,6 @@ async function handleInit(params) {
     const { readFileSync, existsSync } = await import("fs");
     const { join } = await import("path");
     try {
-      const agentDir = process.env.PI_AGENT_DIR || join(process.env.HOME || "/root", ".pi", "agent");
       const modelsFile = join(agentDir, "models.json");
       if (existsSync(modelsFile)) {
         const config = JSON.parse(readFileSync(modelsFile, "utf8"));
@@ -73,6 +83,8 @@ async function handleInit(params) {
       tools,
       sessionManager: SessionManager.inMemory(),
       cwd: process.cwd(),
+      agentDir,
+      modelRuntime,
     });
 
     session = result.session;
@@ -128,7 +140,7 @@ function resolveModel(modelSpec, modelRuntime) {
 
   // First: try our custom providers from models.json
   try {
-    const agentDir = (process.env.HOME || "/root") + "/.pi/agent";
+    const agentDir = process.env.PI_CODING_AGENT_DIR || process.env.PI_AGENT_DIR || (process.env.HOME || "/root") + "/.pi/agent";
     const config = JSON.parse(readFileSync(join(agentDir, "models.json"), "utf8"));
     for (const providerName of Object.keys(config.providers || {})) {
       // Try exact ID match
@@ -233,5 +245,5 @@ rl.on("line", (line) => {
 });
 
 rl.on("close", () => {
-  process.exit(0);
+  queue.finally(() => process.exit(0));
 });
