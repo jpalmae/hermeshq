@@ -292,6 +292,20 @@ async def _resolve_workspace_volume() -> str:
             raise RuntimeError("RUNTIME_WORKSPACES_VOLUME is invalid")
         return configured
 
+    backend_container = _required_resource_name("RUNTIME_BACKEND_CONTAINER", "hermeshq-backend")
+    with contextlib.suppress(RuntimeError, TimeoutError, json.JSONDecodeError):
+        mounts = json.loads(await _docker_output("inspect", "--format", "{{json .Mounts}}", backend_container))
+        candidates = [
+            mount["Name"]
+            for mount in mounts
+            if isinstance(mount, dict)
+            and mount.get("Type") == "volume"
+            and mount.get("Destination") == "/app/workspaces"
+            and isinstance(mount.get("Name"), str)
+        ]
+        if len(candidates) == 1 and _RESOURCE_NAME_RE.fullmatch(candidates[0]):
+            return candidates[0]
+
     project = ""
     container_id = os.environ.get("HOSTNAME", "").strip()
     if container_id:

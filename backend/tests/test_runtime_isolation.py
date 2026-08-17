@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from hermeshq.runtime_runner import (
     _isolated_environment,
     _prepare_execution_network,
     _redact_runtime_error,
+    _resolve_workspace_volume,
     build_container_command,
     build_gateway_command,
 )
@@ -162,6 +164,34 @@ async def test_each_execution_gets_a_private_network(monkeypatch: pytest.MonkeyP
         network,
         "hermeshq-runtime-egress",
     )
+
+
+@pytest.mark.asyncio
+async def test_runner_discovers_an_unlabelled_workspace_volume_from_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("RUNTIME_WORKSPACES_VOLUME", raising=False)
+
+    async def docker_output(*arguments: str) -> str:
+        assert arguments == (
+            "inspect",
+            "--format",
+            "{{json .Mounts}}",
+            "hermeshq-backend",
+        )
+        return json.dumps(
+            [
+                {
+                    "Type": "volume",
+                    "Name": "legacy_hermeshq_workspaces",
+                    "Destination": "/app/workspaces",
+                }
+            ]
+        )
+
+    monkeypatch.setattr("hermeshq.runtime_runner._docker_output", docker_output)
+
+    assert await _resolve_workspace_volume() == "legacy_hermeshq_workspaces"
 
 
 def test_runtime_errors_redact_agent_secrets() -> None:
