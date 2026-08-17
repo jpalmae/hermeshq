@@ -86,9 +86,6 @@ jobs:
       FERNET_KEY: ci-fernet-secret-${{ github.run_id }}
       ADMIN_PASSWORD: ci-admin-password-${{ github.run_id }}
       AUTH_MODE: local
-      COOKIE_SECURE: "true"
-      RUNTIME_ISOLATION_MODE: required
-      RUNTIME_RUNNER_TOKEN: ci-runtime-runner-token-for-tests-${{ github.run_id }}
 
     steps:
       - uses: actions/checkout@v7
@@ -112,6 +109,10 @@ jobs:
 
       - name: Export OpenAPI contract
         working-directory: backend
+        env:
+          COOKIE_SECURE: "true"
+          RUNTIME_ISOLATION_MODE: required
+          RUNTIME_RUNNER_TOKEN: ci-runtime-runner-token-for-tests-${{ github.run_id }}
         run: python -m hermeshq.scripts.export_openapi "$RUNNER_TEMP/openapi.json"
 
       - name: Upload OpenAPI contract
