@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 import time
@@ -33,9 +34,10 @@ class RuntimeRunnerClient:
         input_data: str,
         hermes_version: str | None = None,
     ) -> AsyncIterator[str]:
+        execution_id = str(uuid4())
         payload = {
             "engine": engine,
-            "execution_id": str(uuid4()),
+            "execution_id": execution_id,
             "agent_id": agent_id,
             "environment": environment,
             "input_data": input_data,
@@ -43,30 +45,37 @@ class RuntimeRunnerClient:
         }
         exit_event: dict | None = None
         try:
-            async with self._client.stream(
-                "POST",
-                "/v1/executions",
-                json=payload,
-                headers={"X-Runtime-Runner-Token": self._token},
-            ) as response:
-                if response.status_code != 200:
-                    raise RuntimeExecutionError(
-                        f"Isolated runtime runner rejected the execution ({response.status_code})"
-                    )
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    try:
-                        event = json.loads(line)
-                    except json.JSONDecodeError:
+            try:
+                async with self._client.stream(
+                    "POST",
+                    "/v1/executions",
+                    json=payload,
+                    headers={"X-Runtime-Runner-Token": self._token},
+                ) as response:
+                    if response.status_code != 200:
+                        raise RuntimeExecutionError(
+                            f"Isolated runtime runner rejected the execution ({response.status_code})"
+                        )
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        try:
+                            event = json.loads(line)
+                        except json.JSONDecodeError:
+                            yield line
+                            continue
+                        if event.get("_runner") == "exit":
+                            exit_event = event
+                            continue
                         yield line
-                        continue
-                    if event.get("_runner") == "exit":
-                        exit_event = event
-                        continue
-                    yield line
-        except httpx.HTTPError as exc:
-            raise RuntimeExecutionError("Isolated runtime runner is unavailable") from exc
+            except httpx.HTTPError as exc:
+                raise RuntimeExecutionError("Isolated runtime runner is unavailable") from exc
+        finally:
+            with contextlib.suppress(httpx.HTTPError):
+                await self._client.delete(
+                    f"/v1/executions/{execution_id}",
+                    headers={"X-Runtime-Runner-Token": self._token},
+                )
 
         if exit_event is None:
             raise RuntimeExecutionError("Isolated runtime runner ended without an exit status")

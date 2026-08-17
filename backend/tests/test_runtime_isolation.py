@@ -11,13 +11,16 @@ from hermeshq.config import Settings
 from hermeshq.runtime_runner import (
     ExecutionRequest,
     GatewayRequest,
+    _execution_resource_names,
     _isolated_environment,
     _prepare_execution_network,
     _redact_runtime_error,
     _resolve_workspace_volume,
     build_container_command,
     build_gateway_command,
+    stop_execution,
 )
+from hermeshq.services.runtime_runner_client import RuntimeRunnerClient
 
 AGENT_ID = UUID("11111111-1111-4111-8111-111111111111")
 EXECUTION_ID = UUID("22222222-2222-4222-8222-222222222222")
@@ -64,6 +67,76 @@ def test_container_command_enforces_security_boundary(monkeypatch: pytest.Monkey
     assert "agent-11111111-1111-4111-8111-111111111111" in rendered
     assert "agent-33333333-3333-4333-8333-333333333333" not in rendered
     assert command[-2:] == ["/opt/venv/bin/python", "/app/hermeshq/scripts/hermes_task_runner.py"]
+
+
+def test_execution_resources_are_addressable_for_explicit_cleanup() -> None:
+    assert _execution_resource_names(EXECUTION_ID) == (
+        f"hq-run-{EXECUTION_ID.hex}",
+        f"hq-net-{EXECUTION_ID.hex}",
+    )
+
+
+@pytest.mark.asyncio
+async def test_execution_stop_removes_its_container_and_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, str]] = []
+
+    async def remove_container(name: str) -> None:
+        calls.append(("container", name))
+
+    async def teardown_network(name: str) -> None:
+        calls.append(("network", name))
+
+    token = "a" * 32
+    monkeypatch.setenv("RUNTIME_RUNNER_TOKEN", token)
+    monkeypatch.setattr("hermeshq.runtime_runner._remove_container", remove_container)
+    monkeypatch.setattr("hermeshq.runtime_runner._teardown_execution_network", teardown_network)
+
+    result = await stop_execution(EXECUTION_ID, token)
+
+    assert result == {"status": "stopped"}
+    assert calls == [
+        ("container", f"hq-run-{EXECUTION_ID.hex}"),
+        ("network", f"hq-net-{EXECUTION_ID.hex}"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_runtime_client_requests_cleanup_when_stream_is_cancelled() -> None:
+    class Response:
+        status_code = 200
+
+        async def aiter_lines(self):
+            yield json.dumps({"type": "text_delta", "delta": "partial"})
+
+    class Stream:
+        async def __aenter__(self):
+            return Response()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class Client:
+        def __init__(self) -> None:
+            self.deleted: list[str] = []
+
+        def stream(self, *args, **kwargs):
+            return Stream()
+
+        async def delete(self, path: str, **kwargs) -> None:
+            self.deleted.append(path)
+
+    transport = Client()
+    client = RuntimeRunnerClient.__new__(RuntimeRunnerClient)
+    client._base_url = "http://runtime-runner:8080"
+    client._token = "a" * 32
+    client._client = transport
+    stream = client.run(engine="pi", agent_id=str(AGENT_ID), environment={}, input_data="")
+
+    assert await anext(stream) == json.dumps({"type": "text_delta", "delta": "partial"})
+    await stream.aclose()
+
+    assert len(transport.deleted) == 1
+    assert transport.deleted[0].startswith("/v1/executions/")
 
 
 def test_managed_hermes_version_is_the_only_read_only_runtime_mount(monkeypatch: pytest.MonkeyPatch) -> None:

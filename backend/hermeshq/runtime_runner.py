@@ -511,6 +511,10 @@ def _gateway_resource_names(agent_id: UUID) -> tuple[str, str]:
     return f"hq-gateway-{agent_id.hex}", f"hq-gw-net-{agent_id.hex}"
 
 
+def _execution_resource_names(execution_id: UUID) -> tuple[str, str]:
+    return f"hq-run-{execution_id.hex}", f"hq-net-{execution_id.hex}"
+
+
 async def _stop_gateway_container(agent_id: UUID) -> None:
     container_name, network_name = _gateway_resource_names(agent_id)
     await _remove_container(container_name)
@@ -618,6 +622,18 @@ async def start_gateway(
             return await _start_gateway_container(request)
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Gateway isolation setup failed") from exc
+
+
+@app.delete("/v1/executions/{execution_id}")
+async def stop_execution(
+    execution_id: UUID,
+    x_runtime_runner_token: Annotated[str | None, Header()] = None,
+) -> dict[str, str]:
+    _authorize(x_runtime_runner_token)
+    container_name, network_name = _execution_resource_names(execution_id)
+    await _remove_container(container_name)
+    await _teardown_execution_network(network_name)
+    return {"status": "stopped"}
 
 
 @app.get("/v1/gateways/{agent_id}")

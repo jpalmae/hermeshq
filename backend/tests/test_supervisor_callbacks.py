@@ -93,5 +93,41 @@ class TestStreamBuffer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(buffer._deltas, [("hello", 1)])
 
 
+class TestConversationHistory(unittest.IsolatedAsyncioTestCase):
+    async def test_only_completed_turns_enter_model_context(self) -> None:
+        supervisor = _make_supervisor()
+        thread_id = "thread-1"
+
+        def task(task_id: str, status: str, prompt: str, response: str = ""):
+            value = MagicMock()
+            value.id = task_id
+            value.status = status
+            value.prompt = prompt
+            value.response = response
+            value.messages_json = []
+            value.error_message = "internal stack trace" if status == "failed" else None
+            value.metadata_json = {"conversation": True, "thread_id": thread_id}
+            return value
+
+        completed = task("completed", "completed", "first", "answer")
+        failed = task("failed", "failed", "second")
+        cancelled = task("cancelled", "cancelled", "third")
+        current = task("current", "queued", "fourth")
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [current, cancelled, failed, completed]
+        session = AsyncMock()
+        session.execute.return_value = result
+
+        history = await supervisor._build_conversation_history(session, current)
+
+        self.assertEqual(
+            history,
+            [
+                {"role": "user", "content": "first"},
+                {"role": "assistant", "content": "answer"},
+            ],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

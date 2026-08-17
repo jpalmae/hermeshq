@@ -221,6 +221,7 @@ class AgentSupervisor:
             item
             for item in reversed(candidates)
             if item.id != task.id
+            and item.status == "completed"
             and (item.metadata_json or {}).get("conversation")
             and (not thread_id or str((item.metadata_json or {}).get("thread_id") or "").strip() == thread_id)
         ]
