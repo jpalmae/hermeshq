@@ -41,8 +41,6 @@ async function handleInit(params) {
     const openaiKey = process.env.OPENAI_API_KEY;
 
     // Set API key for ALL providers defined in our models.json
-    const { readFileSync, existsSync } = await import("fs");
-    const { join } = await import("path");
     try {
       const modelsFile = join(agentDir, "models.json");
       if (existsSync(modelsFile)) {

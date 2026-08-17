@@ -246,3 +246,11 @@ def test_egress_proxy_denies_private_targets_before_allowing_domains() -> None:
 
     assert text.index("http_access deny local_targets") < text.index("http_access allow allowed_domains")
     assert text.rstrip().endswith("request_header_access X-Forwarded-For deny all")
+
+
+def test_pi_runner_does_not_shadow_static_imports() -> None:
+    runner = Path(__file__).resolve().parents[1] / "hermeshq" / "scripts" / "pi_runner.mjs"
+    text = runner.read_text(encoding="utf-8")
+
+    assert 'await import("path")' not in text
+    assert 'await import("fs")' not in text
