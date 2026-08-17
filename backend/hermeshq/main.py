@@ -400,6 +400,7 @@ async def lifespan(app: FastAPI):
         with contextlib.suppress(asyncio.CancelledError):
             await enterprise_bootstrap_task
     await app.state.scheduler.stop()
+    await app.state.supervisor.shutdown_runtime()
     await app.state.gateway_supervisor.shutdown()
     await app.state.enterprise_gateways.shutdown()
     if app.state.runtime_runner_client is not None:

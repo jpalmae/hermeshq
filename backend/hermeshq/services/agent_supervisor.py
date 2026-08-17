@@ -4,9 +4,13 @@ import asyncio
 import contextlib
 import logging
 import traceback
+from datetime import timedelta
+from typing import Any
+from uuid import uuid4
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, exists, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import aliased
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +49,13 @@ class _StreamBuffer:
         event_broker: EventBroker,
         flush_interval: float = 0.5,
         user_id: str | None = None,
+        claim_token: str | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._task_id = task_id
         self._agent_id = agent_id
         self._user_id = user_id
+        self._claim_token = claim_token
         self._log_func = log_func
         self._event_broker = event_broker
         self._flush_interval = flush_interval
@@ -107,7 +113,13 @@ class _StreamBuffer:
 
         try:
             async with self._session_factory() as session:
-                task_row = await session.get(Task, self._task_id)
+                statement = select(Task).where(Task.id == self._task_id)
+                if self._claim_token:
+                    statement = statement.where(
+                        Task.status == "running",
+                        Task.claim_token == self._claim_token,
+                    )
+                task_row = (await session.execute(statement)).scalar_one_or_none()
                 agent_row = await session.get(Agent, task_row.agent_id) if task_row else None
                 if not task_row or not agent_row:
                     return
@@ -180,13 +192,23 @@ class AgentSupervisor:
         self.session_factory = session_factory
         self.event_broker = event_broker
         self.secret_vault = secret_vault
-        self.runtimes: dict[str, object] = {"hermes": runtime}
+        self.runtimes: dict[str, Any] = {"hermes": runtime}
         self.running_agents: set[str] = set()
         self.active_tasks: dict[str, asyncio.Task] = {}
         self.gateway_supervisor: object | None = None
         settings = get_settings()
         self._concurrency_limiter = _ResizableLimiter(settings.concurrency_semaphore)
         self._semaphore_value = settings.concurrency_semaphore
+        self._queue_poll_seconds = settings.task_queue_poll_seconds
+        self._lease_seconds = settings.task_lease_seconds
+        self._heartbeat_seconds = settings.task_heartbeat_seconds
+        self._max_attempts = settings.task_max_attempts
+        self._worker_id = str(uuid4())
+        self._dispatcher_task: asyncio.Task | None = None
+        self._dispatch_wakeup = asyncio.Event()
+        self._active_claims: dict[str, str] = {}
+        self._requeue_on_cancel: set[str] = set()
+        self._stopping = False
 
     def register_runtime(self, runtime_type: str, runtime: object) -> None:
         """Register an additional runtime (e.g. 'pi' for PiRuntime)."""
@@ -195,6 +217,7 @@ class AgentSupervisor:
     async def update_semaphore(self, new_value: int) -> None:
         self._semaphore_value = new_value
         await self._concurrency_limiter.resize(new_value)
+        self._dispatch_wakeup.set()
 
     def _build_conversation_assistant_content(self, task: Task) -> str:
         if task.response and task.response.strip():
@@ -243,39 +266,119 @@ class AgentSupervisor:
             for agent in result.scalars().all():
                 self.running_agents.add(agent.id)
 
-        # ── Recover zombie tasks left from previous container lifecycle ──
-        # When the backend container restarts, all subprocess tasks die
-        # without updating the DB. Mark them as failed so they don't stay
-        # stuck in "running" forever.
-        await self._recover_zombie_tasks()
+        await self._recover_expired_tasks()
+        self._stopping = False
+        if self._dispatcher_task is None or self._dispatcher_task.done():
+            self._dispatcher_task = asyncio.create_task(self._dispatch_loop())
+        self._dispatch_wakeup.set()
 
-    async def _recover_zombie_tasks(self) -> None:
-        """Mark tasks stuck in 'running' or 'queued' as failed after a restart."""
+    async def shutdown_runtime(self) -> None:
+        self._stopping = True
+        if self._dispatcher_task is not None:
+            self._dispatcher_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._dispatcher_task
+            self._dispatcher_task = None
+        runners = list(self.active_tasks.items())
+        self._requeue_on_cancel.update(task_id for task_id, _ in runners)
+        for _, runner in runners:
+            runner.cancel()
+        if runners:
+            await asyncio.gather(*(runner for _, runner in runners), return_exceptions=True)
+        try:
+            await self._requeue_worker_claims()
+        except Exception:
+            logger.exception("Failed to release task claims during shutdown")
+
+    async def _requeue_worker_claims(self) -> None:
         async with self.session_factory() as session:
             result = await session.execute(
-                select(Task).where(
-                    Task.status.in_(["running", "queued"]),
-                )
+                select(Task)
+                .where(Task.status == "running", Task.claimed_by == self._worker_id)
+                .with_for_update(skip_locked=True)
             )
-            zombies = result.scalars().all()
-            if not zombies:
-                return
+            tasks = list(result.scalars().all())
+            for task in tasks:
+                cancelled = task.cancel_requested_at is not None
+                task.status = "cancelled" if cancelled else "queued"
+                task.started_at = task.started_at if cancelled else None
+                task.completed_at = utcnow() if cancelled else None
+                task.claimed_by = None
+                task.claim_token = None
+                task.claimed_at = None
+                task.lease_expires_at = None
+                if not cancelled:
+                    task.cancel_requested_at = None
+                    task.attempt_count = max(0, task.attempt_count - 1)
+                await sync_board_with_runtime(session, task.id, task.status)
+                session.add(
+                    ActivityLog(
+                        agent_id=task.agent_id,
+                        task_id=task.id,
+                        event_type="task.cancelled" if cancelled else "task.requeued",
+                        message="Task cancelled during shutdown"
+                        if cancelled
+                        else "Task returned to queue during shutdown",
+                        details={"attempt_count": task.attempt_count},
+                    )
+                )
+            if tasks:
+                await session.commit()
+
+    async def _recover_expired_tasks(self) -> int:
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Task)
+                .where(
+                    Task.status == "running",
+                    or_(Task.lease_expires_at.is_(None), Task.lease_expires_at <= utcnow()),
+                )
+                .with_for_update(skip_locked=True)
+            )
+            expired = result.scalars().all()
+            if not expired:
+                return 0
 
             now = utcnow()
-            for task in zombies:
-                prev_status = task.status
-                task.status = "failed"
-                task.error_message = f"Task was {prev_status} when the server restarted and could not be resumed."
-                task.completed_at = now
-                if not task.board_manual:
-                    task.board_column = "failed"
+            for task in expired:
+                if task.cancel_requested_at is not None:
+                    task.status = "cancelled"
+                    task.completed_at = now
+                    event_type = "task.cancelled"
+                    message = "Expired execution cancelled"
+                elif task.attempt_count >= self._max_attempts:
+                    task.status = "failed"
+                    task.completed_at = now
+                    task.error_message = f"Task lease expired after {task.attempt_count} execution attempts."
+                    event_type = "task.failed"
+                    message = "Task exceeded recovery attempts"
+                else:
+                    task.status = "queued"
+                    task.started_at = None
+                    task.completed_at = None
+                    task.error_message = None
+                    event_type = "task.requeued"
+                    message = "Expired execution returned to queue"
+                task.claimed_by = None
+                task.claim_token = None
+                task.claimed_at = None
+                task.lease_expires_at = None
+                if task.status != "cancelled":
+                    task.cancel_requested_at = None
+                await sync_board_with_runtime(session, task.id, task.status)
+                session.add(
+                    ActivityLog(
+                        agent_id=task.agent_id,
+                        task_id=task.id,
+                        event_type=event_type,
+                        message=message,
+                        details={"attempt_count": task.attempt_count},
+                    )
+                )
 
             await session.commit()
-
-            logging.getLogger(__name__).warning(
-                "Recovered %d zombie tasks — marked as failed",
-                len(zombies),
-            )
+            logger.warning("Recovered %d tasks with expired execution leases", len(expired))
+            return len(expired)
 
     async def start_agent(self, agent_id: str) -> Agent:
         async with self.session_factory() as session:
@@ -355,62 +458,271 @@ class AgentSupervisor:
         return await self.start_agent(agent_id)
 
     async def submit_task(self, task_id: str) -> None:
-        if task_id in self.active_tasks:
-            return
-        runner = asyncio.create_task(self._run_task_with_semaphore(task_id))
-        self.active_tasks[task_id] = runner
+        self._dispatch_wakeup.set()
 
-    async def _run_task_with_semaphore(self, task_id: str) -> None:
-        await self._concurrency_limiter.acquire()
+    async def _run_claimed_task(self, task_id: str, claim_token: str) -> None:
+        execution_task: asyncio.Task | None = None
+        heartbeat_task: asyncio.Task | None = None
         try:
-            await self._run_task(task_id)
+            execution_task = asyncio.create_task(self._run_task(task_id, claim_token))
+            heartbeat_task = asyncio.create_task(self._heartbeat_claim(task_id, claim_token, execution_task))
+            await execution_task
         finally:
+            if heartbeat_task is not None:
+                heartbeat_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await heartbeat_task
+            if execution_task is not None and not execution_task.done():
+                execution_task.cancel()
+                await asyncio.gather(execution_task, return_exceptions=True)
             await self._concurrency_limiter.release()
+            self.active_tasks.pop(task_id, None)
+            self._active_claims.pop(task_id, None)
+            self._requeue_on_cancel.discard(task_id)
+            self._dispatch_wakeup.set()
 
     async def cancel_task(self, task_id: str) -> None:
+        publish_event: dict | None = None
+        async with self.session_factory() as session:
+            task = (
+                await session.execute(select(Task).where(Task.id == task_id).with_for_update())
+            ).scalar_one_or_none()
+            if task is None or task.status not in {"pending", "queued", "running"}:
+                return
+            if task.status in {"pending", "queued"}:
+                task.status = "cancelled"
+                task.completed_at = utcnow()
+                task.cancel_requested_at = utcnow()
+                await sync_board_with_runtime(session, task.id, task.status)
+                session.add(
+                    ActivityLog(
+                        agent_id=task.agent_id,
+                        task_id=task.id,
+                        event_type="task.cancelled",
+                        message=task.title or "Task cancelled",
+                    )
+                )
+                publish_event = {
+                    "type": "task.cancelled",
+                    "task_id": task.id,
+                    "agent_id": task.agent_id,
+                }
+                if task.created_by_user_id:
+                    publish_event["created_by_user_id"] = task.created_by_user_id
+            else:
+                task.cancel_requested_at = utcnow()
+            await session.commit()
+
         runner = self.active_tasks.get(task_id)
         if runner:
             runner.cancel()
+            await asyncio.gather(runner, return_exceptions=True)
+        else:
+            self._dispatch_wakeup.set()
+        if publish_event is not None:
+            await self.event_broker.publish(
+                publish_event,
+                audience=EventAudience.for_agent(
+                    publish_event["agent_id"],
+                    user_id=publish_event.get("created_by_user_id"),
+                ),
+            )
 
     async def _start_pending_tasks(self, agent_id: str) -> None:
+        self._dispatch_wakeup.set()
+
+    async def _dispatch_loop(self) -> None:
+        try:
+            while not self._stopping:
+                self._dispatch_wakeup.clear()
+                try:
+                    await self._recover_expired_tasks()
+                    await self._cancel_requested_claims()
+                    await self._dispatch_available_tasks()
+                except Exception:
+                    logger.exception("Durable task dispatcher tick failed")
+                try:
+                    await asyncio.wait_for(self._dispatch_wakeup.wait(), timeout=self._queue_poll_seconds)
+                except TimeoutError:
+                    pass
+        except asyncio.CancelledError:
+            return
+
+    async def _dispatch_available_tasks(self) -> None:
+        while not self._stopping and len(self.active_tasks) < self._semaphore_value:
+            await self._concurrency_limiter.acquire()
+            try:
+                claim = await self._claim_next_task()
+            except BaseException:
+                await self._concurrency_limiter.release()
+                raise
+            if claim is None:
+                await self._concurrency_limiter.release()
+                return
+            task_id, claim_token = claim
+            runner = asyncio.create_task(self._run_claimed_task(task_id, claim_token))
+            self.active_tasks[task_id] = runner
+            self._active_claims[task_id] = claim_token
+
+    async def _claim_next_task(self) -> tuple[str, str] | None:
+        queued_task = aliased(Task)
+        running_task = aliased(Task)
+        head_queued_at = (
+            select(queued_task.queued_at)
+            .where(queued_task.agent_id == Agent.id, queued_task.status == "queued")
+            .order_by(queued_task.queued_at.asc(), queued_task.id.asc())
+            .limit(1)
+            .scalar_subquery()
+        )
+        has_running_task = exists(
+            select(running_task.id).where(
+                running_task.agent_id == Agent.id,
+                running_task.status == "running",
+            )
+        )
+        async with self.session_factory() as session:
+            agent = (
+                await session.execute(
+                    select(Agent)
+                    .where(
+                        Agent.status == "running",
+                        Agent.is_archived.is_(False),
+                        head_queued_at.is_not(None),
+                        ~has_running_task,
+                    )
+                    .order_by(head_queued_at.asc(), Agent.id.asc())
+                    .with_for_update(of=Agent, skip_locked=True)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if agent is None:
+                return None
+
+            task = (
+                await session.execute(
+                    select(Task)
+                    .where(Task.agent_id == agent.id, Task.status == "queued")
+                    .order_by(Task.queued_at.asc(), Task.id.asc())
+                    .with_for_update(of=Task)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if task is None:
+                return None
+
+            now = utcnow()
+            claim_token = str(uuid4())
+            task.status = "running"
+            task.claimed_by = self._worker_id
+            task.claim_token = claim_token
+            task.claimed_at = now
+            task.lease_expires_at = now + timedelta(seconds=self._lease_seconds)
+            task.cancel_requested_at = None
+            task.attempt_count += 1
+            task.started_at = now
+            task.completed_at = None
+            task.error_message = None
+            task.messages_json = []
+            task.tool_calls = []
+            await sync_board_with_runtime(session, task.id, task.status)
+            await self._log(
+                session,
+                "task.started",
+                agent=agent,
+                task=task,
+                message=task.title or task.prompt[:72],
+                details={"attempt_count": task.attempt_count, "worker_id": self._worker_id},
+            )
+            await session.commit()
+            return task.id, claim_token
+
+    async def _heartbeat_claim(
+        self,
+        task_id: str,
+        claim_token: str,
+        execution_task: asyncio.Task,
+    ) -> None:
+        try:
+            while True:
+                await asyncio.sleep(self._heartbeat_seconds)
+                try:
+                    async with self.session_factory() as session:
+                        result = await session.execute(
+                            update(Task)
+                            .where(
+                                Task.id == task_id,
+                                Task.status == "running",
+                                Task.claim_token == claim_token,
+                                Task.cancel_requested_at.is_(None),
+                            )
+                            .values(lease_expires_at=utcnow() + timedelta(seconds=self._lease_seconds))
+                        )
+                        await session.commit()
+                        if getattr(result, "rowcount", 0) == 1:
+                            continue
+                        current_status = await session.scalar(select(Task.status).where(Task.id == task_id))
+                        if current_status in {"completed", "failed", "cancelled"}:
+                            return
+                except Exception:
+                    logger.exception("Task lease heartbeat failed for %s", task_id)
+                    self._requeue_on_cancel.add(task_id)
+                if not execution_task.done():
+                    execution_task.cancel()
+                return
+        except asyncio.CancelledError:
+            return
+
+    async def _cancel_requested_claims(self) -> None:
         async with self.session_factory() as session:
             result = await session.execute(
-                select(Task).where(Task.agent_id == agent_id, Task.status == "queued").order_by(Task.queued_at.asc())
+                select(Task.id).where(
+                    Task.status == "running",
+                    Task.claimed_by == self._worker_id,
+                    Task.cancel_requested_at.is_not(None),
+                )
             )
-            queued_tasks = result.scalars().all()
-        for task in queued_tasks:
-            await self.submit_task(task.id)
+            task_ids = list(result.scalars().all())
+        for task_id in task_ids:
+            runner = self.active_tasks.get(task_id)
+            if runner is not None:
+                runner.cancel()
 
-    async def _run_task(self, task_id: str) -> None:
+    async def _run_task(self, task_id: str, claim_token: str) -> None:
         callbacks: list = []
         try:
             conversation_history: list[dict] = []
             session_id: str | None = None
             async with self.session_factory() as session:
-                task = await session.get(Task, task_id)
-                if not task:
+                task = (
+                    await session.execute(
+                        select(Task).where(
+                            Task.id == task_id,
+                            Task.status == "running",
+                            Task.claim_token == claim_token,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if task is None:
                     return
-                if task.status != "queued":
-                    return
+                if task.cancel_requested_at is not None:
+                    raise asyncio.CancelledError
                 agent = await session.get(Agent, task.agent_id)
                 if not agent:
                     return
                 if agent.status != "running":
-                    task.status = "failed"
+                    task.status = "cancelled" if agent.is_archived else "queued"
+                    task.started_at = None
+                    task.completed_at = utcnow() if agent.is_archived else None
+                    task.claimed_by = None
+                    task.claim_token = None
+                    task.claimed_at = None
+                    task.lease_expires_at = None
+                    task.cancel_requested_at = None
+                    if task.status == "queued":
+                        task.attempt_count = max(0, task.attempt_count - 1)
+                    await sync_board_with_runtime(session, task.id, task.status)
                     await session.commit()
-                    event = {
-                        "type": "task.failed",
-                        "task_id": task_id,
-                        "agent_id": task.agent_id,
-                        "error": f"Agent is not running (status={agent.status})",
-                        "error_type": "AgentNotRunning",
-                    }
-                    if task.created_by_user_id:
-                        event["created_by_user_id"] = task.created_by_user_id
-                    await self.event_broker.publish(
-                        event,
-                        audience=EventAudience.for_agent(task.agent_id, user_id=task.created_by_user_id),
-                    )
+                    self._dispatch_wakeup.set()
                     return
                 task_owner_id = task.created_by_user_id
                 conversation_history = await self._build_conversation_history(session, task)
@@ -419,19 +731,6 @@ class AgentSupervisor:
                     candidate_session_id = str(metadata.get("thread_id") or "").strip()
                     if candidate_session_id:
                         session_id = candidate_session_id
-                task.status = "running"
-                await sync_board_with_runtime(session, task.id, task.status)
-                task.started_at = utcnow()
-                task.messages_json = []
-                task.tool_calls = []
-                await self._log(
-                    session,
-                    "task.started",
-                    agent=agent,
-                    task=task,
-                    message=task.title or task.prompt[:72],
-                )
-                await session.commit()
 
             event = {
                 "type": "task.started",
@@ -452,6 +751,7 @@ class AgentSupervisor:
                 log_func=self._log,
                 event_broker=self.event_broker,
                 user_id=task_owner_id,
+                claim_token=claim_token,
             )
             stream_buffer.start_flush_loop()
 
@@ -468,10 +768,19 @@ class AgentSupervisor:
                     session_id=session_id,
                 )
             finally:
-                # Ensure every buffered delta is persisted before proceeding.
                 await stream_buffer.stop_flush_loop()
             async with self.session_factory() as session:
-                task = await session.get(Task, task_id)
+                task = (
+                    await session.execute(
+                        select(Task)
+                        .where(
+                            Task.id == task_id,
+                            Task.status == "running",
+                            Task.claim_token == claim_token,
+                        )
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
                 agent = await session.get(Agent, task.agent_id) if task else None
                 if not task or not agent:
                     return
@@ -483,12 +792,15 @@ class AgentSupervisor:
                 task.iterations = max(task.iterations, execution.iterations)
                 task.messages_json = execution.messages or task.messages_json
                 task.tool_calls = execution.tool_calls
+                task.claimed_by = None
+                task.claim_token = None
+                task.claimed_at = None
+                task.lease_expires_at = None
+                task.cancel_requested_at = None
 
-                # ── Persist response_attachments in task metadata ──
                 response_attachments = getattr(execution, "response_attachments", [])
                 if response_attachments:
                     metadata = dict(task.metadata_json or {})
-                    # Strip source_path (internal only, never sent to client)
                     metadata["response_attachments"] = [
                         {k: v for k, v in att.items() if k != "source_path"} for att in response_attachments
                     ]
@@ -538,48 +850,88 @@ class AgentSupervisor:
                 audience=EventAudience.for_agent(task.agent_id, user_id=task_owner_id),
             )
 
-            # Post-task hooks
             await self._run_post_task_hooks(task_id)
 
         except asyncio.CancelledError:
+            publish_event: dict | None = None
             async with self.session_factory() as session:
-                task = await session.get(Task, task_id)
+                task = (
+                    await session.execute(
+                        select(Task)
+                        .where(
+                            Task.id == task_id,
+                            Task.status == "running",
+                            Task.claim_token == claim_token,
+                        )
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
                 agent = await session.get(Agent, task.agent_id) if task else None
                 if task:
-                    task.status = "cancelled"
+                    requeue = task_id in self._requeue_on_cancel and task.cancel_requested_at is None
+                    task.status = "queued" if requeue else "cancelled"
                     await sync_board_with_runtime(session, task.id, task.status)
-                    task.completed_at = utcnow()
-                if agent:
+                    task.started_at = None if requeue else task.started_at
+                    task.completed_at = None if requeue else utcnow()
+                    task.claimed_by = None
+                    task.claim_token = None
+                    task.claimed_at = None
+                    task.lease_expires_at = None
+                    if requeue:
+                        task.cancel_requested_at = None
+                        task.attempt_count = max(0, task.attempt_count - 1)
+                if task and agent:
                     agent.last_activity = utcnow()
                     await self._log(
                         session,
-                        "task.cancelled",
+                        "task.requeued" if task.status == "queued" else "task.cancelled",
                         agent=agent,
                         task=task,
-                        message=task.title or "Task cancelled",
+                        message=task.title or ("Task requeued" if task.status == "queued" else "Task cancelled"),
                     )
                 await session.commit()
-            cancelled_event: dict = {
-                "type": "task.cancelled",
-                "task_id": task_id,
-                "agent_id": task.agent_id if task else None,
-            }
-            if task and task.created_by_user_id:
-                cancelled_event["created_by_user_id"] = task.created_by_user_id
-            await self.event_broker.publish(
-                cancelled_event,
-                audience=(EventAudience.for_agent(task.agent_id, user_id=task.created_by_user_id) if task else None),
-            )
+                if task and task.status == "cancelled":
+                    publish_event = {
+                        "type": "task.cancelled",
+                        "task_id": task_id,
+                        "agent_id": task.agent_id,
+                    }
+                    if task.created_by_user_id:
+                        publish_event["created_by_user_id"] = task.created_by_user_id
+            if publish_event is not None:
+                await self.event_broker.publish(
+                    publish_event,
+                    audience=EventAudience.for_agent(
+                        publish_event["agent_id"],
+                        user_id=publish_event.get("created_by_user_id"),
+                    ),
+                )
         except Exception as exc:  # noqa: BLE001  # task cancellation catch-all
+            failed_event: dict | None = None
             async with self.session_factory() as session:
-                task = await session.get(Task, task_id)
+                task = (
+                    await session.execute(
+                        select(Task)
+                        .where(
+                            Task.id == task_id,
+                            Task.status == "running",
+                            Task.claim_token == claim_token,
+                        )
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
                 agent = await session.get(Agent, task.agent_id) if task else None
                 if task:
                     task.status = "failed"
                     await sync_board_with_runtime(session, task.id, task.status)
                     task.completed_at = utcnow()
                     task.error_message = str(exc)
-                if agent:
+                    task.claimed_by = None
+                    task.claim_token = None
+                    task.claimed_at = None
+                    task.lease_expires_at = None
+                    task.cancel_requested_at = None
+                if task and agent:
                     agent.last_activity = utcnow()
                     await self._log(
                         session,
@@ -611,21 +963,24 @@ class AgentSupervisor:
                     )
                 await session.commit()
                 await self._drain_callbacks(callbacks)
-            failed_event = {
-                "type": "task.failed",
-                "task_id": task_id,
-                "agent_id": task.agent_id if task else None,
-                "error": str(exc),
-                "error_type": type(exc).__name__,
-            }
-            if task and task.created_by_user_id:
-                failed_event["created_by_user_id"] = task.created_by_user_id
-            await self.event_broker.publish(
-                failed_event,
-                audience=(EventAudience.for_agent(task.agent_id, user_id=task.created_by_user_id) if task else None),
-            )
-        finally:
-            self.active_tasks.pop(task_id, None)
+                if task:
+                    failed_event = {
+                        "type": "task.failed",
+                        "task_id": task_id,
+                        "agent_id": task.agent_id,
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                    }
+                    if task.created_by_user_id:
+                        failed_event["created_by_user_id"] = task.created_by_user_id
+            if failed_event is not None:
+                await self.event_broker.publish(
+                    failed_event,
+                    audience=EventAudience.for_agent(
+                        failed_event["agent_id"],
+                        user_id=failed_event.get("created_by_user_id"),
+                    ),
+                )
 
     async def _log(
         self,

@@ -25,13 +25,25 @@ jobs:
           cache: pip
 
       - name: Install ruff and mypy
-        run: pip install --quiet ruff mypy
+        run: pip install --quiet ruff mypy "fastapi>=0.115" "pydantic-settings>=2.2" "sqlalchemy>=2.0"
 
       - name: Run ruff check
         run: ruff check backend/
 
       - name: Run ruff format check
         run: ruff format --check backend/
+
+      - name: Run mypy typed core
+        run: >-
+          mypy --config-file=backend/pyproject.toml
+          --follow-imports=silent
+          backend/hermeshq/models
+          backend/hermeshq/schemas
+          backend/hermeshq/core/events.py
+          backend/hermeshq/config.py
+          backend/hermeshq/services/agent_supervisor.py
+          backend/hermeshq/services/runtime_base.py
+          backend/hermeshq/routers/tasks.py
 
       - name: Set up Node.js
         uses: actions/setup-node@v7

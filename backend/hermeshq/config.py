@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     concurrency_semaphore: int = 8
     # Max wall-clock seconds a single task execution may run.
     task_timeout_seconds: int = 3600
+    task_queue_poll_seconds: float = Field(default=1.0, gt=0, le=60)
+    task_lease_seconds: int = Field(default=45, ge=15, le=600)
+    task_heartbeat_seconds: int = Field(default=10, ge=5, le=300)
+    task_max_attempts: int = Field(default=3, ge=1, le=20)
     agent_service_token_days: int = Field(default=30, gt=0)
     runtime_isolation_mode: Literal["required", "subprocess"] = "subprocess"
     runtime_runner_url: str = "http://runtime-runner:8080"
@@ -86,10 +90,15 @@ class Settings(BaseSettings):
             # Without this, the SecretVault (which uses jwt_secret as Fernet seed
             # when FERNET_KEY is unset) would be unable to decrypt stored secrets
             # after every restart.
-            env_path = self.model_config.get("env_file", ".env")
-            if not Path(env_path).is_absolute():
+            configured_env = self.model_config.get("env_file")
+            if isinstance(configured_env, (str, Path)):
+                env_path = Path(configured_env)
+            elif configured_env:
+                env_path = Path(configured_env[0])
+            else:
+                env_path = Path(".env")
+            if not env_path.is_absolute():
                 env_path = Path(__file__).resolve().parents[1] / env_path
-            env_path = Path(env_path)
             try:
                 lines = env_path.read_text().splitlines() if env_path.exists() else []
                 found = False
@@ -159,6 +168,8 @@ class Settings(BaseSettings):
             raise RuntimeError("RUNTIME_RUNNER_TOKEN must be a 32-256 character URL-safe token")
         if not self.debug and not self.cookie_secure:
             raise RuntimeError("COOKIE_SECURE=true is mandatory outside DEBUG mode")
+        if self.task_heartbeat_seconds * 2 >= self.task_lease_seconds:
+            raise RuntimeError("TASK_HEARTBEAT_SECONDS must be less than half of TASK_LEASE_SECONDS")
         self.workspaces_root = self.workspaces_root.resolve()
         if self.branding_root is None:
             self.branding_root = self.workspaces_root / "_branding"

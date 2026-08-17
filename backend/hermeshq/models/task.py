@@ -1,7 +1,19 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import JSON, BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from hermeshq.models.base import Base, utcnow
@@ -38,6 +50,12 @@ class Task(Base):
     queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    claimed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    claim_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_json: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
     __table_args__ = (
@@ -45,7 +63,16 @@ class Task(Base):
             "status IN ('pending', 'queued', 'running', 'completed', 'failed', 'cancelled')",
             name="ck_tasks_status",
         ),
+        CheckConstraint("attempt_count >= 0", name="ck_tasks_attempt_count_nonnegative"),
         Index("ix_tasks_agent_status", "agent_id", "status"),
+        Index("ix_tasks_queue_dispatch", "agent_id", "status", "queued_at", "id"),
+        Index("ix_tasks_expired_leases", "status", "lease_expires_at"),
+        Index(
+            "uq_tasks_one_running_per_agent",
+            "agent_id",
+            unique=True,
+            postgresql_where=text("status = 'running'"),
+        ),
     )
 
     agent = relationship("Agent", back_populates="tasks", foreign_keys=[agent_id])

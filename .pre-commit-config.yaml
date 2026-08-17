@@ -15,27 +15,31 @@ repos:
     hooks:
       - id: mypy
         files: ^backend/hermeshq/
-        args: [--config-file=backend/pyproject.toml]
+        pass_filenames: false
+        args:
+          - --config-file=backend/pyproject.toml
+          - --follow-imports=silent
+          - backend/hermeshq/models
+          - backend/hermeshq/schemas
+          - backend/hermeshq/core/events.py
+          - backend/hermeshq/config.py
+          - backend/hermeshq/services/agent_supervisor.py
+          - backend/hermeshq/services/runtime_base.py
+          - backend/hermeshq/routers/tasks.py
         additional_dependencies:
           - fastapi>=0.115
           - pydantic-settings>=2.2
           - sqlalchemy>=2.0
 
   # ── ESLint (frontend) ───────────────────────────────────────────────────
-  - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v9.5.0
+  - repo: local
     hooks:
       - id: eslint
+        name: eslint
+        entry: npm --prefix frontend run lint
+        language: system
         files: ^frontend/src/.*\.(ts|tsx)$
-        types: [file]
-        additional_dependencies:
-          - eslint@9.5.0
-          - typescript-eslint@7.13.0
-          - "@typescript-eslint/parser@7.13.0"
-          - "@eslint/js@9.5.0"
-          - globals@15.6.0
-          - eslint-plugin-react-hooks@4.6.2
-          - eslint-plugin-react-refresh@0.4.7
+        pass_filenames: false
 
   # ── Validaciones genéricas ──────────────────────────────────────────────
   - repo: https://github.com/pre-commit/pre-commit-hooks
