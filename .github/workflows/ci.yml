@@ -205,7 +205,7 @@ jobs:
           outputs: type=docker,dest=/tmp/hermeshq-frontend.tar
 
       - name: Scan backend image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           input: /tmp/hermeshq-backend.tar
           severity: CRITICAL,HIGH
@@ -213,7 +213,7 @@ jobs:
           exit-code: "1"
 
       - name: Scan frontend image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           input: /tmp/hermeshq-frontend.tar
           severity: CRITICAL,HIGH
