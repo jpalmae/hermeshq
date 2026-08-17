@@ -47,6 +47,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
       FERNET_KEY: ${FERNET_KEY:?FERNET_KEY must be set in .env}
       DEBUG: ${DEBUG:-false}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
       TASK_TIMEOUT_SECONDS: ${TASK_TIMEOUT_SECONDS:-3600}
       AGENT_SERVICE_TOKEN_DAYS: ${AGENT_SERVICE_TOKEN_DAYS:-30}
       RUNTIME_ISOLATION_MODE: required

@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from hermeshq.core.events import EventBroker
+from hermeshq.core.events import EventAudience, EventBroker
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
 from hermeshq.models.message import AgentMessage
@@ -65,7 +65,8 @@ class CommsRouter:
                 "to_agent_id": message.to_agent_id,
                 "message_type": message.message_type,
                 "content": message.content,
-            }
+            },
+            audience=EventAudience.for_agents(message.from_agent_id, message.to_agent_id),
         )
         return message
 
@@ -114,6 +115,7 @@ class CommsRouter:
                     "to_agent_id": msg.to_agent_id,
                     "message_type": msg.message_type,
                     "content": msg.content,
-                }
+                },
+                audience=EventAudience.for_agents(msg.from_agent_id, msg.to_agent_id),
             )
         return messages

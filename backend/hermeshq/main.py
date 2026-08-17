@@ -16,7 +16,7 @@ from starlette.websockets import WebSocketState
 
 from hermeshq.config import get_settings
 from hermeshq.core.csrf import CSRFMiddleware
-from hermeshq.core.events import EventBroker
+from hermeshq.core.events import EventAudience, EventBroker
 from hermeshq.core.public_chat_cors import PublicChatCORSMiddleware
 from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
 from hermeshq.database import AsyncSessionLocal, init_database
@@ -338,7 +338,8 @@ async def lifespan(app: FastAPI):
                 "agent_id": agent_id,
                 "event_type": event_type,
                 "message": message,
-            }
+            },
+            audience=EventAudience.for_agent(agent_id),
         )
 
     app.state.pty_manager = PTYManager(settings.pty_shell, audit_callback=log_terminal_activity)

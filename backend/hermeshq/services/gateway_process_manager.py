@@ -12,7 +12,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from hermeshq.core.events import EventBroker
+from hermeshq.core.events import EventAudience, EventBroker
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
 from hermeshq.models.base import utcnow
@@ -186,7 +186,13 @@ class GatewayProcessManager:
                 channel.updated_at = utcnow()
                 await session.commit()
                 await self.event_broker.publish(
-                    {"type": "messaging.status_changed", "agent_id": agent_id, "status": "running", "message": platform}
+                    {
+                        "type": "messaging.status_changed",
+                        "agent_id": agent_id,
+                        "status": "running",
+                        "message": platform,
+                    },
+                    audience=EventAudience.for_agent(agent_id),
                 )
                 return
 
@@ -317,7 +323,8 @@ class GatewayProcessManager:
                     "agent_id": agent_id,
                     "status": "running",
                     "message": item.platform,
-                }
+                },
+                audience=EventAudience.for_agent(agent_id),
             )
 
     # ── Stop channel ────────────────────────────────────────────────────────
@@ -409,7 +416,8 @@ class GatewayProcessManager:
             await session.commit()
 
         await self.event_broker.publish(
-            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "stopped", "message": platform}
+            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "stopped", "message": platform},
+            audience=EventAudience.for_agent(agent_id),
         )
         if restarted_handle:
             for remaining_platform in restarted_handle.platforms:
@@ -419,7 +427,8 @@ class GatewayProcessManager:
                         "agent_id": agent_id,
                         "status": "running",
                         "message": remaining_platform,
-                    }
+                    },
+                    audience=EventAudience.for_agent(agent_id),
                 )
 
     # ── Enterprise gateways ─────────────────────────────────────────────────
@@ -471,7 +480,8 @@ class GatewayProcessManager:
                 await session.commit()
 
         await self.event_broker.publish(
-            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "running", "message": platform}
+            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "running", "message": platform},
+            audience=EventAudience.for_agent(agent_id),
         )
 
     async def _stop_enterprise_channel(self, agent_id: str, platform: str) -> None:
@@ -488,7 +498,8 @@ class GatewayProcessManager:
                 await session.commit()
 
         await self.event_broker.publish(
-            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "stopped", "message": platform}
+            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "stopped", "message": platform},
+            audience=EventAudience.for_agent(agent_id),
         )
 
     # ── Process lifecycle ───────────────────────────────────────────────────
@@ -692,7 +703,8 @@ class GatewayProcessManager:
                     "agent_id": agent_id,
                     "status": "stopped" if return_code == 0 else "error",
                     "message": platform,
-                }
+                },
+                audience=EventAudience.for_agent(agent_id),
             )
 
         # ── Auto-restart logic ──────────────────────────────────────────────
@@ -821,7 +833,8 @@ class GatewayProcessManager:
                             "agent_id": agent_id,
                             "status": "running",
                             "message": platform,
-                        }
+                        },
+                        audience=EventAudience.for_agent(agent_id),
                     )
 
                 logger.info("Gateway for agent %s auto-restarted successfully on attempt %d", agent_id, attempt + 1)
@@ -865,7 +878,8 @@ class GatewayProcessManager:
 
             for platform in platforms:
                 await self.event_broker.publish(
-                    {"type": "messaging.status_changed", "agent_id": agent_id, "status": "error", "message": platform}
+                    {"type": "messaging.status_changed", "agent_id": agent_id, "status": "error", "message": platform},
+                    audience=EventAudience.for_agent(agent_id),
                 )
 
         await asyncio.sleep(GATEWAY_RECOVERY_RETRY_DELAY)

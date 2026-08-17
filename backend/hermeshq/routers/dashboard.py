@@ -215,6 +215,7 @@ async def fleet_health(
     accessible_ids = await get_accessible_agent_ids(db, current_user)
     agent_scope = Agent.id.in_(accessible_ids) if accessible_ids else false()
     task_scope = Task.agent_id.in_(accessible_ids) if accessible_ids else false()
+    activity_scope = ActivityLog.agent_id.in_(accessible_ids) if accessible_ids else false()
 
     # Agent status breakdown
     by_status = await db.execute(
@@ -228,21 +229,22 @@ async def fleet_health(
 
     # Recent errors (last 24h)
     since = datetime.now(UTC) - timedelta(hours=24)
-    error_rows = (
-        await db.execute(
-            select(
-                ActivityLog.agent_id,
-                ActivityLog.message,
-                ActivityLog.created_at,
-            )
-            .where(
-                ActivityLog.severity == "error",
-                ActivityLog.created_at >= since,
-            )
-            .order_by(ActivityLog.created_at.desc())
-            .limit(10)
+    error_statement = (
+        select(
+            ActivityLog.agent_id,
+            ActivityLog.message,
+            ActivityLog.created_at,
         )
-    ).all()
+        .where(
+            ActivityLog.severity == "error",
+            ActivityLog.created_at >= since,
+        )
+        .order_by(ActivityLog.created_at.desc())
+        .limit(10)
+    )
+    if not is_admin(current_user):
+        error_statement = error_statement.where(activity_scope)
+    error_rows = (await db.execute(error_statement)).all()
 
     # Resolve agent names
     error_agent_ids = {r[0] for r in error_rows if r[0]}

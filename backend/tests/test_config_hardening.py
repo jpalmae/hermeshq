@@ -34,3 +34,17 @@ def test_production_rejects_weak_admin_password() -> None:
             fernet_key="independent-fernet-seed",
             admin_password="short",
         )
+
+
+def test_production_requires_secure_cookies() -> None:
+    with pytest.raises(RuntimeError, match="COOKIE_SECURE=true"):
+        Settings(
+            _env_file=None,
+            debug=False,
+            jwt_secret="strong-jwt-secret-that-is-long-enough",
+            fernet_key="independent-fernet-seed",
+            admin_password="strong-admin-password",
+            runtime_isolation_mode="required",
+            runtime_runner_token="a" * 32,
+            cookie_secure=False,
+        )

@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import logging
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from fastapi import WebSocket
 
@@ -12,16 +14,35 @@ _WS_SEND_TIMEOUT = 5.0
 _INTERNAL_SUBSCRIBER_TIMEOUT = 10.0
 
 
+@dataclass(frozen=True)
+class EventAudience:
+    agent_ids: frozenset[str] = field(default_factory=frozenset)
+    user_ids: frozenset[str] = field(default_factory=frozenset)
+
+    def __post_init__(self) -> None:
+        if not self.agent_ids and not self.user_ids:
+            raise ValueError("An event audience must contain at least one agent or user")
+
+    @classmethod
+    def for_agent(cls, agent_id: str, *, user_id: str | None = None) -> EventAudience:
+        user_ids = frozenset({user_id}) if user_id else frozenset()
+        return cls(agent_ids=frozenset({agent_id}), user_ids=user_ids)
+
+    @classmethod
+    def for_agents(cls, *agent_ids: str) -> EventAudience:
+        return cls(agent_ids=frozenset(agent_ids))
+
+    @classmethod
+    def for_user(cls, user_id: str) -> EventAudience:
+        return cls(user_ids=frozenset({user_id}))
+
+
 @dataclass
 class EventSubscription:
     websocket: WebSocket
     is_admin: bool
     agent_ids: set[str]
     user_id: str | None = None
-
-
-_INTERNAL_SUBSCRIBER_TIMEOUT = 10.0
-_WS_SEND_TIMEOUT = 5.0
 
 
 class EventBroker:
@@ -67,7 +88,7 @@ class EventBroker:
         with contextlib.suppress(ValueError):
             self._internal_subscribers.remove(callback)
 
-    async def publish(self, event: dict) -> None:
+    async def publish(self, event: dict, *, audience: EventAudience | None = None) -> None:
         # Notify internal subscribers first (gateways, services, etc.)
         snapshot = list(self._internal_subscribers)
         internal_tasks = [self._call_internal(callback, event) for callback in snapshot]
@@ -80,19 +101,9 @@ class EventBroker:
         # own timeout so a slow/dead client cannot stall delivery to the
         # rest of subscribers or block the publisher.
         stale_connections: list[WebSocket] = []
-        event_agent_id = event.get("agent_id")
-        event_user_id = event.get("created_by_user_id")
         send_tasks: list[tuple[WebSocket, asyncio.Task]] = []
         for connection, subscription in list(self._connections.items()):
-            if subscription.is_admin:
-                pass  # admins receive everything
-            elif (
-                event_agent_id
-                and event_agent_id not in subscription.agent_ids
-                or event_user_id
-                and subscription.user_id
-                and event_user_id != subscription.user_id
-            ):
+            if not subscription.is_admin and not self._matches_audience(subscription, audience):
                 continue
             send_tasks.append((connection, asyncio.ensure_future(self._send_with_timeout(connection, event))))
 
@@ -118,6 +129,14 @@ class EventBroker:
             logger.warning("Dropping slow WebSocket subscriber (send timeout)")
             return False
 
-    async def publish_many(self, events: Iterable[dict]) -> None:
+    @staticmethod
+    def _matches_audience(subscription: EventSubscription, audience: EventAudience | None) -> bool:
+        if audience is None:
+            return False
+        if audience.agent_ids and subscription.agent_ids.isdisjoint(audience.agent_ids):
+            return False
+        return not audience.user_ids or subscription.user_id in audience.user_ids
+
+    async def publish_many(self, events: Iterable[dict], *, audience: EventAudience | None = None) -> None:
         for event in events:
-            await self.publish(event)
+            await self.publish(event, audience=audience)

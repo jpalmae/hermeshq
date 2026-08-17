@@ -84,7 +84,10 @@ class _StreamBuffer:
         }
         if self._user_id:
             event["created_by_user_id"] = self._user_id
-        await self._event_broker.publish(event)
+        await self._event_broker.publish(
+            event,
+            audience=EventAudience.for_agent(self._agent_id, user_id=self._user_id),
+        )
 
     async def flush(self) -> None:
         """Write all buffered deltas to the DB in a single transaction."""
@@ -152,7 +155,7 @@ class _StreamBuffer:
 
 
 from hermeshq.config import get_settings
-from hermeshq.core.events import EventBroker
+from hermeshq.core.events import EventAudience, EventBroker
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
 from hermeshq.models.base import utcnow
@@ -292,7 +295,8 @@ class AgentSupervisor:
                 "type": "agent.status_changed",
                 "agent_id": agent_id,
                 "status": "running",
-            }
+            },
+            audience=EventAudience.for_agent(agent_id),
         )
         await self._start_pending_tasks(agent_id)
         await self._ensure_gateways_alive(agent_id)
@@ -341,7 +345,8 @@ class AgentSupervisor:
                 "type": "agent.status_changed",
                 "agent_id": agent_id,
                 "status": "stopped",
-            }
+            },
+            audience=EventAudience.for_agent(agent_id),
         )
         return agent
 
@@ -402,7 +407,10 @@ class AgentSupervisor:
                     }
                     if task.created_by_user_id:
                         event["created_by_user_id"] = task.created_by_user_id
-                    await self.event_broker.publish(event)
+                    await self.event_broker.publish(
+                        event,
+                        audience=EventAudience.for_agent(task.agent_id, user_id=task.created_by_user_id),
+                    )
                     return
                 task_owner_id = task.created_by_user_id
                 conversation_history = await self._build_conversation_history(session, task)
@@ -432,7 +440,10 @@ class AgentSupervisor:
             }
             if task_owner_id:
                 event["created_by_user_id"] = task_owner_id
-            await self.event_broker.publish(event)
+            await self.event_broker.publish(
+                event,
+                audience=EventAudience.for_agent(task.agent_id, user_id=task_owner_id),
+            )
 
             stream_buffer = _StreamBuffer(
                 session_factory=self.session_factory,
@@ -522,7 +533,10 @@ class AgentSupervisor:
             }
             if task_owner_id:
                 completed_event["created_by_user_id"] = task_owner_id
-            await self.event_broker.publish(completed_event)
+            await self.event_broker.publish(
+                completed_event,
+                audience=EventAudience.for_agent(task.agent_id, user_id=task_owner_id),
+            )
 
             # Post-task hooks
             await self._run_post_task_hooks(task_id)
@@ -545,10 +559,17 @@ class AgentSupervisor:
                         message=task.title or "Task cancelled",
                     )
                 await session.commit()
-            cancelled_event: dict = {"type": "task.cancelled", "task_id": task_id}
+            cancelled_event: dict = {
+                "type": "task.cancelled",
+                "task_id": task_id,
+                "agent_id": task.agent_id if task else None,
+            }
             if task and task.created_by_user_id:
                 cancelled_event["created_by_user_id"] = task.created_by_user_id
-            await self.event_broker.publish(cancelled_event)
+            await self.event_broker.publish(
+                cancelled_event,
+                audience=(EventAudience.for_agent(task.agent_id, user_id=task.created_by_user_id) if task else None),
+            )
         except Exception as exc:  # noqa: BLE001  # task cancellation catch-all
             async with self.session_factory() as session:
                 task = await session.get(Task, task_id)
@@ -599,7 +620,10 @@ class AgentSupervisor:
             }
             if task and task.created_by_user_id:
                 failed_event["created_by_user_id"] = task.created_by_user_id
-            await self.event_broker.publish(failed_event)
+            await self.event_broker.publish(
+                failed_event,
+                audience=(EventAudience.for_agent(task.agent_id, user_id=task.created_by_user_id) if task else None),
+            )
         finally:
             self.active_tasks.pop(task_id, None)
 
@@ -718,7 +742,8 @@ class AgentSupervisor:
                     "message_type": callback_message.message_type,
                     "content": callback_message.content,
                     "task_id": callback_task.id,
-                }
+                },
+                audience=EventAudience.for_agents(agent.id, source_agent.id),
             )
             pty_manager = getattr(self, "pty_manager", None)
             if pty_manager is not None:
@@ -898,7 +923,8 @@ class AgentSupervisor:
                 {
                     "type": "agent.avatar_updated",
                     "agent_id": target_agent_id,
-                }
+                },
+                audience=EventAudience.for_agent(target_agent_id),
             )
 
 

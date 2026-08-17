@@ -157,6 +157,8 @@ class Settings(BaseSettings):
             r"[A-Za-z0-9_-]{32,256}", self.runtime_runner_token
         ):
             raise RuntimeError("RUNTIME_RUNNER_TOKEN must be a 32-256 character URL-safe token")
+        if not self.debug and not self.cookie_secure:
+            raise RuntimeError("COOKIE_SECURE=true is mandatory outside DEBUG mode")
         self.workspaces_root = self.workspaces_root.resolve()
         if self.branding_root is None:
             self.branding_root = self.workspaces_root / "_branding"

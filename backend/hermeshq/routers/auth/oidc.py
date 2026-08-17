@@ -142,7 +142,13 @@ def _set_oidc_state_cookie(response: RedirectResponse, state: str) -> None:
 
 
 def _clear_oidc_state_cookie(response: RedirectResponse) -> None:
-    response.delete_cookie(OIDC_STATE_COOKIE, path="/api/auth/oidc")
+    response.delete_cookie(
+        OIDC_STATE_COOKIE,
+        path="/api/auth/oidc",
+        secure=get_settings().cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
 
 
 async def _fetch_oidc_discovery() -> dict:
