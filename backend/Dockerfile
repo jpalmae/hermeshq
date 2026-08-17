@@ -1,7 +1,27 @@
 # ============================================================
 # Stage 1 – builder: compile everything heavy
 # ============================================================
-FROM docker:29.2.1-cli AS docker-cli
+FROM golang:1.26.6-bookworm AS docker-cli
+
+ARG DOCKER_CLI_VERSION=29.6.2
+ARG DOCKER_CLI_COMMIT=dfc4efb1e2ab8c06d70d2a1366ad448d2f917e90
+
+RUN git init -q /go/src/github.com/docker/cli \
+    && git -C /go/src/github.com/docker/cli remote add origin https://github.com/docker/cli.git \
+    && git -C /go/src/github.com/docker/cli fetch -q --depth 1 origin "${DOCKER_CLI_COMMIT}" \
+    && git -C /go/src/github.com/docker/cli checkout -q --detach FETCH_HEAD
+
+WORKDIR /go/src/github.com/docker/cli
+
+RUN VERSION="${DOCKER_CLI_VERSION}" \
+    GITCOMMIT="${DOCKER_CLI_COMMIT}" \
+    CGO_ENABLED=0 \
+    GO_STRIP=1 \
+    TARGET=/out \
+    ./scripts/build/binary \
+    && cp -L /out/docker /docker \
+    && /docker --version \
+    && go version -m /docker | grep -F 'go1.26.6'
 
 FROM python:3.11-slim AS builder
 
@@ -9,7 +29,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/opt/venv/bin:$PATH"
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
     build-essential \
     git \
     curl \
@@ -21,6 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
        > /etc/apt/sources.list.d/nodesource.list \
     && apt-get update && apt-get install -y --no-install-recommends nodejs \
+    && npm install --global npm@12.0.2 --no-audit --no-fund \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -63,7 +85,8 @@ ENV PYTHONUNBUFFERED=1
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Runtime system deps only
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
     ca-certificates \
     psmisc \
     git \
@@ -82,6 +105,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
        > /etc/apt/sources.list.d/nodesource.list \
     && apt-get update && apt-get install -y --no-install-recommends nodejs \
+    && npm install --global npm@12.0.2 --no-audit --no-fund \
+    && npm install --prefix /tmp/npm-security-deps --omit=dev --no-save --no-audit --no-fund \
+       brace-expansion@5.0.9 ip-address@10.3.1 \
+    && cp -a /tmp/npm-security-deps/node_modules/brace-expansion/. \
+       /usr/lib/node_modules/npm/node_modules/brace-expansion/ \
+    && cp -a /tmp/npm-security-deps/node_modules/ip-address/. \
+       /usr/lib/node_modules/npm/node_modules/ip-address/ \
+    && rm -rf /tmp/npm-security-deps \
     && rm -rf /var/lib/apt/lists/* \
     && /usr/local/bin/python -m pip install --no-cache-dir \
        "setuptools>=84,<85" "wheel>=0.46.2,<0.47"
@@ -95,7 +126,7 @@ WORKDIR /app
 # Copy Python packages from builder
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /opt/hermes-agent /opt/hermes-agent
-COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker-cli /docker /usr/local/bin/docker
 
 # Copy node_modules from builder
 COPY --from=builder /app/hermeshq/assets/whatsapp-bridge/node_modules \
