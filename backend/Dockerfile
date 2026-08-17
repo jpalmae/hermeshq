@@ -109,6 +109,8 @@ COPY backend/hermeshq /app/hermeshq
 
 # Writable directories for appuser
 RUN mkdir -p /app/workspaces \
+    && chmod a+r /app/VERSION /app/alembic.ini \
+    && chmod -R a+rX /app/hermeshq \
     && chown -R appuser:appuser /app
 
 ENV WORKSPACES_ROOT=/app/workspaces
