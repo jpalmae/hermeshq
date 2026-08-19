@@ -39,6 +39,7 @@ from hermeshq.schemas.managed_integration import (
     ManagedIntegrationTestRequest,
     ManagedIntegrationTestResult,
 )
+from hermeshq.schemas.permission_policy import PermissionTestRequest, PermissionTestResult
 from hermeshq.schemas.provider import ProviderRead, ProviderUpdate
 from hermeshq.schemas.scheduled_task import ScheduledTaskCreate, ScheduledTaskRead, ScheduledTaskUpdate
 from hermeshq.schemas.secret import SecretCreate, SecretRead, SecretUpdate
@@ -885,6 +886,23 @@ class ApprovalResponse(BaseModel):
     reason: str | None = None
 
 
+@router.post("/permissions/evaluate", response_model=PermissionTestResult, include_in_schema=False)
+async def evaluate_pi_permission(
+    request: Request,
+    payload: PermissionTestRequest,
+    current_agent: Agent = Depends(_load_internal_system_agent),
+) -> PermissionTestResult:
+    enforcer = request.app.state.permission_enforcer
+    decision = await enforcer.evaluate(current_agent, payload.tool, payload.input)
+    decision = enforcer.apply_runtime_approval(decision, current_agent.approval_mode)
+    return PermissionTestResult(
+        allowed=decision.allowed,
+        reason=decision.reason,
+        policy_name=decision.policy_name,
+        requires_approval=decision.requires_approval,
+    )
+
+
 @router.post("/approval", response_model=ApprovalResponse, include_in_schema=False)
 async def pi_agent_approval(
     request: Request,
@@ -907,10 +925,10 @@ async def pi_agent_approval(
     if not verify_agent_service_token(agent_token, agent_id, agent.service_token_version or 1):
         raise HTTPException(status_code=401, detail="Invalid agent credentials")
 
-    mode = agent.approval_mode or "inherit"
+    mode = (agent.approval_mode or "inherit").replace("_", "-")
     if mode == "off":
         return ApprovalResponse(approved=True)
-    if mode in ("on_failure", "inherit"):
+    if mode in ("on-failure", "inherit"):
         return ApprovalResponse(approved=True, reason="Auto-approved (failure-based mode)")
     return ApprovalResponse(approved=False, reason="Manual approval required but no human in loop")
 
@@ -945,6 +963,16 @@ async def control_run_integration_action(
         raise HTTPException(status_code=404, detail="Agent not found")
     if not verify_agent_service_token(caller_token, agent_id, agent.service_token_version or 1):
         raise HTTPException(status_code=401, detail="Invalid agent credentials")
+
+    enforcer = request.app.state.permission_enforcer
+    decision = await enforcer.evaluate(
+        agent,
+        f"integration_{integration_slug.replace('-', '_')}",
+        {**payload, "action": action_slug},
+    )
+    decision = enforcer.apply_runtime_approval(decision, agent.approval_mode)
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.reason or "Integration action denied by policy")
 
     enabled_slugs = await agents_router._load_enabled_integration_slugs(db)
     from hermeshq.services.managed_capabilities import get_managed_integration

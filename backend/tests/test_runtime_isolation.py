@@ -162,6 +162,29 @@ def test_managed_hermes_version_is_the_only_read_only_runtime_mount(monkeypatch:
     assert command[-2] == "/app/workspaces/_hermes_versions/0.9.0/.venv/bin/python"
 
 
+def test_pi_configuration_is_mounted_separately_and_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RUNTIME_IMAGE", "hermeshq-runtime:test")
+    request = execution_request(engine="pi")
+
+    command, _ = build_container_command(
+        request,
+        "/tmp/runtime.env",
+        "project_workspaces",
+        f"hq-net-{EXECUTION_ID.hex}",
+    )
+    mounts = [command[index + 1] for index, item in enumerate(command) if item == "--mount"]
+
+    assert len(mounts) == 2
+    assert mounts[0].endswith(
+        "dst=/app/workspaces/agent-11111111-1111-4111-8111-111111111111,"
+        "volume-subpath=agent-11111111-1111-4111-8111-111111111111"
+    )
+    assert mounts[1].endswith(
+        "dst=/run/hermeshq/pi,volume-subpath=_runtime_config/pi/agent-11111111-1111-4111-8111-111111111111,readonly"
+    )
+    assert command[-2:] == ["/usr/bin/node", "/app/hermeshq/scripts/pi_runner.mjs"]
+
+
 def test_gateway_uses_a_long_lived_hardened_container(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RUNTIME_IMAGE", "hermeshq-runtime:test")
     request = GatewayRequest(
@@ -208,7 +231,7 @@ def test_runner_overrides_security_sensitive_environment(monkeypatch: pytest.Mon
     workspace = "/app/workspaces/agent-11111111-1111-4111-8111-111111111111"
     assert environment["HOME"] == "/home/appuser"
     assert environment["HERMES_HOME"] == f"{workspace}/.hermes"
-    assert environment["PI_CODING_AGENT_DIR"] == f"{workspace}/.pi"
+    assert environment["PI_CODING_AGENT_DIR"] == "/run/hermeshq/pi"
     assert environment["HERMESHQ_INTERNAL_API_URL"] == "http://backend:8000/api/internal"
     assert environment["HTTPS_PROXY"] == "http://runtime-egress:3128"
     assert environment["OPENAI_API_KEY"] == "agent-secret"
@@ -327,3 +350,12 @@ def test_pi_runner_does_not_shadow_static_imports() -> None:
 
     assert 'await import("path")' not in text
     assert 'await import("fs")' not in text
+
+
+def test_pi_runner_uses_in_memory_untrusted_project_settings() -> None:
+    runner = Path(__file__).resolve().parents[1] / "hermeshq" / "scripts" / "pi_runner.mjs"
+    text = runner.read_text(encoding="utf-8")
+
+    assert "SettingsManager.inMemory(managedSettings, { projectTrusted: false })" in text
+    assert 'modelsStorePath: join(runtimeStateDir, "models-store.json")' in text
+    assert 'extension.path.endsWith("hermeshq-security.ts")' in text

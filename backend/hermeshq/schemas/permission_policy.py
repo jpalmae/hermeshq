@@ -1,6 +1,26 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _validate_rule_object(
+    value: dict | None,
+    list_fields: tuple[str, ...],
+    boolean_fields: tuple[str, ...] = (),
+) -> dict | None:
+    if value is None:
+        return value
+    for field in list_fields:
+        configured = value.get(field)
+        if configured is not None and (
+            not isinstance(configured, list) or any(not isinstance(item, str) for item in configured)
+        ):
+            raise ValueError(f"{field} must be a list of strings")
+    for field in boolean_fields:
+        configured = value.get(field)
+        if configured is not None and not isinstance(configured, bool):
+            raise ValueError(f"{field} must be a boolean")
+    return value
 
 
 class PermissionPolicyBase(BaseModel):
@@ -13,6 +33,26 @@ class PermissionPolicyBase(BaseModel):
     approval_rules: dict = Field(
         default_factory=lambda: {"require_approval_for": [], "auto_approve_threshold": "medium"}
     )
+
+    @field_validator("tool_rules", "command_rules")
+    @classmethod
+    def validate_allow_deny_rules(cls, value: dict) -> dict:
+        return _validate_rule_object(value, ("allow", "deny")) or {}
+
+    @field_validator("path_rules")
+    @classmethod
+    def validate_path_rules(cls, value: dict) -> dict:
+        return _validate_rule_object(value, ("allow_paths", "deny_paths")) or {}
+
+    @field_validator("network_rules")
+    @classmethod
+    def validate_network_rules(cls, value: dict) -> dict:
+        return _validate_rule_object(value, ("allow_domains",), ("deny_all",)) or {}
+
+    @field_validator("approval_rules")
+    @classmethod
+    def validate_approval_rules(cls, value: dict) -> dict:
+        return _validate_rule_object(value, ("require_approval_for",)) or {}
 
 
 class PermissionPolicyCreate(PermissionPolicyBase):
@@ -27,6 +67,26 @@ class PermissionPolicyUpdate(BaseModel):
     command_rules: dict | None = None
     network_rules: dict | None = None
     approval_rules: dict | None = None
+
+    @field_validator("tool_rules", "command_rules")
+    @classmethod
+    def validate_allow_deny_rules(cls, value: dict | None) -> dict | None:
+        return _validate_rule_object(value, ("allow", "deny"))
+
+    @field_validator("path_rules")
+    @classmethod
+    def validate_path_rules(cls, value: dict | None) -> dict | None:
+        return _validate_rule_object(value, ("allow_paths", "deny_paths"))
+
+    @field_validator("network_rules")
+    @classmethod
+    def validate_network_rules(cls, value: dict | None) -> dict | None:
+        return _validate_rule_object(value, ("allow_domains",), ("deny_all",))
+
+    @field_validator("approval_rules")
+    @classmethod
+    def validate_approval_rules(cls, value: dict | None) -> dict | None:
+        return _validate_rule_object(value, ("require_approval_for",))
 
 
 class PermissionPolicyRead(PermissionPolicyBase):

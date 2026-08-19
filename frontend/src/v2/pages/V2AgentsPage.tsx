@@ -113,7 +113,7 @@ export function V2AgentsPage() {
         use_provider_default: !provider,
       };
       if (runtimeType === "pi") {
-        payload.pi_config = { tools: ["read", "bash", "edit"], thinking_level: "off", project_trust: "always" };
+        payload.pi_config = { tools: ["read", "bash", "edit"], thinking_level: "off" };
         payload.permission_policy_id = permissionPolicyId || null;
       }
       if (provider) {

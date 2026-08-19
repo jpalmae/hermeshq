@@ -119,8 +119,8 @@ def _isolated_environment(request: RuntimeEnvironmentRequest) -> dict[str, str]:
                 "RUNTIME_INTERNAL_API_URL", "http://backend:8000/api/internal"
             ).rstrip("/"),
             "PATH": "/opt/venv/bin:/usr/local/bin:/usr/bin:/bin",
-            "PI_AGENT_DIR": f"{workspace}/.pi",
-            "PI_CODING_AGENT_DIR": f"{workspace}/.pi",
+            "PI_AGENT_DIR": "/run/hermeshq/pi",
+            "PI_CODING_AGENT_DIR": "/run/hermeshq/pi",
         }
     )
     if proxy_url:
@@ -205,6 +205,14 @@ def build_container_command(
             [
                 "--mount",
                 f"type=volume,src={workspace_volume},dst={version_target},volume-subpath={version_subpath},readonly",
+            ]
+        )
+    elif request.engine == "pi":
+        pi_config_subpath = f"_runtime_config/pi/agent-{agent_id}"
+        command.extend(
+            [
+                "--mount",
+                f"type=volume,src={workspace_volume},dst=/run/hermeshq/pi,volume-subpath={pi_config_subpath},readonly",
             ]
         )
 

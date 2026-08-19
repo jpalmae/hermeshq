@@ -2,7 +2,7 @@
 // Communication: JSON-RPC over stdin/stdout (newline-delimited)
 
 import * as readline from "readline";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EnvHttpProxyAgent, install, setGlobalDispatcher } from "undici";
 
@@ -27,15 +27,42 @@ function enqueue(fn) {
 
 async function handleInit(params) {
   try {
-    const { createAgentSession, SessionManager } = await import("@earendil-works/pi-coding-agent");
-    const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
+    const {
+      createAgentSession,
+      DefaultResourceLoader,
+      ModelRuntime,
+      SessionManager,
+      SettingsManager,
+    } = await import("@earendil-works/pi-coding-agent");
 
     const agentDir = process.env.PI_CODING_AGENT_DIR || process.env.PI_AGENT_DIR || join(process.env.HOME || "/root", ".pi", "agent");
+    const runtimeStateDir = join(process.env.HOME || "/tmp", ".pi-runtime");
+    mkdirSync(runtimeStateDir, { recursive: true, mode: 0o700 });
     const modelRuntime = await ModelRuntime.create({
-      authPath: join(agentDir, "auth.json"),
+      authPath: join(runtimeStateDir, "auth.json"),
       modelsPath: join(agentDir, "models.json"),
-      modelsStorePath: join(agentDir, "models-store.json"),
+      modelsStorePath: join(runtimeStateDir, "models-store.json"),
     });
+
+    const settingsPath = join(agentDir, "settings.json");
+    const managedSettings = existsSync(settingsPath)
+      ? JSON.parse(readFileSync(settingsPath, "utf8"))
+      : {};
+    const settingsManager = SettingsManager.inMemory(managedSettings, { projectTrusted: false });
+    const resourceLoader = new DefaultResourceLoader({
+      cwd: process.cwd(),
+      agentDir,
+      settingsManager,
+      appendSystemPrompt: params.system_prompt ? [params.system_prompt] : undefined,
+    });
+    await resourceLoader.reload();
+    const extensionsResult = resourceLoader.getExtensions();
+    if (extensionsResult.errors.length > 0) {
+      throw new Error(`Managed Pi extension failed to load: ${extensionsResult.errors[0].error}`);
+    }
+    if (!extensionsResult.extensions.some((extension) => extension.path.endsWith("hermeshq-security.ts"))) {
+      throw new Error("Managed HermesHQ security extension is missing");
+    }
 
     const nvidiaKey = process.env.NVIDIA_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
@@ -83,6 +110,8 @@ async function handleInit(params) {
       cwd: process.cwd(),
       agentDir,
       modelRuntime,
+      settingsManager,
+      resourceLoader,
     });
 
     session = result.session;

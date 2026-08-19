@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 
@@ -11,6 +12,9 @@ class WorkspaceManager:
 
     def build_editable_workspace_path(self, agent_id: str) -> Path:
         return self.build_workspace_path(agent_id) / "work"
+
+    def build_pi_config_path(self, agent_id: str) -> Path:
+        return self.root / "_runtime_config" / "pi" / f"agent-{agent_id}"
 
     def create_workspace(
         self,
@@ -32,14 +36,11 @@ class WorkspaceManager:
 
     def delete_workspace(self, agent_id: str) -> None:
         workspace = self.build_workspace_path(agent_id)
-        if not workspace.exists():
-            return
-        for path in sorted(workspace.rglob("*"), reverse=True):
-            if path.is_file() or path.is_symlink():
-                path.unlink()
-            elif path.is_dir():
-                path.rmdir()
-        workspace.rmdir()
+        pi_config = self.build_pi_config_path(agent_id)
+        if workspace.exists():
+            shutil.rmtree(workspace)
+        if pi_config.exists():
+            shutil.rmtree(pi_config)
 
     def sync_config(
         self,

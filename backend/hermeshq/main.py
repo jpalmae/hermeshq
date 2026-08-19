@@ -72,6 +72,7 @@ from hermeshq.services.hermes_installation import HermesInstallationManager
 from hermeshq.services.hermes_runtime import HermesRuntime
 from hermeshq.services.hermes_version_manager import HermesVersionManager
 from hermeshq.services.instance_backup import InstanceBackupService
+from hermeshq.services.permission_enforcer import PermissionEnforcer
 from hermeshq.services.provider_catalog import BUILTIN_PROVIDERS, normalize_runtime_provider, seed_provider_defaults
 from hermeshq.services.pty_manager import PTYManager
 from hermeshq.services.public_chat_service import PublicChatService
@@ -237,6 +238,7 @@ async def lifespan(app: FastAPI):
     await bootstrap_defaults(app.state.secret_vault)
     app.state.event_broker = EventBroker()
     app.state.workspace_manager = WorkspaceManager(settings.workspaces_root)
+    app.state.permission_enforcer = PermissionEnforcer(AsyncSessionLocal)
     app.state.hermes_version_manager = HermesVersionManager(AsyncSessionLocal)
     await app.state.hermes_version_manager.ensure_default_catalog_entries()
     app.state.instance_backup_service = InstanceBackupService(AsyncSessionLocal)
