@@ -19,9 +19,10 @@ import { useSessionStore } from "../../stores/sessionStore";
 import { v2toast, extractErrorMessage } from "../toast";
 import { V2AgentIntegrationsTab } from "./V2AgentIntegrationsTab";
 import { V2AgentConfigTab } from "./V2AgentConfigTab";
+import { V2AgentPermissionsTab } from "./V2AgentPermissionsTab";
 import { useI18n } from "../../lib/i18n";
 
-type DetailTab = "conversation" | "config" | "channels" | "integrations" | "terminal" | "skills" | "workspace" | "ledger" | "activity";
+type DetailTab = "conversation" | "config" | "channels" | "integrations" | "terminal" | "skills" | "workspace" | "ledger" | "activity" | "permissions";
 
 function statusTone(status: string): "success" | "error" | "warn" | "neutral" {
   if (status === "running") return "success";
@@ -186,12 +187,15 @@ export function V2AgentDetailPage() {
   const name = agent.friendly_name || agent.name;
   const isRunning = agent.status === "running";
 
+  const isPi = agent.runtime_type === "pi";
+
   const TABS: Array<{ id: DetailTab; label: string }> = [
     { id: "conversation", label: t("v2.conversation") },
     { id: "config", label: t("v2.config") },
     { id: "channels", label: t("v2.channels") },
     { id: "integrations", label: t("v2.integrations") },
     { id: "terminal", label: t("v2.terminal") },
+    ...(isPi ? [{ id: "permissions" as DetailTab, label: t("v2.permissions") }] : []),
     { id: "skills", label: t("v2.skills") },
     { id: "workspace", label: t("v2.workspace") },
     { id: "ledger", label: t("v2.ledger") },
@@ -396,6 +400,10 @@ export function V2AgentDetailPage() {
             archived={agent.is_archived}
           />
         </section>
+      ) : null}
+
+      {tab === "permissions" && isPi ? (
+        <V2AgentPermissionsTab agent={agent} isAdmin={isAdmin} />
       ) : null}
 
       {tab === "skills" ? (
