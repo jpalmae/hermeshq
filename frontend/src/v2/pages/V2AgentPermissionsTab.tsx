@@ -71,9 +71,9 @@ export function V2AgentPermissionsTab({ agent, isAdmin }: { agent: Agent; isAdmi
 
               {/* Rules summary */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <RuleSummary icon="tools" label={t("v2.toolsAllowed")} items={assignedPolicy.tool_rules?.allow ?? []} />
-                <RuleSummary icon="commands" label={t("v2.commandsDenied")} items={assignedPolicy.command_rules?.deny ?? []} danger />
-                <RuleSummary icon="paths" label={t("v2.pathsProtected")} items={assignedPolicy.path_rules?.deny_paths ?? []} danger />
+                <RuleSummary label={t("v2.toolsAllowed")} items={assignedPolicy.tool_rules?.allow ?? []} />
+                <RuleSummary label={t("v2.commandsDenied")} items={assignedPolicy.command_rules?.deny ?? []} danger />
+                <RuleSummary label={t("v2.pathsProtected")} items={assignedPolicy.path_rules?.deny_paths ?? []} danger />
                 <div style={{ gridColumn: "1 / -1" }}>
                   <div style={{ fontSize: 11, fontWeight: 620, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--v2-text-muted)", marginBottom: 6 }}>
                     {t("v2.networkAccess")}

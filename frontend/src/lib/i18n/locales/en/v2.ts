@@ -406,7 +406,6 @@ const v2: Record<string, string> = {
   "v2.test": "Test",
   "v2.testing": "Testing…",
   "v2.allowed": "Allowed",
-  "v2.blocked": "Blocked",
   "v2.requiresApproval": "Requires approval",
   "v2.policy": "Policy",
   "v2.permissionTestFailed": "Permission test failed",
