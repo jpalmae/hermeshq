@@ -1006,3 +1006,106 @@ async def control_run_integration_action(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"success": success, "message": message, "details": details}
+
+
+# ─── Permission Policies (for Pi agents) ─────────────────────────────────────
+
+
+@router.get("/permission-policies", include_in_schema=False)
+async def control_list_policies(
+    current_agent: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> list:
+    from hermeshq.models.permission_policy import PermissionPolicy
+
+    result = await db.execute(select(PermissionPolicy).order_by(PermissionPolicy.is_system.desc(), PermissionPolicy.name.asc()))
+    return list(result.scalars().all())
+
+
+@router.post("/permission-policies", include_in_schema=False)
+async def control_create_policy(
+    request: Request,
+    current_agent: Agent = Depends(_require_admin_scope),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from hermeshq.models.permission_policy import PermissionPolicy
+
+    payload = await request.json()
+    if not payload.get("name"):
+        raise HTTPException(status_code=422, detail="Field 'name' is required")
+    policy = PermissionPolicy(
+        name=payload["name"],
+        description=payload.get("description"),
+        tool_rules=payload.get("tool_rules") or {"allow": ["*"], "deny": []},
+        path_rules=payload.get("path_rules") or {"allow_paths": ["/workspace/**"], "deny_paths": []},
+        command_rules=payload.get("command_rules") or {"allow": [], "deny": []},
+        network_rules=payload.get("network_rules") or {"deny_all": False},
+        approval_rules=payload.get("approval_rules") or {"require_approval_for": [], "auto_approve_threshold": "medium"},
+    )
+    db.add(policy)
+    await db.commit()
+    await db.refresh(policy)
+    return {"id": policy.id, "name": policy.name}
+
+
+@router.put("/permission-policies/{policy_id}", include_in_schema=False)
+async def control_update_policy(
+    policy_id: str,
+    request: Request,
+    current_agent: Agent = Depends(_require_admin_scope),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from hermeshq.models.permission_policy import PermissionPolicy
+
+    policy = await db.get(PermissionPolicy, policy_id)
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    payload = await request.json()
+    for field in ("name", "description", "tool_rules", "path_rules", "command_rules", "network_rules", "approval_rules"):
+        if field in payload:
+            setattr(policy, field, payload[field])
+    await db.commit()
+    await db.refresh(policy)
+    return {"id": policy.id, "name": policy.name}
+
+
+@router.delete("/permission-policies/{policy_id}", include_in_schema=False)
+async def control_delete_policy(
+    policy_id: str,
+    current_agent: Agent = Depends(_require_admin_scope),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from hermeshq.models.permission_policy import PermissionPolicy
+
+    policy = await db.get(PermissionPolicy, policy_id)
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    if policy.is_system:
+        raise HTTPException(status_code=400, detail="System policies cannot be deleted")
+    await db.delete(policy)
+    await db.commit()
+    return {"deleted": True}
+
+
+@router.post("/agents/{agent_id}/test-permission", include_in_schema=False)
+async def control_test_permission(
+    agent_id: str,
+    request: Request,
+    current_agent: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from hermeshq.services.permission_enforcer import PermissionEnforcer
+
+    payload = await request.json()
+    target = await db.get(Agent, agent_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    enforcer = PermissionEnforcer(request.app.state.supervisor.session_factory if hasattr(request.app.state, "supervisor") else None)
+    # Use the target agent's session if needed
+    try:
+        allowed, reason, requires_approval = await enforcer.evaluate(
+            target, payload.get("tool", ""), payload.get("input") or {}
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"allowed": allowed, "reason": reason, "requires_approval": requires_approval}

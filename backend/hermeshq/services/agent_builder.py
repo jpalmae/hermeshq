@@ -42,6 +42,15 @@ RUNTIME PROFILES (you decide which one — never ask the user):
 - technical: Adds code execution, git, and terminal access. Use when the agent needs to run scripts, generate PDFs, or do data processing.
 - security: Adds security scanning and network tools.
 
+RUNTIMES (you decide which one — never ask the user):
+- hermes: Python-based runtime with toolsets (safe, browser, file, etc.) and gallery skills.
+- pi: TypeScript-based runtime (Pi from Earendil). More sandboxed, uses permission policies for granular control.
+Use hermes for most agents. Suggest pi when the user needs strict tool/path/command restrictions.
+
+PERMISSION POLICIES (for Pi agents only):
+- If you choose runtime_type=pi, mention which policy fits best.
+- Existing policies: Pi Developer (standard), Pi Read-Only (analysis), Pi Full Access (unrestricted), Pi Sandboxed (tight).
+
 INTEGRATION PACKAGES:
 - Use list_capabilities to see what connectors are available (SharePoint, M365 Mail, Google Workspace, etc.).
 - When the user mentions a service (email, calendar, documents), map it to the appropriate integration slug.
@@ -72,6 +81,11 @@ AVAILABLE TOOLS — call them using this EXACT format:
 You can also call:
 <tool_call>
 <function=list_capabilities>
+</function>
+</tool_call>
+
+<tool_call>
+<function=list_runtimes>
 </function>
 </tool_call>
 
@@ -138,6 +152,14 @@ def _get_builder_tools() -> list[dict]:
         {
             "type": "function",
             "function": {
+                "name": "list_runtimes",
+                "description": "List available agent runtimes: hermes (Python) and pi (TypeScript).",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "propose_agent_draft",
                 "description": "Propose or update the agent draft. Call this when you have enough information to create a complete agent.",
                 "parameters": {
@@ -148,6 +170,8 @@ def _get_builder_tools() -> list[dict]:
                         "description": {"type": "string", "description": "What the agent does"},
                         "system_prompt": {"type": "string", "description": "Instructions for the agent"},
                         "runtime_profile": {"type": "string", "enum": ["standard", "technical", "security"]},
+                        "runtime_type": {"type": "string", "enum": ["hermes", "pi"]},
+                        "permission_policy_id": {"type": "string", "description": "Permission policy ID for Pi agents"},
                         "integration_configs": {
                             "type": "object",
                             "description": "Map of integration slug to config dict",
@@ -197,6 +221,12 @@ async def _execute_tool(
                 {"slug": "security", "description": "Adds security scanning and network tools"},
             ]
         )
+
+    if tool_name == "list_runtimes":
+        return json.dumps([
+            {"id": "hermes", "name": "Hermes", "description": "Python runtime with toolsets and gallery skills"},
+            {"id": "pi", "name": "Pi", "description": "TypeScript runtime with permission policies and strict sandboxing"},
+        ])
 
     if tool_name == "propose_agent_draft":
         draft_data = {k: v for k, v in arguments.items() if k != "ready_to_create"}
@@ -484,10 +514,13 @@ async def finalize_agent_from_draft(
         slug=draft.slug or agent_name.lower().replace(" ", "-"),
         description=draft.description,
         runtime_profile=draft.runtime_profile,
+        runtime_type=draft.runtime_type if hasattr(draft, 'runtime_type') else "hermes",
         system_prompt=draft.system_prompt,
         enabled_toolsets=draft.enabled_toolsets,
         integration_configs=draft.integration_configs,
     )
+    if hasattr(draft, 'permission_policy_id') and draft.permission_policy_id:
+        payload.permission_policy_id = draft.permission_policy_id
 
     workspace_manager = getattr(app_state, "workspace_manager", None)
     hermes_version_manager = getattr(app_state, "hermes_version_manager", None)
