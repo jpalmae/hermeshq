@@ -55,7 +55,7 @@ async function handleInit(params) {
       settingsManager,
       appendSystemPrompt: params.system_prompt ? [params.system_prompt] : undefined,
       skillsOverride: (current) => ({
-        skills: [...current.skills, ...discoverPiSkills()],
+        skills: [...current.skills, ...discoverPiSkills(agentDir)],
         diagnostics: current.diagnostics,
       }),
     });
@@ -254,8 +254,8 @@ function extractToolCalls(messages) {
   return calls;
 }
 
-function discoverPiSkills() {
-  const skillsDir = join(process.cwd(), ".pi", "skills");
+function discoverPiSkills(agentDir) {
+  const skillsDir = join(agentDir, "skills");
   const skills = [];
   if (!existsSync(skillsDir)) return skills;
   for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
