@@ -2,7 +2,7 @@
 // Communication: JSON-RPC over stdin/stdout (newline-delimited)
 
 import * as readline from "readline";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { EnvHttpProxyAgent, install, setGlobalDispatcher } from "undici";
 
@@ -54,6 +54,10 @@ async function handleInit(params) {
       agentDir,
       settingsManager,
       appendSystemPrompt: params.system_prompt ? [params.system_prompt] : undefined,
+      skillsOverride: (current) => ({
+        skills: [...current.skills, ...discoverPiSkills()],
+        diagnostics: current.diagnostics,
+      }),
     });
     await resourceLoader.reload();
     const extensionsResult = resourceLoader.getExtensions();
@@ -248,6 +252,35 @@ function extractToolCalls(messages) {
     }
   }
   return calls;
+}
+
+function discoverPiSkills() {
+  const skillsDir = join(process.cwd(), ".pi", "skills");
+  const skills = [];
+  if (!existsSync(skillsDir)) return skills;
+  for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const skillMd = join(skillsDir, entry.name, "SKILL.md");
+    if (!existsSync(skillMd)) continue;
+    skills.push({
+      name: entry.name,
+      description: extractSkillDescription(readFileSync(skillMd, "utf8"), entry.name),
+      filePath: skillMd,
+      baseDir: join(skillsDir, entry.name),
+      source: "custom",
+    });
+  }
+  return skills;
+}
+
+function extractSkillDescription(content, fallbackName) {
+  const fm = content.match(/^---\n([\s\S]*?)\n---/);
+  if (fm) {
+    const desc = fm[1].match(/^description:\s*(.+)$/m);
+    if (desc) return desc[1].trim();
+  }
+  const heading = content.match(/^#\s+(.+)$/m);
+  return heading ? heading[1].trim() : fallbackName;
 }
 
 rl.on("line", (line) => {

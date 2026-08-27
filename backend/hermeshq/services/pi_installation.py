@@ -36,7 +36,35 @@ class PiInstallationManager:
         self._write_models(agent, pi_home)
         self._write_security_extension(pi_home)
         self._write_integration_extension(agent, pi_home)
+        self._sync_skills(agent, pi_home)
         self._remove_legacy_managed_config(agent.id)
+
+    def _sync_skills(self, agent: Agent, pi_home: Path) -> None:
+        """Bridge agent skills from the shared Hermes skills dir into .pi/skills/.
+
+        Hermes materializes agent.skills under workspace/.hermes/skills/hermeshq-managed/.
+        Pi discovers skills via skillsOverride in the runner (project trust is disabled),
+        so a plain copy is enough.
+        """
+        import shutil
+
+        workspace = self.workspace_manager.build_workspace_path(agent.id)
+        hermes_skills = workspace / ".hermes" / "skills" / "hermeshq-managed"
+        pi_skills = pi_home / "skills"
+        pi_skills.mkdir(exist_ok=True)
+
+        if not hermes_skills.exists():
+            return
+
+        for skill_dir in hermes_skills.iterdir():
+            if not skill_dir.is_dir():
+                continue
+            if not (skill_dir / "SKILL.md").exists():
+                continue
+            target = pi_skills / skill_dir.name
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.copytree(skill_dir, target, ignore=shutil.ignore_patterns(".hermeshq-skill.json"))
 
     async def _resolve_api_key(self, agent: Agent) -> str | None:
         if not agent.api_key_ref or not self.session_factory:
