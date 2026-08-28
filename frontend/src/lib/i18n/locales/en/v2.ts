@@ -410,6 +410,11 @@ const v2: Record<string, string> = {
   "v2.policy": "Policy",
   "v2.permissionTestFailed": "Permission test failed",
   "v2.noDomains": "No domains allowed",
+  "v2.primary": "primary",
+  "v2.chained": "chained",
+  "v2.addChainedPolicy": "+ Add chained policy",
+  "v2.chainHint": "Policies are combined: explicit denies always win; allows are the union of all chained policies.",
+  "v2.policiesUpdated": "Policies updated",
 };
 
 export default v2;

@@ -133,6 +133,7 @@ export interface Agent {
   runtime_type?: string;
   pi_config?: Record<string, unknown> | null;
   permission_policy_id?: string | null;
+  permission_policy_ids?: string[];
   workspace_path: string;
   enabled_toolsets: string[];
   disabled_toolsets: string[];

@@ -63,6 +63,7 @@ class AgentCreate(BaseModel):
     runtime_type: str = "hermes"
     pi_config: dict | None = None
     permission_policy_id: str | None = None
+    permission_policy_ids: list[str] | None = None
 
 
 class AgentUpdate(BaseModel):
@@ -99,6 +100,7 @@ class AgentUpdate(BaseModel):
     runtime_type: str | None = None
     pi_config: dict | None = None
     permission_policy_id: str | None = None
+    permission_policy_ids: list[str] | None = None
 
 
 class AgentRead(ORMModel):
@@ -149,6 +151,7 @@ class AgentRead(ORMModel):
     runtime_type: str = "hermes"
     pi_config: dict | None = None
     permission_policy_id: str | None = None
+    permission_policy_ids: list[str] | None = None
     created_at: datetime
     updated_at: datetime
     node: NodeRead | None = None

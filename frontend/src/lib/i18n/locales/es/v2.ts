@@ -410,6 +410,11 @@ const v2: Record<string, string> = {
   "v2.policy": "Política",
   "v2.permissionTestFailed": "Fallo en la prueba de permiso",
   "v2.noDomains": "Sin dominios permitidos",
+  "v2.primary": "primaria",
+  "v2.chained": "encadenada",
+  "v2.addChainedPolicy": "+ Añadir política encadenada",
+  "v2.chainHint": "Las políticas se combinan: los denies explícitos siempre ganan; los allows son la unión de todas las políticas encadenadas.",
+  "v2.policiesUpdated": "Políticas actualizadas",
 };
 
 export default v2;

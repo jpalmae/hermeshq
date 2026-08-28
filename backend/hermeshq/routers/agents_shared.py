@@ -42,6 +42,7 @@ USER_EDITABLE_FIELDS = {
     "runtime_type",
     "pi_config",
     "permission_policy_id",
+    "permission_policy_ids",
 }
 
 MAX_BULK_AGENT_TARGETS = 25
