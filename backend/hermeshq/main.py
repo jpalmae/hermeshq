@@ -238,6 +238,14 @@ async def lifespan(app: FastAPI):
     await bootstrap_defaults(app.state.secret_vault)
     app.state.event_broker = EventBroker()
     app.state.workspace_manager = WorkspaceManager(settings.workspaces_root)
+    try:
+        result = await AsyncSessionLocal.execute(select(Agent.id))
+        live_ids = set(result.scalars())
+        reclaimed = app.state.workspace_manager.cleanup_orphan_pi_configs(live_ids)
+        if reclaimed:
+            logger.info("Reclaimed %d orphan Pi config dirs: %s", len(reclaimed), ", ".join(reclaimed))
+    except Exception:
+        logger.warning("Pi config orphan sweep failed", exc_info=True)
     app.state.permission_enforcer = PermissionEnforcer(AsyncSessionLocal)
     app.state.hermes_version_manager = HermesVersionManager(AsyncSessionLocal)
     await app.state.hermes_version_manager.ensure_default_catalog_entries()

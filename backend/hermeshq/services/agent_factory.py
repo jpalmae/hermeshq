@@ -289,7 +289,7 @@ async def create_agent_from_config(
         team_tags=payload.team_tags,
         supervisor_agent_id=payload.supervisor_agent_id,
         runtime_type=payload.runtime_type,
-        pi_config=payload.pi_config,
+        pi_config=payload.pi_config if payload.runtime_type == "pi" else None,
         permission_policy_id=payload.permission_policy_id,
         workspace_path="pending",
     )

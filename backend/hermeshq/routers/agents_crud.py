@@ -403,6 +403,10 @@ async def delete_agent(
             details={"deleted_by": current_user.username},
         )
         await db.commit()
+        workspace_manager = getattr(request.app.state, "workspace_manager", None)
+        if workspace_manager is not None:
+            with contextlib.suppress(Exception):
+                workspace_manager.delete_workspace(agent_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     active_task_ids = list(
