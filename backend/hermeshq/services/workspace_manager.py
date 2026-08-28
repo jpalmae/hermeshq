@@ -42,6 +42,26 @@ class WorkspaceManager:
         if pi_config.exists():
             shutil.rmtree(pi_config)
 
+    def cleanup_orphan_pi_configs(self, live_agent_ids: set[str]) -> list[str]:
+        """Remove _runtime_config/pi/agent-* dirs whose agent no longer exists.
+
+        Returns the removed agent ids. Called once at startup so permanent
+        deletes from older versions (which skipped cleanup) are reclaimed.
+        """
+        removed: list[str] = []
+        pi_root = self.root / "_runtime_config" / "pi"
+        if not pi_root.exists():
+            return removed
+        for entry in pi_root.iterdir():
+            if not entry.is_dir() or not entry.name.startswith("agent-"):
+                continue
+            agent_id = entry.name[len("agent-"):]
+            if agent_id in live_agent_ids:
+                continue
+            shutil.rmtree(entry, ignore_errors=True)
+            removed.append(agent_id)
+        return removed
+
     def sync_config(
         self,
         agent_id: str,
