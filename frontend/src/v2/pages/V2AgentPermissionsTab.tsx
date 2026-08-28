@@ -16,7 +16,35 @@ export function V2AgentPermissionsTab({ agent, isAdmin }: { agent: Agent; isAdmi
   const [testInput, setTestInput] = useState("ls -la");
   const [testResult, setTestResult] = useState<{ allowed: boolean; reason: string | null; policy_name: string | null; requires_approval: boolean } | null>(null);
 
-  const assignedPolicy = policies?.find((p) => p.id === agent.permission_policy_id);
+  const primaryId = agent.permission_policy_id ?? "";
+  const chainedIds = ((agent as unknown as { permission_policy_ids?: string[] }).permission_policy_ids ?? []);
+  const assignedIds = [primaryId, ...chainedIds].filter(Boolean);
+  const assignedPolicies = (policies ?? []).filter((p) => assignedIds.includes(p.id));
+  const availablePolicies = (policies ?? []).filter((p) => !assignedIds.includes(p.id));
+
+  async function savePolicySets(nextPrimary: string, nextChained: string[]) {
+    try {
+      await updateAgent.mutateAsync({
+        agentId: agent.id,
+        payload: { permission_policy_id: nextPrimary || null, permission_policy_ids: nextChained },
+      });
+      v2toast.success(t("v2.policiesUpdated"));
+    } catch (e) {
+      v2toast.error(extractErrorMessage(e, t("v2.policyRemoveFailed")));
+    }
+  }
+
+  async function handleAddPolicy(policyId: string, asPrimary: boolean) {
+    const nextChained = asPrimary ? chainedIds : [...chainedIds, policyId];
+    const nextPrimary = asPrimary ? policyId : primaryId;
+    await savePolicySets(nextPrimary, nextChained);
+  }
+
+  async function handleRemovePolicy(policyId: string) {
+    const nextPrimary = policyId === primaryId ? (chainedIds[0] ?? "") : primaryId;
+    const nextChained = chainedIds.filter((id) => id !== policyId);
+    await savePolicySets(nextPrimary, nextChained);
+  }
 
   async function handleTest() {
     try {
@@ -31,74 +59,84 @@ export function V2AgentPermissionsTab({ agent, isAdmin }: { agent: Agent; isAdmi
     }
   }
 
-  async function handleRemovePolicy() {
-    try {
-      await updateAgent.mutateAsync({ agentId: agent.id, payload: { permission_policy_id: null } });
-      v2toast.success(t("v2.policyRemoved"));
-    } catch (e) {
-      v2toast.error(extractErrorMessage(e, t("v2.policyRemoveFailed")));
-    }
-  }
-
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
-      {/* Current policy summary */}
+      {/* Current policies (chained) */}
       <section className="v2-card">
         <div className="v2-card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h2 className="v2-card-title">{t("v2.assignedPolicy")}</h2>
-          {assignedPolicy ? (
-            <Link to={`/v2/settings?tab=permissionPolicies`} className="v2-btn v2-btn-ghost" style={{ fontSize: 12 }}>
-              {t("v2.editPolicy")}
-            </Link>
-          ) : null}
+          <Link to={`/v2/settings?tab=permissionPolicies`} className="v2-btn v2-btn-ghost" style={{ fontSize: 12 }}>
+            {t("v2.editPolicy")}
+          </Link>
         </div>
         <div className="v2-card-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {assignedPolicy ? (
+          {assignedPolicies.length > 0 ? (
             <>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontWeight: 620, fontSize: 15 }}>{assignedPolicy.name}</span>
-                  {assignedPolicy.is_system ? (
-                    <span className="v2-badge" style={{ background: "var(--v2-accent-subtle)", color: "var(--v2-accent)", fontSize: 11, padding: "2px 8px", borderRadius: 4 }}>
-                      {t("v2.system")}
-                    </span>
+              {assignedPolicies.length > 1 ? (
+                <p className="v2-field-hint">{t("v2.chainHint")}</p>
+              ) : null}
+              {assignedPolicies.map((policy) => (
+                <div key={policy.id} style={{ paddingBottom: 12, borderBottom: "1px solid var(--v2-border)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontWeight: 620, fontSize: 14 }}>{policy.name}</span>
+                    {policy.id === primaryId ? (
+                      <span className="v2-badge" style={{ background: "var(--v2-accent-subtle)", color: "var(--v2-accent)", fontSize: 10, padding: "2px 6px", borderRadius: 4 }}>
+                        {t("v2.primary")}
+                      </span>
+                    ) : (
+                      <span className="v2-badge" style={{ background: "var(--v2-bg-sunken)", color: "var(--v2-text-muted)", fontSize: 10, padding: "2px 6px", borderRadius: 4 }}>
+                        {t("v2.chained")}
+                      </span>
+                    )}
+                    {policy.is_system ? (
+                      <span className="v2-badge" style={{ background: "var(--v2-bg-sunken)", color: "var(--v2-text-muted)", fontSize: 10, padding: "2px 6px", borderRadius: 4 }}>
+                        {t("v2.system")}
+                      </span>
+                    ) : null}
+                    {isAdmin ? (
+                      <button
+                        className="v2-btn v2-btn-danger"
+                        style={{ marginLeft: "auto", fontSize: 11, padding: "3px 8px" }}
+                        onClick={() => void handleRemovePolicy(policy.id)}
+                        disabled={updateAgent.isPending}
+                      >
+                        ×
+                      </button>
+                    ) : null}
+                  </div>
+                  {policy.description ? (
+                    <p style={{ fontSize: 12.5, color: "var(--v2-text-muted)" }}>{policy.description}</p>
                   ) : null}
-                </div>
-                {assignedPolicy.description ? (
-                  <p style={{ fontSize: 13, color: "var(--v2-text-muted)" }}>{assignedPolicy.description}</p>
-                ) : null}
-              </div>
-
-              {/* Rules summary */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <RuleSummary label={t("v2.toolsAllowed")} items={assignedPolicy.tool_rules?.allow ?? []} />
-                <RuleSummary label={t("v2.commandsDenied")} items={assignedPolicy.command_rules?.deny ?? []} danger />
-                <RuleSummary label={t("v2.pathsProtected")} items={assignedPolicy.path_rules?.deny_paths ?? []} danger />
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <div style={{ fontSize: 11, fontWeight: 620, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--v2-text-muted)", marginBottom: 6 }}>
-                    {t("v2.networkAccess")}
-                  </div>
-                  <div style={{ fontSize: 12.5, color: assignedPolicy.network_rules?.deny_all ? "var(--v2-danger)" : "var(--v2-text-secondary)" }}>
-                    {assignedPolicy.network_rules?.deny_all
-                      ? `${t("v2.networkBlocked")} — ${(assignedPolicy.network_rules?.allow_domains ?? []).join(", ") || t("v2.noDomains")}`
-                      : t("v2.networkOpen")}
+                  <div style={{ display: "flex", gap: 14, fontSize: 11.5, color: "var(--v2-text-muted)", marginTop: 4 }}>
+                    <span>{t("v2.toolsAllowed")}: {policy.tool_rules?.allow?.length ?? 0}</span>
+                    <span>{t("v2.commandsDenied")}: {policy.command_rules?.deny?.length ?? 0}</span>
+                    <span>{t("v2.pathsProtected")}: {policy.path_rules?.deny_paths?.length ?? 0}</span>
+                    {policy.network_rules?.deny_all ? <span style={{ color: "var(--v2-danger)" }}>{t("v2.networkBlocked")}</span> : null}
                   </div>
                 </div>
-              </div>
+              ))}
 
-              {isAdmin ? (
-                <button className="v2-btn v2-btn-danger" style={{ alignSelf: "flex-start", fontSize: 12.5, marginTop: 4 }} onClick={() => void handleRemovePolicy()} disabled={updateAgent.isPending}>
-                  {t("v2.removePolicy")}
-                </button>
+              {isAdmin && availablePolicies.length > 0 ? (
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <select className="v2-select" defaultValue="" onChange={(e) => { if (e.target.value) void handleAddPolicy(e.target.value, false); e.currentTarget.value = ""; }} disabled={updateAgent.isPending}>
+                    <option value="">{t("v2.addChainedPolicy")}</option>
+                    {availablePolicies.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
               ) : null}
             </>
           ) : (
             <div style={{ textAlign: "center", padding: "20px 0", color: "var(--v2-text-muted)" }}>
               <p style={{ marginBottom: 12 }}>{t("v2.noPolicyAssigned")}</p>
-              {isAdmin ? (
-                <Link to={`/v2/settings?tab=permissionPolicies`} className="v2-btn v2-btn-primary" style={{ fontSize: 12.5 }}>
-                  {t("v2.assignPolicy")}
-                </Link>
+              {isAdmin && (policies ?? []).length > 0 ? (
+                <select className="v2-select" defaultValue="" onChange={(e) => { if (e.target.value) void handleAddPolicy(e.target.value, true); e.currentTarget.value = ""; }} disabled={updateAgent.isPending}>
+                  <option value="">{t("v2.assignPolicy")}</option>
+                  {(policies ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
               ) : null}
             </div>
           )}
@@ -148,27 +186,6 @@ export function V2AgentPermissionsTab({ agent, isAdmin }: { agent: Agent; isAdmi
           ) : null}
         </div>
       </section>
-    </div>
-  );
-}
-
-function RuleSummary({ label, items, danger }: { label: string; items: string[]; danger?: boolean }) {
-  return (
-    <div>
-      <div style={{ fontSize: 11, fontWeight: 620, textTransform: "uppercase", letterSpacing: "0.06em", color: danger ? "var(--v2-danger)" : "var(--v2-text-muted)", marginBottom: 6 }}>
-        {label}
-      </div>
-      {items.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: "var(--v2-text-muted)" }}>—</div>
-      ) : (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-          {items.map((item) => (
-            <code key={item} style={{ fontSize: 11, padding: "2px 6px", background: "var(--v2-bg-sunken)", borderRadius: 4, fontFamily: "var(--v2-font-mono)" }}>
-              {item}
-            </code>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

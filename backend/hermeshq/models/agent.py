@@ -69,6 +69,7 @@ class Agent(TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    permission_policy_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
     service_token_version: Mapped[int] = mapped_column(Integer, default=1)
 
     __table_args__ = (

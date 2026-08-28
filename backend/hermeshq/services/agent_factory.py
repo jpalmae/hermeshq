@@ -291,6 +291,7 @@ async def create_agent_from_config(
         runtime_type=payload.runtime_type,
         pi_config=payload.pi_config if payload.runtime_type == "pi" else None,
         permission_policy_id=payload.permission_policy_id,
+        permission_policy_ids=list(payload.permission_policy_ids or []),
         workspace_path="pending",
     )
 

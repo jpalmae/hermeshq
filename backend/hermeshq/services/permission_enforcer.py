@@ -35,10 +35,99 @@ class PermissionEnforcer:
         self.session_factory = session_factory
 
     async def get_policy(self, agent: Agent) -> PermissionPolicy | None:
-        if not agent.permission_policy_id or self.session_factory is None:
-            return None
+        """Primary policy plus chained extras, merged (deny-wins, allow-union)."""
+        policies = await self.get_policies(agent)
+        return self._merge_policies(policies)
+
+    async def get_policies(self, agent: Agent) -> list[PermissionPolicy]:
+        """All policies assigned to the agent: primary first, then chained extras."""
+        ids: list[str] = []
+        if agent.permission_policy_id:
+            ids.append(agent.permission_policy_id)
+        for pid in getattr(agent, "permission_policy_ids", None) or []:
+            if isinstance(pid, str) and pid and pid not in ids:
+                ids.append(pid)
+        if not ids or self.session_factory is None:
+            return []
         async with self.session_factory() as session:
-            return await session.get(PermissionPolicy, agent.permission_policy_id)
+            loaded: list[PermissionPolicy] = []
+            for pid in ids:
+                policy = await session.get(PermissionPolicy, pid)
+                if policy is not None:
+                    loaded.append(policy)
+            return loaded
+
+    def _merge_policies(self, policies: list[PermissionPolicy]) -> PermissionPolicy | None:
+        if not policies:
+            return None
+        if len(policies) == 1:
+            return policies[0]
+
+        def union(*lists: list) -> list:
+            seen: set[str] = set()
+            out: list[str] = []
+            for lst in lists:
+                for item in lst:
+                    if isinstance(item, str) and item not in seen:
+                        seen.add(item)
+                        out.append(item)
+            return out
+
+        tool_allow: list[str] = []
+        tool_deny: list[str] = []
+        path_allow: list[str] = []
+        path_deny: list[str] = []
+        cmd_allow: list[str] = []
+        cmd_deny: list[str] = []
+        approval: list[str] = []
+        deny_all = False
+        domain_lists: list[list[str]] = []
+        names: list[str] = []
+
+        for p in policies:
+            names.append(p.name)
+            tr = p.tool_rules or {}
+            tool_allow = union(tool_allow, self._patterns(tr.get("allow")))
+            tool_deny = union(tool_deny, self._patterns(tr.get("deny")))
+            pr = p.path_rules or {}
+            path_allow = union(path_allow, self._patterns(pr.get("allow_paths")))
+            path_deny = union(path_deny, self._patterns(pr.get("deny_paths")))
+            cr = p.command_rules or {}
+            cmd_allow = union(cmd_allow, self._patterns(cr.get("allow")))
+            cmd_deny = union(cmd_deny, self._patterns(cr.get("deny")))
+            ar = p.approval_rules or {}
+            approval = union(approval, self._patterns(ar.get("require_approval_for")))
+            nr = p.network_rules or {}
+            if nr.get("deny_all"):
+                deny_all = True
+                domain_lists.append(self._patterns(nr.get("allow_domains")))
+
+        if domain_lists:
+            allow_domains: list[str] = []
+            for domain in domain_lists[0]:
+                if all(domain in lst for lst in domain_lists[1:]):
+                    allow_domains.append(domain)
+        else:
+            allow_domains = []
+
+        return PermissionPolicy(
+            id="chained",
+            name=" + ".join(names),
+            description=f"Chained policies: {', '.join(names)}",
+            tool_rules={"allow": tool_allow, "deny": tool_deny},
+            path_rules={"allow_paths": path_allow, "deny_paths": path_deny},
+            command_rules={"allow": cmd_allow, "deny": cmd_deny},
+            network_rules={"allow_domains": allow_domains, "deny_all": deny_all},
+            approval_rules={
+                "require_approval_for": approval,
+                "auto_approve_threshold": min(
+                    (p.approval_rules or {}).get("auto_approve_threshold", "medium") for p in policies
+                )
+                if policies
+                else "medium",
+            },
+            is_system=all(p.is_system for p in policies),
+        )
 
     async def evaluate(
         self,

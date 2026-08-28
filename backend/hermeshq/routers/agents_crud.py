@@ -133,6 +133,7 @@ async def create_agent(
         runtime_type=payload.runtime_type,
         pi_config=payload.pi_config,
         permission_policy_id=payload.permission_policy_id,
+        permission_policy_ids=list(payload.permission_policy_ids or []),
         workspace_path="pending",
         auxiliary_models=encrypt_auxiliary_models(
             payload.auxiliary_models,
