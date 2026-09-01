@@ -148,7 +148,7 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Download OpenAPI contract
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: openapi-contract
           path: openapi-contract
