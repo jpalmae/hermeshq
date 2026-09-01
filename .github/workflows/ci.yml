@@ -116,7 +116,7 @@ jobs:
         run: python -m hermeshq.scripts.export_openapi "$RUNNER_TEMP/openapi.json"
 
       - name: Upload OpenAPI contract
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openapi-contract
           path: ${{ runner.temp }}/openapi.json
