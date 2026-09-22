@@ -24,7 +24,7 @@ def _evaluate(tool: str, tool_input: dict) -> dict | None:
         return None
     payload = json.dumps({"tool": tool, "input": tool_input}).encode()
     request = urllib.request.Request(
-        f"{api_url}/internal/control/permissions/evaluate",
+        f"{api_url}/control/permissions/evaluate",
         data=payload,
         headers={
             "Content-Type": "application/json",

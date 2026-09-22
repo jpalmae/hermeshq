@@ -15,9 +15,9 @@ class TestGatewayHandle:
     def test_base_and_ws_urls(self):
         process = MagicMock()
         process.returncode = None
-        handle = GatewayHandle(agent_id="a1", port=9310, process=process)
+        handle = GatewayHandle(agent_id="a1", port=9310, process=process, inner_token="tok123")
         assert handle.base_url == "http://127.0.0.1:9310"
-        assert handle.ws_url == "ws://127.0.0.1:9310/api/ws"
+        assert handle.ws_url == "ws://127.0.0.1:9310/api/ws?token=tok123"
 
     def test_touch_updates_last_active(self):
         process = MagicMock()
@@ -130,7 +130,7 @@ class TestDesktopAuthHelpers:
         request.cookies = {"hermeshq_token": "tok-3"}
         assert _extract_session_token(request) == "tok-3"
 
-    def test_forwardable_headers_strips_sensitive(self):
+    def test_forwardable_headers_strips_sensitive_and_injects_inner_token(self):
         from hermeshq.routers.desktop_gateway import _forwardable_headers
 
         request = MagicMock()
@@ -141,12 +141,12 @@ class TestDesktopAuthHelpers:
             "content-type": "application/json",
             "cookie": "a=b",
         }
-        headers = _forwardable_headers(request)
+        headers = _forwardable_headers(request, "inner-tok")
         assert "host" not in headers
         assert "authorization" not in headers
-        assert "x-hermes-session-token" not in headers
         assert "cookie" not in headers
         assert headers["content-type"] == "application/json"
+        assert headers["X-Hermes-Session-Token"] == "inner-tok"
 
 
 class TestDesktopGuardPluginCatalog:

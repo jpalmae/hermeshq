@@ -590,6 +590,8 @@ class HermesInstallationManager:
             installed_plugin_dirs = {p.name for p in plugins_root.iterdir() if p.is_dir()}
             # enabled_toolsets contains slugs like "hermeshq_ms365_mail"
             plugins_to_enable = [slug for slug in (agent.enabled_toolsets or []) if slug in installed_plugin_dirs]
+            if agent.desktop_access_enabled and "hermeshq_guard" in installed_plugin_dirs:
+                plugins_to_enable.append("hermeshq_guard")
             if plugins_to_enable:
                 config["plugins"] = {"enabled": plugins_to_enable}
         config_path = hermes_home / "config.yaml"
@@ -1361,6 +1363,7 @@ class HermesInstallationManager:
             "bedrock": [],
             "nous": ["NOUS_API_KEY"],
             "nous-api": ["OPENAI_API_KEY"],
+            "nvidia": ["NVIDIA_API_KEY"],
             "zai": ["ZAI_API_KEY", "GLM_API_KEY", "Z_AI_API_KEY"],
             "openrouter": ["OPENROUTER_API_KEY"],
             "anthropic": ["ANTHROPIC_API_KEY"],
@@ -1389,6 +1392,7 @@ class HermesInstallationManager:
         fallback = {
             "bedrock": "BEDROCK_BASE_URL",
             "nous": "NOUS_BASE_URL",
+            "nvidia": "NVIDIA_BASE_URL",
             "zai": "GLM_BASE_URL",
             "openrouter": "OPENROUTER_BASE_URL",
             "openai": "OPENAI_BASE_URL",

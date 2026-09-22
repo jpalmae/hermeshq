@@ -75,12 +75,14 @@ def _bridge_service(request: Request):
     return service
 
 
-def _forwardable_headers(request: Request) -> dict[str, str]:
+def _forwardable_headers(request: Request, inner_token: str) -> dict[str, str]:
     headers: dict[str, str] = {}
     for name, value in request.headers.items():
         if name.lower() in HOP_BY_HOP_HEADERS or name.lower() == SESSION_TOKEN_HEADER.lower():
             continue
         headers[name] = value
+    if inner_token:
+        headers[SESSION_TOKEN_HEADER] = inner_token
     return headers
 
 
@@ -91,6 +93,14 @@ def _response_headers(response: httpx.Response) -> dict[str, str]:
             continue
         headers[name] = value
     return headers
+
+
+def _proxy_client(request: Request) -> httpx.AsyncClient:
+    client = getattr(request.app.state, "desktop_proxy_client", None)
+    if client is None or client.is_closed:
+        client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
+        request.app.state.desktop_proxy_client = client
+    return client
 
 
 # ── Discovery: Desktop probes this to classify the gateway ──────────────────
@@ -231,33 +241,33 @@ async def desktop_http_proxy(
     upstream_request = httpx.Request(
         request.method,
         url,
-        headers=_forwardable_headers(request),
+        headers=_forwardable_headers(request, handle.inner_token),
         content=body,
     )
 
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0)) as client:
-            upstream_response = await client.send(upstream_request, stream=True)
+        client = _proxy_client(request)
+        upstream_response = await client.send(upstream_request, stream=True)
+        if request.method == "HEAD":
+            await upstream_response.aread()
+            await upstream_response.aclose()
+            return Response(
+                status_code=upstream_response.status_code,
+                headers=_response_headers(upstream_response),
+            )
+
+        async def stream_body():
             try:
-                if request.method == "HEAD":
-                    await upstream_response.aread()
-                    return Response(
-                        status_code=upstream_response.status_code,
-                        headers=_response_headers(upstream_response),
-                    )
-
-                async def stream_body():
-                    async for chunk in upstream_response.aiter_raw():
-                        yield chunk
-
-                return StreamingResponse(
-                    stream_body(),
-                    status_code=upstream_response.status_code,
-                    headers=_response_headers(upstream_response),
-                )
-            except Exception:
+                async for chunk in upstream_response.aiter_raw():
+                    yield chunk
+            finally:
                 await upstream_response.aclose()
-                raise
+
+        return StreamingResponse(
+            stream_body(),
+            status_code=upstream_response.status_code,
+            headers=_response_headers(upstream_response),
+        )
     except httpx.HTTPError as exc:
         logger.warning("Desktop proxy error for agent %s: %s", agent_id, exc)
         return JSONResponse({"error": "desktop gateway unreachable"}, status_code=502)

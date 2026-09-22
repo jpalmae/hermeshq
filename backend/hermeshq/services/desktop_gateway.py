@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import socket
 import time
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ class GatewayHandle:
     agent_id: str
     port: int
     process: asyncio.subprocess.Process
+    inner_token: str = ""
     started_at: float = field(default_factory=time.monotonic)
     last_active: float = field(default_factory=time.monotonic)
     ws_connections: int = 0
@@ -38,7 +40,7 @@ class GatewayHandle:
 
     @property
     def ws_url(self) -> str:
-        return f"ws://127.0.0.1:{self.port}/api/ws"
+        return f"ws://127.0.0.1:{self.port}/api/ws?token={self.inner_token}"
 
     def touch(self) -> None:
         self.last_active = time.monotonic()
@@ -148,6 +150,8 @@ class DesktopGatewayService:
 
         await self._installation_manager.sync_agent_installation(agent)
         env = await self._installation_manager.build_process_env(agent, include_channels=False)
+        inner_token = secrets.token_urlsafe(32)
+        env["HERMES_DASHBOARD_SESSION_TOKEN"] = inner_token
         hermes_home = self._installation_manager.build_hermes_home(agent.workspace_path)
         logs_dir = hermes_home / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
@@ -174,7 +178,9 @@ class DesktopGatewayService:
         finally:
             log_file.close()
 
-        handle = GatewayHandle(agent_id=agent.id, port=port, process=process, log_path=log_path)
+        handle = GatewayHandle(
+            agent_id=agent.id, port=port, process=process, log_path=log_path, inner_token=inner_token
+        )
         self._gateways[agent.id] = handle
         logger.info("Desktop gateway started for agent %s on port %d (pid %s)", agent.id, port, process.pid)
 
