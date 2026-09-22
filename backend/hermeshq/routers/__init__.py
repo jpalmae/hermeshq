@@ -4,6 +4,7 @@ __all__ = [
     "backup",
     "comms",
     "dashboard",
+    "desktop_gateway",
     "hermes_versions",
     "integration_factory",
     "integration_packages",

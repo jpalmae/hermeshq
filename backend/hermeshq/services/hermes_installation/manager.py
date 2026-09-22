@@ -382,9 +382,12 @@ class HermesInstallationManager:
         desired_plugins = list_managed_plugins(
             enabled_integration_slugs,
             include_system_plugins=bool(agent.is_system_agent),
+            include_desktop_guard=bool(agent.desktop_access_enabled),
         )
         desired_names = {plugin["template_dir"] for plugin in desired_plugins}
-        known_names = {plugin["template_dir"] for plugin in list_managed_plugins([], include_system_plugins=True)}
+        known_names = {
+            plugin["template_dir"] for plugin in list_managed_plugins([], include_system_plugins=True, include_desktop_guard=True)
+        }
         known_names.update(
             package["plugin_slug"] for package in list_available_integration_packages([]) if package.get("plugin_slug")
         )

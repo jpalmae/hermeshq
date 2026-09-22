@@ -64,6 +64,7 @@ class AgentCreate(BaseModel):
     pi_config: dict | None = None
     permission_policy_id: str | None = None
     permission_policy_ids: list[str] | None = None
+    desktop_access_enabled: bool = False
 
 
 class AgentUpdate(BaseModel):
@@ -101,6 +102,7 @@ class AgentUpdate(BaseModel):
     pi_config: dict | None = None
     permission_policy_id: str | None = None
     permission_policy_ids: list[str] | None = None
+    desktop_access_enabled: bool | None = None
 
 
 class AgentRead(ORMModel):
@@ -152,6 +154,7 @@ class AgentRead(ORMModel):
     pi_config: dict | None = None
     permission_policy_id: str | None = None
     permission_policy_ids: list[str] | None = None
+    desktop_access_enabled: bool = False
     created_at: datetime
     updated_at: datetime
     node: NodeRead | None = None

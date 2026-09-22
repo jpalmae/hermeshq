@@ -43,6 +43,7 @@ USER_EDITABLE_FIELDS = {
     "pi_config",
     "permission_policy_id",
     "permission_policy_ids",
+    "desktop_access_enabled",
 }
 
 MAX_BULK_AGENT_TARGETS = 25

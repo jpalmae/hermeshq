@@ -35,6 +35,13 @@ CORE_MANAGED_PLUGIN_CATALOG: list[dict] = [
         "toolset": "hermeshq_audio",
         "standard_compatible": True,
     },
+    {
+        "slug": "hermeshq_guard",
+        "template_dir": "hermeshq_guard",
+        "toolset": "hermeshq_guard",
+        "standard_compatible": True,
+        "desktop_guard": True,
+    },
 ]
 
 
@@ -60,9 +67,13 @@ def list_managed_plugins(
     enabled_integration_slugs: list[str] | None = None,
     *,
     include_system_plugins: bool = False,
+    include_desktop_guard: bool = False,
 ) -> list[dict]:
     plugins = [
-        dict(item) for item in CORE_MANAGED_PLUGIN_CATALOG if include_system_plugins or not item.get("system_only")
+        dict(item)
+        for item in CORE_MANAGED_PLUGIN_CATALOG
+        if (include_system_plugins or not item.get("system_only"))
+        and (include_desktop_guard or not item.get("desktop_guard"))
     ]
     for integration in list_managed_integrations(enabled_integration_slugs):
         plugin_dir = integration.get("plugin_source_root")
