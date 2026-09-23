@@ -20,9 +20,10 @@ import { v2toast, extractErrorMessage } from "../toast";
 import { V2AgentIntegrationsTab } from "./V2AgentIntegrationsTab";
 import { V2AgentConfigTab } from "./V2AgentConfigTab";
 import { V2AgentPermissionsTab } from "./V2AgentPermissionsTab";
+import { V2AgentDevicesTab } from "./V2AgentDevicesTab";
 import { useI18n } from "../../lib/i18n";
 
-type DetailTab = "conversation" | "config" | "channels" | "integrations" | "terminal" | "skills" | "workspace" | "ledger" | "activity" | "permissions";
+type DetailTab = "conversation" | "config" | "channels" | "integrations" | "terminal" | "skills" | "workspace" | "ledger" | "activity" | "permissions" | "devices";
 
 function statusTone(status: string): "success" | "error" | "warn" | "neutral" {
   if (status === "running") return "success";
@@ -196,6 +197,7 @@ export function V2AgentDetailPage() {
     { id: "integrations", label: t("v2.integrations") },
     { id: "terminal", label: t("v2.terminal") },
     ...(isPi ? [{ id: "permissions" as DetailTab, label: t("v2.permissions") }] : []),
+    { id: "devices", label: t("v2.devices") },
     { id: "skills", label: t("v2.skills") },
     { id: "workspace", label: t("v2.workspace") },
     { id: "ledger", label: t("v2.ledger") },
@@ -405,6 +407,8 @@ export function V2AgentDetailPage() {
       {tab === "permissions" && isPi ? (
         <V2AgentPermissionsTab agent={agent} isAdmin={isAdmin} />
       ) : null}
+
+      {tab === "devices" ? <V2AgentDevicesTab agent={agent} isAdmin={isAdmin} /> : null}
 
       {tab === "skills" ? (
         <section className="v2-card">

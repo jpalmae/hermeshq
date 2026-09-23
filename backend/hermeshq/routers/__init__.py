@@ -5,6 +5,7 @@ __all__ = [
     "comms",
     "dashboard",
     "desktop_gateway",
+    "enrollment",
     "hermes_versions",
     "integration_factory",
     "integration_packages",

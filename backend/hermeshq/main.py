@@ -31,6 +31,7 @@ from hermeshq.routers import (
     comms,
     dashboard,
     desktop_gateway,
+    enrollment,
     hermes_versions,
     integration_factory,
     integration_packages,
@@ -68,6 +69,7 @@ from hermeshq.services.agent_identity import derive_agent_identity
 from hermeshq.services.agent_supervisor import AgentSupervisor
 from hermeshq.services.comms_router import CommsRouter
 from hermeshq.services.desktop_gateway import DesktopGatewayService
+from hermeshq.services.enrollment import EnrollmentService
 from hermeshq.services.enterprise_gateway_manager import EnterpriseGatewayManager
 from hermeshq.services.gateway_supervisor import GatewaySupervisor
 from hermeshq.services.hermes_installation import HermesInstallationManager
@@ -296,6 +298,9 @@ async def lifespan(app: FastAPI):
         app.state.installation_manager,
     )
     await app.state.desktop_gateway_service.start()
+    app.state.enrollment_service = EnrollmentService(
+        AsyncSessionLocal, app.state.permission_enforcer, app.state.secret_vault
+    )
     # Expose individual gateway maps for webhook routing
     app.state.session_factory = AsyncSessionLocal
     app.state.google_chat_gateways = app.state.enterprise_gateways.google_chat_gateways
@@ -476,6 +481,7 @@ app.include_router(permission_policies.router, prefix=settings.api_prefix)
 app.include_router(audit.router, prefix=settings.api_prefix)
 app.include_router(mcp_server.router)
 app.include_router(desktop_gateway.router)
+app.include_router(enrollment.router, prefix=settings.api_prefix)
 app.include_router(webhooks.router)
 app.include_router(attachments.router, prefix=settings.api_prefix)
 app.include_router(m365.router, prefix=settings.api_prefix)

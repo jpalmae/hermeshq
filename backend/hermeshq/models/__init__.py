@@ -5,6 +5,7 @@ from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.audit_log import AuditLog
 from hermeshq.models.base import Base
 from hermeshq.models.conversation_thread import ConversationThread
+from hermeshq.models.enrolled_device import EnrolledDevice
 from hermeshq.models.hermes_version import HermesVersion
 from hermeshq.models.integration_draft import IntegrationDraft
 from hermeshq.models.mcp_access import McpAccessToken
@@ -40,6 +41,7 @@ __all__ = [
     "AuditLog",
     "Base",
     "ConversationThread",
+    "EnrolledDevice",
     "HermesVersion",
     "IntegrationDraft",
     "McpAccessToken",

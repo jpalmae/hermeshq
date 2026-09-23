@@ -9,10 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from hermeshq.core.security import verify_agent_service_token
+from hermeshq.core.security import decode_device_token_claims, verify_agent_service_token
 from hermeshq.database import get_db_session
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
+from hermeshq.models.enrolled_device import EnrolledDevice
 from hermeshq.models.provider import ProviderDefinition
 from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.secret import Secret
@@ -93,6 +94,17 @@ async def _load_internal_system_agent(
     agent = await db.get(Agent, service_agent_id)
     if not agent or agent.is_archived:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown agent")
+    device_claims = decode_device_token_claims(service_agent_token)
+    if device_claims:
+        device = await db.get(EnrolledDevice, device_claims.get("did"))
+        if (
+            not device
+            or device.status != "active"
+            or device.agent_id != service_agent_id
+            or device_claims.get("token_version") != device.token_version
+        ):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid device credentials")
+        return agent
     if not verify_agent_service_token(service_agent_token, service_agent_id, agent.service_token_version or 1):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid agent credentials")
     return agent
