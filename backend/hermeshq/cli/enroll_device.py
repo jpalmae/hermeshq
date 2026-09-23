@@ -220,13 +220,16 @@ def _write_home(state: dict, bundle: dict) -> None:
     config = {
         "model": {
             "default": agent.get("model"),
-            "provider": agent.get("provider"),
+            "provider": agent.get("model_provider") or agent.get("provider"),
             "base_url": agent.get("base_url"),
         },
         "agent": {"system_prompt": agent.get("system_prompt") or ""},
         "skills": {"external_dirs": []},
         "plugins": {"enabled": ["hermeshq_guard"]},
     }
+    custom_provider = agent.get("custom_provider")
+    if custom_provider:
+        config["providers"] = {(agent.get("model_provider") or "hermeshq-openai-compatible"): custom_provider}
     (home / "config.yaml").write_text(_dump_yaml(config) + "\n", encoding="utf-8")
     os.chmod(home / "config.yaml", 0o600)
 

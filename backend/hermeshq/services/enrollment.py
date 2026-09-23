@@ -190,10 +190,11 @@ class EnrollmentService:
             return False
         return datetime.now(UTC) - device.last_heartbeat > timedelta(minutes=DEVICE_STALE_AFTER_MINUTES)
 
-    # ── bundle ───────────────────────────────────────────────────────────────
-
     async def build_bundle(self, device: EnrolledDevice) -> dict:
+        import json
+
         from hermeshq.config import get_settings
+        from hermeshq.services.provider_catalog import normalize_runtime_provider
 
         async with self.session_factory() as session:
             agent = cast(Agent, await session.get(Agent, device.agent_id))
@@ -211,10 +212,20 @@ class EnrollmentService:
                 for p in merged
             ]
             api_key = await self._resolve_agent_api_key(agent)
-        import json
 
         settings = get_settings()
         guard_files = self._guard_plugin_files()
+        runtime_provider = normalize_runtime_provider(agent.provider)
+        custom_provider = None
+        model_provider = runtime_provider or ""
+        if runtime_provider == "openai-codex" and (api_key or agent.base_url):
+            model_provider = "hermeshq-openai-compatible"
+            custom_provider = {
+                "name": "HermesHQ OpenAI-compatible",
+                "base_url": (agent.base_url or "").strip(),
+                "key_env": "OPENAI_API_KEY",
+                "default_model": agent.model,
+            }
         payload = {
             "version": BUNDLE_VERSION,
             "agent": {
@@ -225,6 +236,8 @@ class EnrollmentService:
                 "soul_md": agent.soul_md,
                 "model": agent.model,
                 "provider": agent.provider,
+                "model_provider": model_provider,
+                "custom_provider": custom_provider,
                 "base_url": agent.base_url,
                 "hermes_version": agent.hermes_version,
                 "api_key": api_key,
