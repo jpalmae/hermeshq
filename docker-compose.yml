@@ -175,7 +175,7 @@ services:
       dockerfile: backend/runtime-egress/Dockerfile
     container_name: hermeshq-runtime-egress
     environment:
-      RUNTIME_EGRESS_ALLOWLIST: ${RUNTIME_EGRESS_ALLOWLIST:-.api.openai.com,.api.anthropic.com,.openrouter.ai,.integrate.api.nvidia.com,.inference-api.nousresearch.com,.api.kimi.com,.api.moonshot.ai,.api.z.ai,.generativelanguage.googleapis.com,.chatgpt.com,.api.telegram.org,bedrock-runtime.us-east-1.amazonaws.com}
+      RUNTIME_EGRESS_ALLOWLIST: ${RUNTIME_EGRESS_ALLOWLIST:-.api.openai.com,.api.anthropic.com,.openrouter.ai,.integrate.api.nvidia.com,.puget.sixmanager.io,.inference-api.nousresearch.com,.api.kimi.com,.api.moonshot.ai,.api.z.ai,.generativelanguage.googleapis.com,.chatgpt.com,.api.telegram.org,bedrock-runtime.us-east-1.amazonaws.com}
     healthcheck:
       test: ["CMD-SHELL", "test -s /tmp/squid.pid && kill -0 $$(cat /tmp/squid.pid)"]
       interval: 10s
