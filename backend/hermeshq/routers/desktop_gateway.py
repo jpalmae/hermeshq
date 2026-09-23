@@ -106,22 +106,27 @@ def _proxy_client(request: Request) -> httpx.AsyncClient:
 # ── Discovery: Desktop probes this to classify the gateway ──────────────────
 
 
+@router.get("/desktop/{agent_id}/api/health")
+async def desktop_health(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db_session),
+):
+    await _load_bridge_agent(db=db, agent_id=agent_id)
+    return JSONResponse({"ok": True, "gateway": "hermeshq-desktop-bridge"})
+
+
 @router.get("/desktop/{agent_id}/api/status")
 async def desktop_status(
     agent_id: str,
-    request: Request,
     db: AsyncSession = Depends(get_db_session),
 ):
-    await _resolve_user(request, _extract_session_token(request), db)
-    agent = await _load_bridge_agent(agent_id, db)
-    service = _bridge_service(request)
-    handle = await service.ensure_agent_gateway(agent)
+    await _load_bridge_agent(db=db, agent_id=agent_id)
     return JSONResponse(
         {
             "auth_required": True,
             "auth_providers": ["token"],
             "gateway": "hermeshq-desktop-bridge",
-            "hermeshq": {"agent_id": agent_id, "port": handle.port},
+            "hermeshq": {"agent_id": agent_id},
         }
     )
 
