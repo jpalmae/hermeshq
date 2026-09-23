@@ -215,6 +215,7 @@ class EnrollmentService:
 
         settings = get_settings()
         guard_files = self._guard_plugin_files()
+        guard_api_url = settings.enrollment_public_api_url or settings.internal_api_base_url
         runtime_provider = normalize_runtime_provider(agent.provider)
         custom_provider = None
         model_provider = runtime_provider or ""
@@ -249,7 +250,7 @@ class EnrollmentService:
                 "env": {
                     "HERMESHQ_AGENT_ID": agent.id,
                     "HERMESHQ_AGENT_TOKEN": create_device_token(agent.id, device.id, device.token_version),
-                    "HERMESHQ_INTERNAL_API_URL": settings.internal_api_base_url.rstrip("/"),
+                    "HERMESHQ_INTERNAL_API_URL": guard_api_url.rstrip("/"),
                 },
             },
             "skills": list(agent.skills or []),

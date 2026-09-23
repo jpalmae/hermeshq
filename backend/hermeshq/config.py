@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     pty_shell: str = "/bin/sh"
     internal_api_base_url: str = "http://127.0.0.1:8000/api/internal"
+    enrollment_public_api_url: str = ""
     # Max concurrent agent task executions.
     # Each isolated runtime is limited independently by Docker in production.
     concurrency_semaphore: int = 8
