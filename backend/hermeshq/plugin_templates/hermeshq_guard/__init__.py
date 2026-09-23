@@ -11,6 +11,7 @@ from typing import Any
 _EVALUATE_TIMEOUT_SECONDS = 5.0
 _LAST_OK_FILE = ".hermeshq_guard_last_ok"
 _GRACE_STATE = {"last_ok": None}
+_GUARD_USER_AGENT = "hermeshq-guard/1.0"
 
 
 def _internal_api_url() -> str:
@@ -93,6 +94,7 @@ def _evaluate(tool: str, tool_input: dict) -> dict | None:
             "Content-Type": "application/json",
             "X-HermesHQ-Agent-ID": agent_id,
             "X-HermesHQ-Agent-Token": agent_token,
+            "User-Agent": _GUARD_USER_AGENT,
         },
         method="POST",
     )
@@ -100,7 +102,7 @@ def _evaluate(tool: str, tool_input: dict) -> dict | None:
         with urllib.request.urlopen(request, timeout=_EVALUATE_TIMEOUT_SECONDS) as response:
             body = json.loads(response.read().decode())
     except urllib.error.HTTPError as exc:
-        if exc.code in (401, 403):
+        if exc.code == 401:
             return {
                 "action": "block",
                 "message": "[hermeshq_guard] Credentials rejected by HermesHQ — device may be revoked. Blocking.",
