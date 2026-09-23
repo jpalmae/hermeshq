@@ -28,6 +28,7 @@ import urllib.request
 from pathlib import Path
 
 STATE_DIR = Path.home() / ".hermes-hq"
+ENROLL_USER_AGENT = "hermeshq-enroll/1.0"
 STATE_FILE = STATE_DIR / "enrollment.json"
 PROVIDER_ENV_FALLBACK = {
     "nvidia": ["NVIDIA_API_KEY"],
@@ -46,7 +47,7 @@ class CliError(RuntimeError):
 
 def _request(method: str, url: str, *, token: str | None = None, payload: dict | None = None, timeout: float = 30.0):
     data = json.dumps(payload).encode() if payload is not None else None
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": ENROLL_USER_AGENT}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(url, data=data, headers=headers, method=method)
@@ -138,7 +139,7 @@ def cmd_enroll(args: argparse.Namespace) -> None:
     activation_request = urllib.request.Request(
         f"{server}/api/enrollment/devices/{device_id}/activate",
         data=json.dumps({"os_info": {}}).encode(),
-        headers={"Content-Type": "application/json", "X-HermesHQ-Enroll-Token": enroll_token},
+        headers={"Content-Type": "application/json", "X-HermesHQ-Enroll-Token": enroll_token, "User-Agent": ENROLL_USER_AGENT},
         method="POST",
     )
     with urllib.request.urlopen(activation_request, timeout=30) as response:
@@ -169,7 +170,7 @@ def cmd_activate(args: argparse.Namespace) -> None:
     request = urllib.request.Request(
         f"{server}/api/enrollment/devices/{args.device_id}/activate",
         data=json.dumps({"os_info": {"platform": sys.platform, "hostname": os.uname().nodename}}).encode(),
-        headers={"Content-Type": "application/json", "X-HermesHQ-Enroll-Token": args.token},
+        headers={"Content-Type": "application/json", "X-HermesHQ-Enroll-Token": args.token, "User-Agent": ENROLL_USER_AGENT},
         method="POST",
     )
     try:
@@ -247,7 +248,7 @@ def _write_home(state: dict, bundle: dict) -> None:
 
 def cmd_sync(args: argparse.Namespace) -> None:
     state = _load_state()
-    headers = {"X-HermesHQ-Device-Token": state["device_token"]}
+    headers = {"X-HermesHQ-Device-Token": state["device_token"], "User-Agent": ENROLL_USER_AGENT}
     url = f"{state['server']}/api/enrollment/devices/bundle"
     if state.get("etag") and not args.force:
         url += f"?since={state['etag']}"
@@ -281,6 +282,7 @@ def _heartbeat(state: dict, etag: str | None) -> None:
             headers={
                 "Content-Type": "application/json",
                 "X-HermesHQ-Device-Token": state["device_token"],
+                "User-Agent": ENROLL_USER_AGENT,
             },
             method="POST",
         )
@@ -316,6 +318,7 @@ def cmd_status(_args: argparse.Namespace) -> None:
             headers={
                 "Content-Type": "application/json",
                 "X-HermesHQ-Device-Token": state["device_token"],
+                "User-Agent": ENROLL_USER_AGENT,
             },
             method="POST",
         )
