@@ -77,13 +77,7 @@ def _save_state(state: dict) -> None:
 
 
 def _yaml_str(value: str) -> str:
-    value = str(value)
-    if value == "":
-        return "''"
-    needs_quote = any(ch in value for ch in ":#{}[]&*!|>'\"%@`") or value.startswith((" ", "-")) or value.endswith(" ")
-    if needs_quote:
-        return json.dumps(value)
-    return value
+    return json.dumps(str(value), ensure_ascii=False)
 
 
 def _dump_yaml(data: dict, indent: int = 0) -> str:
