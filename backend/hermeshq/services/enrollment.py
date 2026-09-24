@@ -255,7 +255,12 @@ class EnrollmentService:
             },
             "skills": list(agent.skills or []),
         }
-        canonical = json.dumps(payload, sort_keys=True).encode()
+        etag_source = {**payload}
+        etag_source["guard"] = {
+            **payload["guard"],
+            "env": {k: v for k, v in payload["guard"]["env"].items() if k != "HERMESHQ_AGENT_TOKEN"},
+        }
+        canonical = json.dumps(etag_source, sort_keys=True).encode()
         return {"etag": hashlib.sha256(canonical).hexdigest()[:32], "bundle": payload}
 
     async def _resolve_agent_api_key(self, agent: Agent) -> str | None:
