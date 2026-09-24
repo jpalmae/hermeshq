@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -193,6 +193,20 @@ async def get_device(
     async with request.app.state.session_factory() as db:
         await ensure_agent_access(db, current_user, device.agent_id)
     return _device_read(device).model_dump()
+
+
+@router.get("/cli")
+async def download_enroll_cli():
+    from pathlib import Path
+
+    cli_path = Path(__file__).resolve().parents[1] / "cli" / "enroll_device.py"
+    if not cli_path.exists():
+        raise HTTPException(status_code=404, detail="Enroll CLI not found")
+    return Response(
+        content=cli_path.read_text(encoding="utf-8"),
+        media_type="text/x-python",
+        headers={"Content-Disposition": 'attachment; filename="enroll_device.py"'},
+    )
 
 
 @router.delete("/devices/{device_id}", status_code=status.HTTP_200_OK)

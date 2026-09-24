@@ -232,6 +232,7 @@ class EnrollmentService:
             "agent": {
                 "id": agent.id,
                 "name": agent.name,
+                "slug": agent.slug,
                 "friendly_name": agent.friendly_name,
                 "system_prompt": agent.system_prompt,
                 "soul_md": agent.soul_md,

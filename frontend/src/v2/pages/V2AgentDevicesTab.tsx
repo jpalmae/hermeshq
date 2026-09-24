@@ -133,12 +133,17 @@ export function V2AgentDevicesTab({ agent, isAdmin }: { agent: Agent; isAdmin: b
             {enrollResult ? (
               <div style={{ background: "var(--v2-bg-sunken)", borderRadius: 8, padding: 12, fontSize: 12.5, display: "flex", flexDirection: "column", gap: 8 }}>
                 <p style={{ fontWeight: 600 }}>{t("v2.enrollInstructions")}</p>
+                <p style={{ color: "var(--v2-text-muted)" }}>1. {t("v2.enrollDownload")}</p>
                 <code style={{ whiteSpace: "pre", overflowX: "auto", padding: 8, background: "var(--v2-bg)", borderRadius: 6 }}>
-                  {`python enroll_device.py enroll ${origin} \\\n  --agent-id ${agent.id} \\\n  --name "My laptop" --fail-mode ${failMode}`}
+                  {`curl -o enroll_device.py ${origin}/api/enrollment/cli`}
                 </code>
-                <p style={{ color: "var(--v2-text-muted)" }}>{t("v2.enrollActivateHint")}</p>
+                <p style={{ color: "var(--v2-text-muted)" }}>2. {t("v2.enrollActivateHint2")}</p>
+                <code style={{ whiteSpace: "pre", overflowX: "auto", padding: 8, background: "var(--v2-bg)", borderRadius: 6 }}>
+                  {`python enroll_device.py activate ${origin} \\\n  --device-id ${enrollResult.id} \\\n  --token ${enrollResult.enroll_token}`}
+                </code>
+                <p style={{ color: "var(--v2-text-muted)" }}>3. {t("v2.enrollDesktopHint")}</p>
                 <code style={{ overflowX: "auto", padding: 8, background: "var(--v2-bg)", borderRadius: 6, userSelect: "all" }}>
-                  {enrollResult.enroll_token}
+                  {`python enroll_device.py install   # ${t("v2.enrollInstallHint")}`}
                 </code>
               </div>
             ) : null}

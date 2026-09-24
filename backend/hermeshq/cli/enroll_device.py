@@ -21,6 +21,7 @@ import argparse
 import getpass
 import json
 import os
+import platform
 import sys
 import time
 import urllib.error
@@ -29,6 +30,24 @@ from pathlib import Path
 
 STATE_DIR = Path.home() / ".hermes-hq"
 ENROLL_USER_AGENT = "hermeshq-enroll/1.0"
+
+
+def _hostname() -> str:
+    try:
+        return os.uname().nodename
+    except AttributeError:
+        return platform.node()
+
+
+def _default_hermes_home() -> Path:
+    local_appdata = os.environ.get("LOCALAPPDATA", "").strip()
+    if local_appdata:
+        return Path(local_appdata) / "hermes"
+    return Path.home() / ".hermes"
+
+
+def _profile_home(agent_slug: str) -> Path:
+    return _default_hermes_home() / "profiles" / (agent_slug or "hermeshq-agent")
 STATE_FILE = STATE_DIR / "enrollment.json"
 PROVIDER_ENV_FALLBACK = {
     "nvidia": ["NVIDIA_API_KEY"],
@@ -122,7 +141,7 @@ def cmd_enroll(args: argparse.Namespace) -> None:
         payload={
             "agent_id": args.agent_id,
             "device_name": args.name,
-            "os_info": {"platform": sys.platform, "hostname": os.uname().nodename},
+            "os_info": {"platform": sys.platform, "hostname": _hostname()},
             "guard_fail_mode": args.fail_mode,
         },
     )
@@ -142,28 +161,29 @@ def cmd_enroll(args: argparse.Namespace) -> None:
     if not device_token:
         raise CliError("Activation did not return a device token")
 
-    home = Path(args.home).expanduser() if args.home else STATE_DIR / "agents" / args.agent_id
     state = {
         "server": server,
         "device_id": device_id,
         "device_token": device_token,
         "agent_id": args.agent_id,
         "agent_name": enroll_response.get("name", ""),
-        "hermes_home": str(home),
+        "as_profile": not args.standalone_home,
+        "agent_slug": None,
+        "hermes_home": None,
         "etag": None,
         "enrolled_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     _save_state(state)
     print(f"Enrolled. Device {device_id} → agent {args.agent_id}")
-    print(f"HERMES_HOME: {home}")
-    print("Run `sync` now to pull the agent bundle.")
+    print("Pulling first bundle…")
+    cmd_sync(argparse.Namespace(force=True))
 
 
 def cmd_activate(args: argparse.Namespace) -> None:
     server = args.server.rstrip("/")
     request = urllib.request.Request(
         f"{server}/api/enrollment/devices/{args.device_id}/activate",
-        data=json.dumps({"os_info": {"platform": sys.platform, "hostname": os.uname().nodename}}).encode(),
+        data=json.dumps({"os_info": {"platform": sys.platform, "hostname": _hostname()}}).encode(),
         headers={"Content-Type": "application/json", "X-HermesHQ-Enroll-Token": args.token, "User-Agent": ENROLL_USER_AGENT},
         method="POST",
     )
@@ -176,25 +196,34 @@ def cmd_activate(args: argparse.Namespace) -> None:
     device_token = body.get("device_token")
     if not device_token:
         raise CliError("Activation did not return a device token")
-    home = Path(args.home).expanduser() if args.home else STATE_DIR / "agents" / device.get("agent_id", "unknown")
     state = {
         "server": server,
         "device_id": args.device_id,
         "device_token": device_token,
         "agent_id": device.get("agent_id", ""),
         "agent_name": device.get("name", ""),
-        "hermes_home": str(home),
+        "as_profile": not getattr(args, "standalone_home", False),
+        "agent_slug": None,
+        "hermes_home": None,
         "etag": None,
         "enrolled_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     _save_state(state)
     print(f"Activated device {args.device_id} → agent {state['agent_id']}")
-    print(f"HERMES_HOME: {home}")
-    print("Run `sync` now to pull the agent bundle.")
+    print("Pulling first bundle…")
+    cmd_sync(argparse.Namespace(force=True))
 
 
-def _write_home(state: dict, bundle: dict) -> None:
-    home = Path(state["hermes_home"])
+def _write_home(state: dict, bundle: dict) -> Path:
+    agent_slug = bundle.get("agent", {}).get("slug") or state.get("agent_slug")
+    if state.get("hermes_home"):
+        home = Path(state["hermes_home"])
+    elif state.get("as_profile", True):
+        home = _profile_home(agent_slug or "hermeshq-agent")
+    else:
+        home = STATE_DIR / "agents" / state.get("agent_id", "unknown")
+    state["hermes_home"] = str(home)
+    state["agent_slug"] = agent_slug
     home.mkdir(parents=True, exist_ok=True)
     agent = bundle["agent"]
     guard = bundle["guard"]
@@ -323,11 +352,82 @@ def cmd_status(_args: argparse.Namespace) -> None:
         print(f"server unreachable: {exc}", file=sys.stderr)
 
 
+def cmd_install(args: argparse.Namespace) -> None:
+    _load_state()
+    cli_path = Path(sys.argv[0]).resolve()
+    interval = getattr(args, "interval", 300)
+    if sys.platform == "darwin":
+        plist_dir = Path.home() / "Library" / "LaunchAgents"
+        plist_dir.mkdir(parents=True, exist_ok=True)
+        plist = plist_dir / "com.hermeshq.enroll.plist"
+        plist.write_text(f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hermeshq.enroll</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{sys.executable}</string>
+    <string>{cli_path}</string>
+    <string>run</string>
+    <string>--interval</string>
+    <string>{interval}</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>{Path.home()}/.hermes-hq/sync.log</string>
+  <key>StandardErrorPath</key><string>{Path.home()}/.hermes-hq/sync.log</string>
+</dict>
+</plist>
+""")
+        import subprocess
+
+        subprocess.run(["launchctl", "unload", str(plist)], capture_output=True)
+        subprocess.run(["launchctl", "load", str(plist)], check=True)
+        print(f"Installed LaunchAgent: {plist}")
+    elif os.name == "nt":
+        import subprocess
+
+        subprocess.run(
+            [
+                "schtasks", "/Create", "/TN", "HermesHQEnroll", "/SC", "MINUTE",
+                "/MO", str(max(1, interval // 60)), "/TR",
+                f'"{sys.executable}" "{cli_path}" run --interval {interval}', "/F",
+            ],
+            check=True,
+        )
+        print("Installed Scheduled Task: HermesHQEnroll")
+    else:
+        print("Auto-install not supported on this platform; run `enroll_device.py run` manually or via systemd.")
+
+
+def cmd_uninstall(_args: argparse.Namespace) -> None:
+    if sys.platform == "darwin":
+        import subprocess
+
+        plist = Path.home() / "Library" / "LaunchAgents" / "com.hermeshq.enroll.plist"
+        subprocess.run(["launchctl", "unload", str(plist)], capture_output=True)
+        plist.unlink(missing_ok=True)
+        print("LaunchAgent removed.")
+    elif os.name == "nt":
+        import subprocess
+
+        subprocess.run(["schtasks", "/Delete", "/TN", "HermesHQEnroll", "/F"], check=False)
+        print("Scheduled Task removed.")
+    else:
+        print("Nothing to uninstall on this platform.")
+
+
 def cmd_desktop(_args: argparse.Namespace) -> None:
     state = _load_state()
-    print("Launch Hermes Desktop against the enrolled home with:")
-    print(f'  HERMES_HOME="{state["hermes_home"]}" hermes desktop')
-    print(f"  (shell: export HERMES_HOME={state['hermes_home']}; hermes desktop)")
+    if state.get("as_profile", True):
+        slug = state.get("agent_slug") or "unknown"
+        print("Just open Hermes Desktop normally (double-click) — no env vars needed.")
+        print(f"The enrolled agent appears as the profile '{slug}'.")
+    else:
+        print("Launch Hermes Desktop against the enrolled home with:")
+        print(f'  HERMES_HOME="{state["hermes_home"]}" hermes desktop')
+        print(f"  (shell: export HERMES_HOME={state['hermes_home']}; hermes desktop)")
 
 
 def main() -> int:
@@ -337,7 +437,7 @@ def main() -> int:
     enroll_parser = subparsers.add_parser("enroll", help="Enroll this machine for an agent")
     enroll_parser.add_argument("server", help="HermesHQ base URL, e.g. https://hq.example.com")
     enroll_parser.add_argument("--agent-id", required=True)
-    enroll_parser.add_argument("--name", default=os.uname().nodename, help="Device name shown in HQ")
+    enroll_parser.add_argument("--name", default=_hostname(), help="Device name shown in HQ")
     enroll_parser.add_argument(
         "--home", default=None, help="HERMES_HOME for the agent (default ~/.hermes-hq/agents/<id>)"
     )
@@ -351,6 +451,7 @@ def main() -> int:
     activate_parser.add_argument("--device-id", required=True)
     activate_parser.add_argument("--token", required=True, help="Enrollment token from the admin UI")
     activate_parser.add_argument("--home", default=None, help="HERMES_HOME for the agent")
+    activate_parser.add_argument("--standalone-home", action="store_true", help="Use a standalone HERMES_HOME instead of a Hermes profile")
     activate_parser.set_defaults(func=cmd_activate)
 
     sync_parser = subparsers.add_parser("sync", help="Pull the latest agent bundle")
@@ -364,6 +465,13 @@ def main() -> int:
 
     status_parser = subparsers.add_parser("status", help="Show enrollment state")
     status_parser.set_defaults(func=cmd_status)
+
+    install_parser = subparsers.add_parser("install", help="Install the background sync loop (launchd/schtasks)")
+    install_parser.add_argument("--interval", type=int, default=300)
+    install_parser.set_defaults(func=cmd_install)
+
+    uninstall_parser = subparsers.add_parser("uninstall", help="Remove the background sync loop")
+    uninstall_parser.set_defaults(func=cmd_uninstall)
 
     desktop_parser = subparsers.add_parser("desktop", help="Show how to launch Desktop on the enrolled home")
     desktop_parser.set_defaults(func=cmd_desktop)
