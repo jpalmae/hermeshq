@@ -983,6 +983,7 @@ async def telemetry_turn(
         },
     )
     db.add(task)
+    await db.flush()
     current_agent.last_activity = now
     activity = ActivityLog(
         agent_id=current_agent.id,
