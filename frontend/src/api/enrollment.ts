@@ -26,18 +26,25 @@ export interface EnrollResponse extends EnrolledDevice {
 export function useEnrolledDevices(agentId: string) {
   return useQuery<EnrolledDevice[]>({
     queryKey: ["enrollment", "devices", agentId],
-    queryFn: () => apiClient.get(`/enrollment/devices?agent_id=${agentId}`),
+    queryFn: async () => {
+      const { data } = await apiClient.get<EnrolledDevice[]>(`/enrollment/devices`, {
+        params: { agent_id: agentId },
+      });
+      return data;
+    },
   });
 }
 
 export function useEnrollDevice(agentId: string) {
   const queryClient = useQueryClient();
   return useMutation<EnrollResponse, Error, { device_name: string; guard_fail_mode: string }>({
-    mutationFn: (payload) =>
-      apiClient.post("/enrollment/enroll", {
+    mutationFn: async (payload) => {
+      const { data } = await apiClient.post<EnrollResponse>("/enrollment/enroll", {
         agent_id: agentId,
         ...payload,
-      }),
+      });
+      return data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment", "devices", agentId] });
     },
@@ -47,7 +54,10 @@ export function useEnrollDevice(agentId: string) {
 export function useRevokeDevice(agentId: string) {
   const queryClient = useQueryClient();
   return useMutation<EnrolledDevice, Error, string>({
-    mutationFn: (deviceId) => apiClient.delete(`/enrollment/devices/${deviceId}`),
+    mutationFn: async (deviceId) => {
+      const { data } = await apiClient.delete<EnrolledDevice>(`/enrollment/devices/${deviceId}`);
+      return data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["enrollment", "devices", agentId] });
     },
