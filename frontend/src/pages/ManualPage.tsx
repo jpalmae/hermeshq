@@ -140,6 +140,26 @@ const manualContent: Record<"en" | "es", ManualContent> = {
         ],
       },
       {
+        id: "desktop",
+        eyebrow: "Hermes Desktop",
+        title: "Conectar Hermes Desktop y gestionar dispositivos",
+        summary:
+          "HermesHQ integra la app oficial Hermes Desktop en dos modos: puente remoto sobre agentes del servidor y runtimes enrolados que ejecutan en la máquina del usuario, ambos bajo el mismo sistema de políticas.",
+        image: {
+          src: "/manual/agent-detail.png",
+          alt: "Dispositivos enrolados",
+          caption: "El tab Devices de cada agente muestra los equipos enrolados, su estado y su revocación.",
+        },
+        bullets: [
+          "Modo puente remoto: en Hermes Desktop agrega una conexión Remote gateway apuntando a https://tu-instancia/desktop/<id-del-agente> y pega un token de sesión de HermesHQ. El agente sigue ejecutando en el servidor y todas las herramientas pasan por el evaluador de permisos.",
+          "Modo runtime enrolado: el agente corre EN la máquina del usuario como un perfil nativo de Hermes (~/Library o %LOCALAPPDATA% según el sistema), así que Desktop se abre normal, sin variables de entorno, y el agente tiene acceso real a los archivos y terminal del usuario.",
+          "Para enrolar un dispositivo entra al agente en la UI V2, tab Devices, pulsa Enroll new device, elige el fail-mode y copia los tres comandos del asistente: descargar el CLI (curl en macOS/Linux, Invoke-WebRequest en Windows), activar con el token entregado (no requiere credenciales de HermesHQ) y, opcionalmente, instalar el sync automático cada 5 minutos (launchd en macOS, Task Scheduler en Windows).",
+          "El fail-mode define el comportamiento si el dispositivo pierde conexión con HermesHQ: fail-open deja trabajar al agente, fail-closed bloquea toda herramienta, y fail-grace:<segundos> permite durante una ventana de gracia. fail-grace es el equilibrio recomendado.",
+          "Todo lo que se conversa por Desktop enrolado queda registrado: cada turno aparece en Tasks con source desktop, y el tab Activity muestra sesión iniciada y turnos completados, igual que el consumo por Telegram o WhatsApp.",
+          "Cambios centrales se propagan solos: system prompt, skills, proveedor y políticas se sincronizan al dispositivo en minutos; revocar el dispositivo desde la UI corta el acceso de inmediato (el guard bloquea las herramientas en cuanto HQ rechaza el token).",
+        ],
+      },
+      {
         id: "tasks",
         eyebrow: "Ejecucion",
         title: "Enviar tareas manualmente",
@@ -620,6 +640,26 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "That same section now exposes `Effective capabilities`, clearly separating what comes from the base runtime profile, which plugins HermesHQ injects by default, and which integration packages are enabled on that specific agent.",
           "Hermes skill registry now lets you delete installed skills directly from the agent. If the skill is HermesHQ-managed, it is also unassigned so it does not come back on the next sync.",
           "Hermes skill registry, Logs, and Workspace are intended for investigation and technical support. They stay collapsed by default to keep the view clean.",
+        ],
+      },
+      {
+        id: "desktop",
+        eyebrow: "Hermes Desktop",
+        title: "Connect Hermes Desktop and manage devices",
+        summary:
+          "HermesHQ integrates the official Hermes Desktop app in two modes: a remote bridge over server agents and enrolled runtimes executing on the user's machine — both under the same policy system.",
+        image: {
+          src: "/manual/agent-detail.png",
+          alt: "Enrolled devices",
+          caption: "The agent's Devices tab lists enrolled machines, their status, and revocation.",
+        },
+        bullets: [
+          "Remote bridge mode: in Hermes Desktop add a Remote gateway connection pointing at https://your-instance/desktop/<agent-id> and paste a HermesHQ session token. The agent keeps executing on the server and every tool call goes through the permission enforcer.",
+          "Enrolled runtime mode: the agent runs ON the user's machine as a native Hermes profile (~/Library or %LOCALAPPDATA% depending on the OS), so Desktop opens normally — no environment variables — and the agent has real access to the user's files and terminal.",
+          "To enroll a device open the agent in the V2 UI, Devices tab, press Enroll new device, pick a fail-mode, and copy the three wizard commands: download the CLI (curl on macOS/Linux, Invoke-WebRequest on Windows), activate with the issued token (no HermesHQ credentials required), and optionally install the automatic 5-minute sync (launchd on macOS, Task Scheduler on Windows).",
+          "The fail-mode defines behavior when the device loses connectivity to HermesHQ: fail-open lets the agent keep working, fail-closed blocks every tool, and fail-grace:<seconds> allows during a grace window. fail-grace is the recommended balance.",
+          "Everything discussed over an enrolled Desktop is recorded: each turn shows up in Tasks with source desktop, and the Activity tab logs session starts and completed turns — the same trail you get from Telegram or WhatsApp.",
+          "Central changes propagate automatically: system prompt, skills, provider, and policies sync to the device within minutes; revoking the device from the UI cuts access immediately (the guard blocks tools as soon as HQ rejects the token).",
         ],
       },
       {
