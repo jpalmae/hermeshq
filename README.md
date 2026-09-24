@@ -14,6 +14,9 @@ It keeps Hermes as the real execution engine, then adds the operational layer ar
 - task dispatch, schedules, runtime ledger, and activity stream
 - hierarchy-aware inter-agent delegation
 - per-agent Telegram and WhatsApp channels
+- **Hermes Desktop integration** — connect the official [Hermes Desktop](https://github.com/NousResearch/hermes-agent) app to any managed agent, or enroll user machines so agents run on them as native Hermes profiles with central policy control
+- **permission policies** — granular tool/path/command/network rules with chaining (deny-wins), enforced on server tasks and on enrolled Desktop devices
+- **full traceability** — Desktop turns are recorded as tasks and activity entries, same as Telegram/WhatsApp consumption
 - enterprise MCP access for Claude Code, Codex, Claude Desktop and other external AI clients
 - provider presets, secrets vault, runtime profiles, and managed integrations, including AWS Bedrock and generic OpenAI-compatible endpoints
 
@@ -41,9 +44,11 @@ HermesHQ uses that same Hermes runtime underneath, but wraps it in a control pla
 
 - managed agents with separate workspaces and `HERMES_HOME`
 - web UI, RBAC, users, and assigned-agent scope
-- task dispatch, schedules, and runtime ledger
+- task dispatch, schedules, runtime ledger
 - inter-agent comms and hierarchy-aware delegation
 - per-agent Telegram and WhatsApp channels
+- Hermes Desktop access: remote bridge sessions and enrolled local runtimes (user machines, macOS and Windows) under the same policy system
+- permission policies with chaining, applied to every execution surface including enrolled devices
 - enterprise MCP credentials for exposing selected agents to external AI clients
 - provider presets, secrets vault, and managed integrations, including AWS Bedrock and generic OpenAI-compatible endpoints
 - runtime profiles and capability visibility
