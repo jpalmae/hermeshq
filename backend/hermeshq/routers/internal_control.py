@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
@@ -17,6 +18,7 @@ from hermeshq.models.enrolled_device import EnrolledDevice
 from hermeshq.models.provider import ProviderDefinition
 from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.secret import Secret
+from hermeshq.models.task import Task
 from hermeshq.models.user import User
 from hermeshq.routers import agents as agents_router
 from hermeshq.routers import integration_factory as integration_factory_router
@@ -915,6 +917,108 @@ async def evaluate_pi_permission(
     )
 
 
+# ─── Enrolled-device telemetry ─────────────────────────────────────────────
+
+
+class TelemetryTurnRequest(BaseModel):
+    session_id: str | None = None
+    turn_id: str | None = None
+    user_message: str = ""
+    assistant_response: str | None = None
+    model: str | None = None
+    platform: str | None = "desktop"
+    tools: list[dict] = Field(default_factory=list)
+
+
+class TelemetrySessionRequest(BaseModel):
+    event: str = "start"
+    session_id: str | None = None
+    model: str | None = None
+
+
+def _telemetry_task_id(agent_id: str, turn_id: str | None) -> str:
+    seed = f"{agent_id}:{turn_id}" if turn_id else f"{agent_id}:{uuid.uuid4()}"
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"hermeshq:telemetry:{seed}"))
+
+
+@router.post("/telemetry/turn", include_in_schema=False)
+async def telemetry_turn(
+    request: Request,
+    payload: TelemetryTurnRequest,
+    current_agent: Agent = Depends(_load_internal_system_agent),
+    db: AsyncSession = Depends(get_db_session),
+    service_agent_token: str | None = Header(default=None, alias="X-HermesHQ-Agent-Token"),
+):
+    from datetime import UTC, datetime
+
+    device_claims = decode_device_token_claims(service_agent_token or "")
+    device_id = (device_claims or {}).get("did")
+    task_id = _telemetry_task_id(current_agent.id, payload.turn_id)
+    existing = await db.get(Task, task_id)
+    if existing:
+        return {"task_id": task_id, "deduplicated": True}
+
+    now = datetime.now(UTC)
+    prompt = payload.user_message or "(empty turn)"
+    task = Task(
+        id=task_id,
+        agent_id=current_agent.id,
+        title=f"Desktop: {prompt[:80]}",
+        prompt=prompt,
+        status="completed",
+        response=payload.assistant_response,
+        tool_calls=payload.tools,
+        queued_at=now,
+        started_at=now,
+        completed_at=now,
+        metadata_json={
+            "source": "desktop",
+            "platform": payload.platform or "desktop",
+            "conversation": True,
+            "thread_id": f"desktop_{device_id or 'unknown'}",
+            "device_id": device_id,
+            "hermes_session_id": payload.session_id,
+            "turn_id": payload.turn_id,
+            "model": payload.model,
+        },
+    )
+    db.add(task)
+    current_agent.last_activity = now
+    activity = ActivityLog(
+        agent_id=current_agent.id,
+        task_id=task_id,
+        node_id=current_agent.node_id,
+        event_type="task.completed",
+        severity="info",
+        message=f"Desktop turn completed ({len(payload.tools)} tool calls)",
+    )
+    db.add(activity)
+    await db.commit()
+    return {"task_id": task_id}
+
+
+@router.post("/telemetry/session", include_in_schema=False)
+async def telemetry_session(
+    request: Request,
+    payload: TelemetrySessionRequest,
+    current_agent: Agent = Depends(_load_internal_system_agent),
+    db: AsyncSession = Depends(get_db_session),
+    service_agent_token: str | None = Header(default=None, alias="X-HermesHQ-Agent-Token"),
+):
+    device_claims = decode_device_token_claims(service_agent_token or "")
+    device_id = (device_claims or {}).get("did")
+    activity = ActivityLog(
+        agent_id=current_agent.id,
+        node_id=current_agent.node_id,
+        event_type="desktop.session.start" if payload.event == "start" else "desktop.session.event",
+        severity="info",
+        message=f"Desktop session {payload.session_id or ''} started (model {payload.model or 'n/a'})",
+    )
+    db.add(activity)
+    await db.commit()
+    return {"ok": True, "device_id": device_id}
+
+
 @router.post("/approval", response_model=ApprovalResponse, include_in_schema=False)
 async def pi_agent_approval(
     request: Request,
@@ -1030,7 +1134,9 @@ async def control_list_policies(
 ) -> list:
     from hermeshq.models.permission_policy import PermissionPolicy
 
-    result = await db.execute(select(PermissionPolicy).order_by(PermissionPolicy.is_system.desc(), PermissionPolicy.name.asc()))
+    result = await db.execute(
+        select(PermissionPolicy).order_by(PermissionPolicy.is_system.desc(), PermissionPolicy.name.asc())
+    )
     return list(result.scalars().all())
 
 
@@ -1052,7 +1158,8 @@ async def control_create_policy(
         path_rules=payload.get("path_rules") or {"allow_paths": ["/workspace/**"], "deny_paths": []},
         command_rules=payload.get("command_rules") or {"allow": [], "deny": []},
         network_rules=payload.get("network_rules") or {"deny_all": False},
-        approval_rules=payload.get("approval_rules") or {"require_approval_for": [], "auto_approve_threshold": "medium"},
+        approval_rules=payload.get("approval_rules")
+        or {"require_approval_for": [], "auto_approve_threshold": "medium"},
     )
     db.add(policy)
     await db.commit()
@@ -1073,7 +1180,15 @@ async def control_update_policy(
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
     payload = await request.json()
-    for field in ("name", "description", "tool_rules", "path_rules", "command_rules", "network_rules", "approval_rules"):
+    for field in (
+        "name",
+        "description",
+        "tool_rules",
+        "path_rules",
+        "command_rules",
+        "network_rules",
+        "approval_rules",
+    ):
         if field in payload:
             setattr(policy, field, payload[field])
     await db.commit()
@@ -1112,7 +1227,9 @@ async def control_test_permission(
     target = await db.get(Agent, agent_id)
     if not target:
         raise HTTPException(status_code=404, detail="Agent not found")
-    enforcer = PermissionEnforcer(request.app.state.supervisor.session_factory if hasattr(request.app.state, "supervisor") else None)
+    enforcer = PermissionEnforcer(
+        request.app.state.supervisor.session_factory if hasattr(request.app.state, "supervisor") else None
+    )
     # Use the target agent's session if needed
     try:
         allowed, reason, requires_approval = await enforcer.evaluate(

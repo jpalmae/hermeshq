@@ -56,3 +56,21 @@ class TestEnrollmentService:
 
         with pytest.raises(Exception):
             asyncio.run(service.revoke_device("missing"))
+
+
+def test_telemetry_task_id_is_deterministic():
+    from hermeshq.routers.internal_control import _telemetry_task_id
+
+    a = _telemetry_task_id("agent-1", "turn-9")
+    b = _telemetry_task_id("agent-1", "turn-9")
+    c = _telemetry_task_id("agent-1", "turn-10")
+    d = _telemetry_task_id("agent-2", "turn-9")
+    assert a == b
+    assert a != c
+    assert a != d
+
+
+def test_telemetry_task_id_without_turn_is_unique():
+    from hermeshq.routers.internal_control import _telemetry_task_id
+
+    assert _telemetry_task_id("agent-1", None) != _telemetry_task_id("agent-1", None)

@@ -124,6 +124,77 @@ def _normalize_tool_name(tool_name: str) -> str:
     return tool_name.strip().lower()
 
 
+# ── telemetry ───────────────────────────────────────────────────────────────
+
+_TURN_STATE: dict[str, dict] = {}
+_TELEMETRY_TIMEOUT_SECONDS = 4.0
+
+
+def _telemetry_post(path: str, payload: dict) -> None:
+    api_url = _internal_api_url()
+    agent_id = os.environ.get("HERMESHQ_AGENT_ID", "")
+    agent_token = os.environ.get("HERMESHQ_AGENT_TOKEN", "")
+    if not api_url or not agent_id or not agent_token:
+        return
+    request = urllib.request.Request(
+        f"{api_url}{path}",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "X-HermesHQ-Agent-ID": agent_id,
+            "X-HermesHQ-Agent-Token": agent_token,
+            "User-Agent": _GUARD_USER_AGENT,
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=_TELEMETRY_TIMEOUT_SECONDS) as response:
+            response.read()
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+        pass
+
+
+def _on_post_tool_call(tool_name: str = "", status: str = "", duration_ms=None, turn_id=None, **_: Any) -> None:
+    if not turn_id:
+        return
+    state = _TURN_STATE.setdefault(str(turn_id), {"tools": []})
+    entry: dict[str, Any] = {"tool": tool_name, "status": status or "ok"}
+    if isinstance(duration_ms, (int, float)):
+        entry["duration_ms"] = int(duration_ms)
+    state["tools"].append(entry)
+
+
+def _on_post_llm_call(
+    user_message: str = "",
+    assistant_response: str = "",
+    model: str = "",
+    session_id=None,
+    turn_id=None,
+    platform: str = "",
+    **_: Any,
+) -> None:
+    tools = _TURN_STATE.pop(str(turn_id), {"tools": []}).get("tools", [])
+    _telemetry_post(
+        "/control/telemetry/turn",
+        {
+            "session_id": str(session_id or "") or None,
+            "turn_id": str(turn_id or "") or None,
+            "user_message": str(user_message or "")[:20000],
+            "assistant_response": str(assistant_response or "")[:40000],
+            "model": model or "",
+            "platform": platform or "desktop",
+            "tools": tools[:100],
+        },
+    )
+
+
+def _on_session_start(session_id=None, model: str = "", **_: Any) -> None:
+    _telemetry_post(
+        "/control/telemetry/session",
+        {"event": "start", "session_id": str(session_id or "") or None, "model": model or ""},
+    )
+
+
 def _on_pre_tool_call(tool_name: str = "", args: Any = None, **_: Any) -> dict | None:
     if not tool_name:
         return None
@@ -133,3 +204,6 @@ def _on_pre_tool_call(tool_name: str = "", args: Any = None, **_: Any) -> dict |
 
 def register(ctx) -> None:
     ctx.register_hook("pre_tool_call", _on_pre_tool_call)
+    ctx.register_hook("post_tool_call", _on_post_tool_call)
+    ctx.register_hook("post_llm_call", _on_post_llm_call)
+    ctx.register_hook("on_session_start", _on_session_start)
