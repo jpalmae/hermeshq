@@ -19,6 +19,7 @@ import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../stores/sessionStore";
 import { useRealtimeStore } from "../stores/realtimeStore";
 import { ChannelsTab } from "./agent-detail/ChannelsTab";
+import { DevicesSection } from "./agent-detail/DevicesSection";
 import { ChatLedger } from "./agent-detail/ChatLedger";
 import { HeroSection } from "./agent-detail/HeroSection";
 import { LogsTab } from "./agent-detail/LogsTab";
@@ -479,6 +480,12 @@ export function AgentDetailPage() {
         fetchOlderLogs={fetchOlderLogs}
         sectionState={sectionState}
         onToggleSection={toggleSection}
+      />
+
+      <DevicesSection
+        agent={agent}
+        isOpen={sectionState.devices}
+        onToggle={() => toggleSection("devices")}
       />
 
       <SectionShell

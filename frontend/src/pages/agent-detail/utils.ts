@@ -9,6 +9,7 @@ export const DEFAULT_SECTION_STATE = {
   ledger: false,
   logs: false,
   workspace: false,
+  devices: false,
 };
 
 export type SectionKey = keyof typeof DEFAULT_SECTION_STATE;
