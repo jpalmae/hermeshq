@@ -122,6 +122,97 @@ class HermesVersionManager:
                         # endpoints may block the OpenAI SDK default User-Agent.
                         client_kwargs["default_headers"] = {"User-Agent": "HermesAgent"}"""
 
+    _TEAMS_EDIT_HOTFIX_MARKER = "HERMESHQ_TEAMS_EDIT_MESSAGE_HOTFIX"
+    _TEAMS_SEND_TYPING_NEEDLE = "    async def send_typing(self, chat_id: str, metadata: Optional[Dict[str, Any]] = None) -> None:"
+    _TEAMS_EDIT_METHOD = '''    async def edit_message(
+        self, chat_id: str, message_id: str, content: str, *, finalize: bool = False, metadata: Optional[Dict[str, Any]] = None
+    ) -> SendResult:
+        """Edit a previously sent Teams message — streaming support.
+
+        HERMESHQ_TEAMS_EDIT_MESSAGE_HOTFIX: Bot Framework activity update
+        (PUT /v3/conversations/{cid}/activities/{aid}) with a self-contained cached
+        bearer token. Oversized content follows the Telegram pattern: first chunk is
+        edited in place, continuations are sent, and the last id becomes the next
+        edit target."""
+        import os as _os
+        import time as _time
+
+        import httpx as _httpx
+
+        if not self._app:
+            return SendResult(success=False, error="Teams app not initialized")
+        if not (chat_id and message_id):
+            return SendResult(success=False, error="edit_message requires chat_id and message_id")
+        if not (_TEAMS_CONV_ID_RE.match(chat_id or "") and _TEAMS_CONV_ID_RE.match(message_id or "")):
+            return SendResult(success=False, error="chat_id/message_id outside the Bot Framework ID set")
+
+        service_url = None
+        conv_ref = self._conv_refs.get(chat_id)
+        for candidate in (
+            getattr(conv_ref, "service_url", None),
+            _os.getenv("TEAMS_SERVICE_URL", ""),
+            _DEFAULT_TEAMS_SERVICE_URL,
+        ):
+            if candidate:
+                service_url = _validate_teams_service_url(str(candidate))
+                if service_url:
+                    break
+        if not service_url:
+            return SendResult(success=False, error="TEAMS_SERVICE_URL host not on the Bot Framework allowlist")
+
+        chunks = self.truncate_message(self.format_message(content))
+        try:
+            cache = getattr(self, "_hermeshq_edit_token_cache", None)
+            if cache and cache[1] > _time.monotonic() + 300:
+                token = cache[0]
+            else:
+                if not (self._client_id and self._client_secret and self._tenant_id):
+                    return SendResult(success=False, error="Missing TEAMS_CLIENT_ID/SECRET/TENANT_ID")
+                token_url = f"https://login.microsoftonline.com/{self._tenant_id}/oauth2/v2.0/token"
+                async with _httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.post(
+                        token_url,
+                        data={
+                            "grant_type": "client_credentials",
+                            "client_id": self._client_id,
+                            "client_secret": self._client_secret,
+                            "scope": "https://api.botframework.com/.default",
+                        },
+                    )
+                    resp.raise_for_status()
+                    payload = resp.json()
+                token = payload["access_token"]
+                self._hermeshq_edit_token_cache = (
+                    token,
+                    _time.monotonic() + float(payload.get("expires_in", 3600) or 3600),
+                )
+
+            edit_url = f"{service_url}v3/conversations/{chat_id}/activities/{message_id}"
+            async with _httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.put(
+                    edit_url,
+                    json={"type": "message", "text": chunks[0]},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+            if resp.status_code >= 400:
+                return SendResult(
+                    success=False, error=f"activity update failed: HTTP {resp.status_code}", retryable=True
+                )
+            last_id = message_id
+            for continuation in chunks[1:]:
+                send_result = await self.send(chat_id, continuation, reply_to=None, metadata=metadata)
+                if send_result.success and send_result.message_id:
+                    last_id = send_result.message_id
+                else:
+                    return SendResult(
+                        success=False, error=send_result.error or "continuation failed", retryable=True
+                    )
+            return SendResult(success=True, message_id=last_id)
+        except Exception as exc:
+            return SendResult(success=False, error=str(exc), retryable=True)
+
+'''
+
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self.session_factory = session_factory
         self.settings = get_settings()
@@ -318,26 +409,57 @@ class HermesVersionManager:
             return
         text = run_agent_path.read_text(encoding="utf-8")
         if self._RUN_AGENT_HOTFIX_MARKER in text:
+            pass
+        else:
+            updated = text.replace(self._RUN_AGENT_INIT_NEEDLE, self._RUN_AGENT_INIT_REPLACEMENT, 1)
+            updated = updated.replace(
+                self._RUN_AGENT_ROUTED_HEADERS_NEEDLE,
+                self._RUN_AGENT_ROUTED_HEADERS_REPLACEMENT,
+                1,
+            )
+            updated = updated.replace(
+                self._RUN_AGENT_APPLY_HEADERS_NEEDLE,
+                self._RUN_AGENT_APPLY_HEADERS_REPLACEMENT,
+                1,
+            )
+            if updated == text:
+                logger.warning(
+                    "Runtime hotfix needles not found in %s (v%s) — upstream may have changed. Hotfixes were NOT applied.",
+                    run_agent_path,
+                    version,
+                )
+            else:
+                run_agent_path.write_text(updated, encoding="utf-8")
+        self._apply_teams_streaming_hotfix(version)
+
+    def _teams_adapter_path(self, version: str) -> Path | None:
+        lib_root = self.version_root(version) / ".venv" / "lib"
+        if not lib_root.exists():
+            return None
+        candidates = sorted(lib_root.glob("python*/site-packages/plugins/platforms/teams/adapter.py"))
+        return candidates[0] if candidates else None
+
+    def _apply_teams_streaming_hotfix(self, version: str) -> None:
+        adapter_path = self._teams_adapter_path(version)
+        if not adapter_path or not adapter_path.exists():
             return
-        updated = text.replace(self._RUN_AGENT_INIT_NEEDLE, self._RUN_AGENT_INIT_REPLACEMENT, 1)
-        updated = updated.replace(
-            self._RUN_AGENT_ROUTED_HEADERS_NEEDLE,
-            self._RUN_AGENT_ROUTED_HEADERS_REPLACEMENT,
-            1,
-        )
-        updated = updated.replace(
-            self._RUN_AGENT_APPLY_HEADERS_NEEDLE,
-            self._RUN_AGENT_APPLY_HEADERS_REPLACEMENT,
-            1,
-        )
-        if updated == text:
+        text = adapter_path.read_text(encoding="utf-8")
+        if self._TEAMS_EDIT_HOTFIX_MARKER in text:
+            return
+        if self._TEAMS_SEND_TYPING_NEEDLE not in text:
             logger.warning(
-                "Runtime hotfix needles not found in %s (v%s) — upstream may have changed. Hotfixes were NOT applied.",
-                run_agent_path,
+                "Teams streaming hotfix needle not found in %s (v%s) — upstream may have changed. Hotfix was NOT applied.",
+                adapter_path,
                 version,
             )
             return
-        run_agent_path.write_text(updated, encoding="utf-8")
+        updated = text.replace(
+            self._TEAMS_SEND_TYPING_NEEDLE,
+            self._TEAMS_EDIT_METHOD + self._TEAMS_SEND_TYPING_NEEDLE,
+            1,
+        )
+        adapter_path.write_text(updated, encoding="utf-8")
+        logger.info("Teams streaming hotfix applied to %s (v%s)", adapter_path, version)
 
     async def list_upstream_releases(self, *, force_refresh: bool = False) -> list[HermesUpstreamVersionRead]:
         now = time.time()

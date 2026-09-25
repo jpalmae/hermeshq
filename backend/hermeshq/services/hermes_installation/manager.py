@@ -523,6 +523,7 @@ class HermesInstallationManager:
                     "name": teams_channel.home_chat_name or "Home",
                 }
             platforms["teams"] = teams_platform
+            config.setdefault("display", {}).setdefault("platforms", {})["teams"] = {"streaming": True}
         if sixagentic_channel and self._channel_runtime_enabled(sixagentic_channel):
             platforms = config.setdefault("platforms", {})
             platforms["sixagentic"] = {
