@@ -112,6 +112,11 @@ export function V2AgentDevicesTab({ agent, isAdmin }: { agent: Agent; isAdmin: b
           <div className="v2-card-header">
             <h2 className="v2-card-title">{t("v2.enrollNewDevice")}</h2>
           </div>
+          {!agent.permission_policy_id && !((agent as unknown as { permission_policy_ids?: string[] }).permission_policy_ids ?? []).length ? (
+            <div style={{ margin: "0 20px", padding: "10px 14px", borderRadius: 8, background: "rgba(245,158,11,.12)", color: "#b45309", fontSize: 12.5 }}>
+              ⚠ {t("v2.enrollNoPolicyWarning")}
+            </div>
+          ) : null}
           <div className="v2-card-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ display: "flex", gap: 8 }}>
               <input

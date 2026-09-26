@@ -14,6 +14,7 @@ import { useI18n } from "../../lib/i18n";
 export function PermissionPoliciesTab() {
   const { t } = useI18n();
   const { data: policies, isLoading } = usePermissionPolicies();
+  const roleTemplates = (policies ?? []).filter((p) => p.is_system && p.id.startsWith("sys-role"));
   const createPolicy = useCreatePermissionPolicy();
   const updatePolicy = useUpdatePermissionPolicy();
   const deletePolicy = useDeletePermissionPolicy();
@@ -32,6 +33,7 @@ export function PermissionPoliciesTab() {
     return (
       <PolicyEditor
         isNew
+        templates={roleTemplates}
         onSave={async (data) => {
           try {
             await createPolicy.mutateAsync(data);
@@ -131,11 +133,13 @@ function PolicyEditor({
   isNew,
   onSave,
   onCancel,
+  templates = [],
 }: {
   policy?: PermissionPolicy;
   isNew?: boolean;
   onSave: (data: PermissionPolicyCreate) => Promise<void>;
   onCancel: () => void;
+  templates?: PermissionPolicy[];
 }) {
   const { t } = useI18n();
   const [name, setName] = useState(policy?.name ?? "");
@@ -143,6 +147,20 @@ function PolicyEditor({
   const [allowTools, setAllowTools] = useState((policy?.tool_rules?.allow ?? ["*"]).join(", "));
   const [denyCommands, setDenyCommands] = useState((policy?.command_rules?.deny ?? []).join(", "));
   const [allowCommands, setAllowCommands] = useState((policy?.command_rules?.allow ?? []).join(", "));
+  const [templateId, setTemplateId] = useState("");
+
+  function applyTemplate(nextTemplateId: string) {
+    setTemplateId(nextTemplateId);
+    const tpl = templates.find((tp) => tp.id === nextTemplateId);
+    if (!tpl) return;
+    setAllowTools((tpl.tool_rules?.allow ?? []).join(", "));
+    setDenyCommands((tpl.command_rules?.deny ?? []).join(", "));
+    setAllowCommands((tpl.command_rules?.allow ?? []).join(", "));
+    setDenyPaths((tpl.path_rules?.deny_paths ?? []).join(", "));
+    setDenyAllNet(tpl.network_rules?.deny_all ?? false);
+    setAllowDomains((tpl.network_rules?.allow_domains ?? []).join(", "));
+    if (!description) setDescription(tpl.description ?? "");
+  }
   const [denyPaths, setDenyPaths] = useState((policy?.path_rules?.deny_paths ?? []).join(", "));
   const [requireApproval, setRequireApproval] = useState((policy?.approval_rules?.require_approval_for ?? []).join(", "));
   const [denyAllNet, setDenyAllNet] = useState(policy?.network_rules?.deny_all ?? false);
@@ -173,6 +191,17 @@ function PolicyEditor({
         <section className="v2-card">
           <div className="v2-card-header"><h2 className="v2-card-title">{t("v2.identity")}</h2></div>
           <div className="v2-card-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {isNew && templates.length > 0 ? (
+              <div className="v2-field">
+                <label className="v2-field-label">{t("v2.startFromTemplate")}</label>
+                <select className="v2-select" value={templateId} onChange={(e) => applyTemplate(e.target.value)}>
+                  <option value="">{t("v2.noTemplate")}</option>
+                  {templates.map((tp) => (
+                    <option key={tp.id} value={tp.id}>{tp.name}</option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
             <div className="v2-field">
               <label className="v2-field-label">{t("v2.name")}</label>
               <input className="v2-input" value={name} onChange={(e) => setName(e.target.value)} disabled={policy?.is_system} />
