@@ -905,9 +905,16 @@ async def evaluate_pi_permission(
     request: Request,
     payload: PermissionTestRequest,
     current_agent: Agent = Depends(_load_internal_system_agent),
+    db: AsyncSession = Depends(get_db_session),
+    master_agent_id: str | None = Header(default=None, alias="X-HermesHQ-Master-Agent-ID"),
 ) -> PermissionTestResult:
     enforcer = request.app.state.permission_enforcer
-    decision = await enforcer.evaluate(current_agent, payload.tool, payload.input)
+    master_agent = None
+    if master_agent_id and master_agent_id != current_agent.id:
+        master_agent = await db.get(Agent, master_agent_id)
+        if master_agent and master_agent.is_archived:
+            master_agent = None
+    decision = await enforcer.evaluate(current_agent, payload.tool, payload.input, master_agent=master_agent)
     decision = enforcer.apply_runtime_approval(decision, current_agent.approval_mode)
     return PermissionTestResult(
         allowed=decision.allowed,

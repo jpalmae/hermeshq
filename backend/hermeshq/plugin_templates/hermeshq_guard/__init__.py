@@ -87,15 +87,19 @@ def _evaluate(tool: str, tool_input: dict) -> dict | None:
     if not api_url or not agent_id or not agent_token:
         return None
     payload = json.dumps({"tool": tool, "input": tool_input}).encode()
+    headers = {
+        "Content-Type": "application/json",
+        "X-HermesHQ-Agent-ID": agent_id,
+        "X-HermesHQ-Agent-Token": agent_token,
+        "User-Agent": _GUARD_USER_AGENT,
+    }
+    policy_master = os.environ.get("HERMESHQ_POLICY_MASTER", "").strip()
+    if policy_master:
+        headers["X-HermesHQ-Master-Agent-ID"] = policy_master
     request = urllib.request.Request(
         f"{api_url}/control/permissions/evaluate",
         data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "X-HermesHQ-Agent-ID": agent_id,
-            "X-HermesHQ-Agent-Token": agent_token,
-            "User-Agent": _GUARD_USER_AGENT,
-        },
+        headers=headers,
         method="POST",
     )
     try:
