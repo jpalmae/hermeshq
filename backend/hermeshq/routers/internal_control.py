@@ -20,13 +20,16 @@ from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.secret import Secret
 from hermeshq.models.task import Task
 from hermeshq.models.user import User
-from hermeshq.routers import agents as agents_router
+from hermeshq.routers import agents_crud as agents_router
+from hermeshq.routers import agents_runtime as agents_runtime_router
+from hermeshq.routers import agents_shared as agents_shared_router
 from hermeshq.routers import integration_factory as integration_factory_router
 from hermeshq.routers import integration_packages as integration_packages_router
 from hermeshq.routers import providers as providers_router
 from hermeshq.routers import scheduled_tasks as scheduled_tasks_router
 from hermeshq.routers import secrets as secrets_router
 from hermeshq.routers import users as users_router
+from hermeshq.routers.agents_shared import _serialize_agent as _agents_serialize_agent
 from hermeshq.schemas.agent import AgentCreate, AgentRead, AgentUpdate
 from hermeshq.schemas.integration_factory import (
     IntegrationDraftCreate,
@@ -236,7 +239,7 @@ async def control_archive_agent(
     await db.commit()
     result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id))
     agent = result.scalar_one()
-    serialized = agents_router._serialize_agent(request, agent)
+    serialized = _agents_serialize_agent(request, agent)
     await _log_control_action(
         db,
         current_agent,
@@ -258,11 +261,11 @@ async def control_agent_runtime(
 ) -> AgentRead:
     admin_user = await _load_admin_proxy(db)
     if action == "start":
-        result = await agents_router.start_agent(agent_id, request, admin_user, db)
+        result = await agents_runtime_router.start_agent(agent_id, request, admin_user, db)
     elif action == "stop":
-        result = await agents_router.stop_agent(agent_id, request, admin_user, db)
+        result = await agents_runtime_router.stop_agent(agent_id, request, admin_user, db)
     elif action == "restart":
-        result = await agents_router.restart_agent(agent_id, request, admin_user, db)
+        result = await agents_runtime_router.restart_agent(agent_id, request, admin_user, db)
     else:
         raise HTTPException(status_code=400, detail="Unsupported runtime action")
     await _log_control_action(
@@ -711,7 +714,7 @@ async def control_configure_agent_integration(
     agent = await db.get(Agent, agent_id)
     if not agent or agent.is_archived:
         raise HTTPException(status_code=404, detail="Agent not found")
-    enabled_slugs = await agents_router._load_enabled_integration_slugs(db)
+    enabled_slugs = await agents_shared_router._load_enabled_integration_slugs(db)
     integration = get_managed_integration(integration_slug, enabled_slugs)
     if not integration:
         raise HTTPException(status_code=404, detail="Integration is not installed in this instance")
@@ -731,12 +734,12 @@ async def control_configure_agent_integration(
 
     agent.integration_configs = configs
     agent.skills = skills
-    agents_router._sync_agent_integration_toolsets(agent, enabled_slugs)
+    agents_shared_router._sync_agent_integration_toolsets(agent, enabled_slugs)
     await db.commit()
     await request.app.state.installation_manager.sync_agent_installation(agent)
     result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id))
     updated = result.scalar_one()
-    serialized = agents_router._serialize_agent(request, updated)
+    serialized = _agents_serialize_agent(request, updated)
     await _log_control_action(
         db,
         current_agent,
@@ -1098,7 +1101,7 @@ async def control_run_integration_action(
     if not decision.allowed:
         raise HTTPException(status_code=403, detail=decision.reason or "Integration action denied by policy")
 
-    enabled_slugs = await agents_router._load_enabled_integration_slugs(db)
+    enabled_slugs = await agents_shared_router._load_enabled_integration_slugs(db)
     from hermeshq.services.managed_capabilities import get_managed_integration
 
     integration = get_managed_integration(integration_slug, enabled_slugs)
