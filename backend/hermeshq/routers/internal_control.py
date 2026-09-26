@@ -1246,3 +1246,130 @@ async def control_test_permission(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"allowed": allowed, "reason": reason, "requires_approval": requires_approval}
+
+
+# ─── Enrolled-device management (control agent) ────────────────────────────
+
+
+class ControlEnrollRequest(BaseModel):
+    agent_id: str
+    device_name: str = Field(min_length=1, max_length=128)
+    guard_fail_mode: str = "fail-open"
+
+
+@router.get("/enrollment/devices", include_in_schema=False)
+async def control_list_devices(
+    request: Request,
+    agent_id: str | None = None,
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> list[dict]:
+    service = getattr(request.app.state, "enrollment_service", None)
+    if service is None:
+        raise HTTPException(status_code=503, detail="Enrollment service unavailable")
+    admin_user = await _load_admin_proxy(db)
+    if agent_id:
+        from hermeshq.core.security import ensure_agent_access
+
+        await ensure_agent_access(db, admin_user, agent_id)
+    devices = await service.list_devices(agent_id)
+    await _log_control_action(
+        db,
+        _,
+        event_type="hq_control.devices.listed",
+        message="list enrolled devices",
+        details={"agent_id": agent_id or "all", "count": len(devices)},
+    )
+    return [
+        {
+            "id": d.id,
+            "agent_id": d.agent_id,
+            "name": d.name,
+            "status": d.status,
+            "guard_fail_mode": d.guard_fail_mode,
+            "last_heartbeat": d.last_heartbeat.isoformat() if d.last_heartbeat else None,
+            "last_sync_at": d.last_sync_at.isoformat() if d.last_sync_at else None,
+            "hermes_version": d.hermes_version,
+            "revoked_at": d.revoked_at.isoformat() if d.revoked_at else None,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+        }
+        for d in devices
+    ]
+
+
+@router.post("/enrollment/devices", include_in_schema=False)
+async def control_enroll_device(
+    payload: ControlEnrollRequest,
+    request: Request,
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from hermeshq.services.enrollment import EnrollmentError
+
+    service = getattr(request.app.state, "enrollment_service", None)
+    if service is None:
+        raise HTTPException(status_code=503, detail="Enrollment service unavailable")
+    admin_user = await _load_admin_proxy(db)
+    from hermeshq.core.security import ensure_agent_access
+
+    await ensure_agent_access(db, admin_user, payload.agent_id)
+    try:
+        device, enroll_token = await service.create_enrollment(
+            payload.agent_id,
+            admin_user.id,
+            payload.device_name,
+            guard_fail_mode=payload.guard_fail_mode,
+        )
+    except EnrollmentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _log_control_action(
+        db,
+        _,
+        event_type="hq_control.device.enrolled",
+        message=f"enroll device '{payload.device_name}' for agent {payload.agent_id}",
+        details={"device_id": device.id, "agent_id": payload.agent_id, "fail_mode": payload.guard_fail_mode},
+    )
+    return {
+        "device_id": device.id,
+        "agent_id": device.agent_id,
+        "name": device.name,
+        "status": device.status,
+        "guard_fail_mode": device.guard_fail_mode,
+        "enroll_token": enroll_token,
+        "activate_command": (
+            f"python enroll_device.py activate <server-url> --device-id {device.id} --token {enroll_token}"
+        ),
+    }
+
+
+@router.delete("/enrollment/devices/{device_id}", include_in_schema=False)
+async def control_revoke_device(
+    device_id: str,
+    request: Request,
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from hermeshq.services.enrollment import EnrollmentError
+
+    service = getattr(request.app.state, "enrollment_service", None)
+    if service is None:
+        raise HTTPException(status_code=503, detail="Enrollment service unavailable")
+    device = await service.get_device(device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    admin_user = await _load_admin_proxy(db)
+    from hermeshq.core.security import ensure_agent_access
+
+    await ensure_agent_access(db, admin_user, device.agent_id)
+    try:
+        revoked = await service.revoke_device(device_id)
+    except EnrollmentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _log_control_action(
+        db,
+        _,
+        event_type="hq_control.device.revoked",
+        message=f"revoke device '{revoked.name}' ({device_id})",
+        details={"device_id": device_id, "agent_id": revoked.agent_id},
+    )
+    return {"device_id": revoked.id, "status": revoked.status, "name": revoked.name}
