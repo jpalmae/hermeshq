@@ -196,7 +196,7 @@ export function V2AgentDetailPage() {
     { id: "channels", label: t("v2.channels") },
     { id: "integrations", label: t("v2.integrations") },
     { id: "terminal", label: t("v2.terminal") },
-    ...(isPi ? [{ id: "permissions" as DetailTab, label: t("v2.permissions") }] : []),
+    { id: "permissions" as DetailTab, label: t("v2.permissions") },
     { id: "devices", label: t("v2.devices") },
     { id: "skills", label: t("v2.skills") },
     { id: "workspace", label: t("v2.workspace") },
@@ -404,9 +404,7 @@ export function V2AgentDetailPage() {
         </section>
       ) : null}
 
-      {tab === "permissions" && isPi ? (
-        <V2AgentPermissionsTab agent={agent} isAdmin={isAdmin} />
-      ) : null}
+      {tab === "permissions" ? <V2AgentPermissionsTab agent={agent} isAdmin={isAdmin} /> : null}
 
       {tab === "devices" ? <V2AgentDevicesTab agent={agent} isAdmin={isAdmin} /> : null}
 
