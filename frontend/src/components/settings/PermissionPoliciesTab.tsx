@@ -142,6 +142,7 @@ function PolicyEditor({
   const [description, setDescription] = useState(policy?.description ?? "");
   const [allowTools, setAllowTools] = useState((policy?.tool_rules?.allow ?? ["*"]).join(", "));
   const [denyCommands, setDenyCommands] = useState((policy?.command_rules?.deny ?? []).join(", "));
+  const [allowCommands, setAllowCommands] = useState((policy?.command_rules?.allow ?? []).join(", "));
   const [denyPaths, setDenyPaths] = useState((policy?.path_rules?.deny_paths ?? []).join(", "));
   const [requireApproval, setRequireApproval] = useState((policy?.approval_rules?.require_approval_for ?? []).join(", "));
   const [denyAllNet, setDenyAllNet] = useState(policy?.network_rules?.deny_all ?? false);
@@ -153,7 +154,10 @@ function PolicyEditor({
       description: description || undefined,
       tool_rules: { allow: allowTools.split(",").map((s) => s.trim()).filter(Boolean), deny: [] },
       path_rules: { allow_paths: ["/workspace/**"], deny_paths: denyPaths.split(",").map((s) => s.trim()).filter(Boolean) },
-      command_rules: { allow: [], deny: denyCommands.split(",").map((s) => s.trim()).filter(Boolean) },
+      command_rules: {
+        allow: allowCommands.split(",").map((s) => s.trim()).filter(Boolean),
+        deny: denyCommands.split(",").map((s) => s.trim()).filter(Boolean),
+      },
       network_rules: { allow_domains: allowDomains.split(",").map((s) => s.trim()).filter(Boolean), deny_all: denyAllNet },
       approval_rules: { require_approval_for: requireApproval.split(",").map((s) => s.trim()).filter(Boolean), auto_approve_threshold: "medium" },
     };
@@ -208,7 +212,11 @@ function PolicyEditor({
           <div className="v2-card-header"><h2 className="v2-card-title">{t("v2.commandRules")}</h2></div>
           <div className="v2-card-body">
             <div className="v2-field">
-              <label className="v2-field-label">{t("v2.deniedCommands")} <span style={{ fontSize: 11, color: "var(--v2-text-muted)" }}>(comma-separated glob patterns)</span></label>
+              <label className="v2-field-label">{t("v2.allowedCommands")} <span style={{ fontSize: 11, color: "var(--v2-text-muted)" }}>({t("v2.globHint")} — {t("v2.allowlistHint")})</span></label>
+              <textarea className="v2-textarea" rows={2} value={allowCommands} onChange={(e) => setAllowCommands(e.target.value)} placeholder="git status*, ping*, npm test*" />
+            </div>
+            <div className="v2-field">
+              <label className="v2-field-label">{t("v2.deniedCommands")} <span style={{ fontSize: 11, color: "var(--v2-text-muted)" }}>({t("v2.globHint")})</span></label>
               <textarea className="v2-textarea" rows={3} value={denyCommands} onChange={(e) => setDenyCommands(e.target.value)} placeholder="rm -rf /, sudo *, curl * | sh" />
             </div>
           </div>
