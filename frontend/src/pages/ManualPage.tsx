@@ -512,6 +512,25 @@ const manualContent: Record<"en" | "es", ManualContent> = {
         ],
       },
       {
+        id: "permissions-layers",
+        eyebrow: "Permisos",
+        title: "Toolsets y policies: las dos capas de permisos",
+        summary:
+          "HermesHQ controla lo que un agente puede hacer con dos capas complementarias: los toolsets (qué herramientas existen) y las policies (qué se permite hacer con ellas). Entender ambas es clave para gobernar agentes en todas las superficies.",
+        bullets: [
+          "ANALOGÍA: los toolsets son el cinturón de herramientas que le entregas al empleado — si no le das destornillador, no hay destornillador que supervisar. Las policies son el reglamento de uso: tiene la herramienta en la mano, pero antes de cada movimiento pasa por el supervisor que decide si puede hacerlo.",
+          "CAPA 1 — TOOLSETS (la caja de herramientas): definen QUÉ herramientas existen para el agente en las tareas del servidor. Se configuran en el agente (pestaña Config → perfil de runtime y toolsets habilitados). Sin terminal en los toolsets, el modelo ni siquiera ve esa herramienta: no la intenta, no existe en su mundo. Es la forma más limpia y barata de limitar: cero frustración del agente, cero llamadas de supervisión.",
+          "CAPA 2 — POLICIES (el reglamento): definen QUÉ se permite HACER con las herramientas que el agente tiene. Se evalúan contra HermesHQ en cada llamada a herramienta, en tiempo real. Se crean en Settings → Permission Policies (con plantillas de rol: No técnico/Oficina, Técnico/Dev/TI, Ciberseguridad) y se asignan al agente en su pestaña Permissions, donde también hay un panel para probar cómo evalúa cualquier herramienta antes de asignarla.",
+          "Las policies combinan cuatro tipos de reglas con patrones glob (ej: ping*, git status*, /tmp/**): herramientas permitidas/bloqueadas, comandos permitidos/bloqueados, rutas de archivo protegidas y reglas de red (dominios permitidos o red bloqueada). El deny siempre gana; si defines una lista permitida, todo lo que no esté en ella se bloquea.",
+          "DÓNDE APLICA CADA CAPA — esta es la clave: los toolsets SOLO aplican a las tareas que ejecuta el servidor (web, API, schedules, Teams, Telegram, WhatsApp). En un dispositivo enrolado (Hermes Desktop en la máquina del usuario) el runtime es local y completo, los toolsets NO viajan: la ÚNICA frontera real es la policy. Por eso el wizard de enrolamiento avisa cuando un agente no tiene policies: en la máquina del usuario tendría acceso total.",
+          "EJEMPLO REAL (agente Operador): en el servidor no tiene terminal en sus toolsets, así que si le pides hacer ping responde honestamente que no puede y hasta intenta delegar sin éxito. En tu Desktop enrolado el runtime local SÍ tiene terminal, y si su policy permite solo comandos ping*, el ping funciona y todo lo demás (traceroute, curl, python, nc, dig) se bloquea en el acto — incluso intentos de evasión como ejecutar python con un heredoc.",
+          "MATRIZ RÁPIDA: tarea web/schedule/Teams/Telegram → toolsets recortan la caja Y policies vigilan cada uso. Dispositivo enrolado → caja completa, SOLO policies vigilan. Agente Pi → extensión nativa de permisos. Delegación a subagente → el subagente corre bajo SUS policies y ADEMÁS hereda las del agente maestro (si alguna bloquea, bloquea).",
+          "DELEGACIÓN: los agentes siempre pueden usar subagentes (delegate_task no pasa por las reglas de herramientas), pero la policy del agente maestro PERSIGUE la ejecución dentro del subagente y en cadenas anidadas se conserva el maestro raíz. El bloqueo heredado se informa como \"inherited from master agent\" para que el administrador sepa de dónde viene la restricción.",
+          "DISPOSITIVOS ENROLADOS — modo de falla: si el dispositivo pierde conexión con HermesHQ, el guard decide según el fail-mode elegido al enrolar: fail-open (sigue trabajando sin validar), fail-closed (bloquea toda herramienta) o fail-grace:N segundos (permite durante una ventana de gracia y luego bloquea). La revocación de un dispositivo corta el acceso de inmediato sin importar el fail-mode.",
+          "RECOMENDACIÓN PRÁCTICA: usa los toolsets para la NATURALEZA del agente (un agente de soporte no necesita terminal ni la mira) y las policies para el GOBIERNO por rol de trabajo (quién puede hacer qué, auditable, idéntico en todas las superficies). Todo agente que vaya a enrolarse en dispositivos debería llevar al menos una policy — las plantillas de rol son el punto de partida.",
+        ],
+      },
+      {
         id: "tips",
         eyebrow: "Buenas practicas",
         title: "Consejos de uso y soporte",
@@ -1010,6 +1029,25 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "WebSocket authenticates with an auth message instead of a query parameter, preventing the token from appearing in server logs.",
           "Backups are encrypted with AES passphrase. Use `Settings -> General -> Backup & Restore` to create and restore.",
           "For additional protection, configure rate limiting in Nginx (directives are prepared; just activate them in the global `http` block).",
+        ],
+      },
+      {
+        id: "permissions-layers",
+        eyebrow: "Permissions",
+        title: "Toolsets and policies: the two permission layers",
+        summary:
+          "HermesHQ controls what an agent can do with two complementary layers: toolsets (which tools exist) and policies (what may be done with them). Understanding both is key to governing agents across every surface.",
+        bullets: [
+          "ANALOGY: toolsets are the tool belt you hand the employee — if you don't give them a screwdriver, there's no screwdriver to supervise. Policies are the rulebook: they hold the tool, but before every move a supervisor decides whether it's allowed.",
+          "LAYER 1 — TOOLSETS (the toolbox): define WHICH tools exist for the agent on server tasks. Configured on the agent (Config tab → runtime profile and enabled toolsets). Without terminal in the toolsets, the model never even sees that tool: it doesn't try, it doesn't exist in its world. It's the cleanest and cheapest limit: zero agent frustration, zero supervision calls.",
+          "LAYER 2 — POLICIES (the rulebook): define what the agent is ALLOWED TO DO with the tools it has. They are evaluated against HermesHQ on every tool call, in real time. Created under Settings → Permission Policies (with role templates: Office, Technical/Dev/IT, Security) and assigned on the agent's Permissions tab, which also has a panel to test how any tool evaluates before assigning.",
+          "Policies combine four rule types using glob patterns (e.g. ping*, git status*, /tmp/**): allowed/denied tools, allowed/denied commands, protected file paths, and network rules (allowed domains or network blocked). Deny always wins; if you define an allow list, anything not on it is blocked.",
+          "WHERE EACH LAYER APPLIES — this is the key: toolsets ONLY apply to server-executed tasks (web, API, schedules, Teams, Telegram, WhatsApp). On an enrolled device (Hermes Desktop on the user's machine) the runtime is local and complete — toolsets do NOT travel: the ONLY real boundary is the policy. That's why the enrollment wizard warns when an agent has no policies: on the user's machine it would have full access.",
+          "REAL EXAMPLE (agent Operador): on the server it has no terminal in its toolsets, so if you ask it to ping it honestly says it can't and even tries delegating without success. On your enrolled Desktop the local runtime DOES have terminal, and if its policy allows only ping* commands, ping works while everything else (traceroute, curl, python, nc, dig) is blocked on the spot — including evasion attempts like running python with a heredoc.",
+          "QUICK MATRIX: web/schedule/Teams/Telegram task → toolsets trim the box AND policies watch every use. Enrolled device → full box, ONLY policies watch. Pi agent → native permission extension. Delegation to a subagent → the subagent runs under ITS policies AND inherits the master agent's (if either blocks, it blocks).",
+          "DELEGATION: agents can always use subagents (delegate_task bypasses tool rules), but the master agent's policy FOLLOWS execution inside the subagent, and nested chains preserve the root master. Inherited blocks are reported as \"inherited from master agent\" so the administrator knows where the restriction comes from.",
+          "ENROLLED DEVICES — fail mode: if the device loses connectivity to HermesHQ, the guard decides per the fail-mode chosen at enrollment: fail-open (keeps working unvalidated), fail-closed (blocks every tool), or fail-grace:N seconds (allows during a grace window, then blocks). Revoking a device cuts access immediately regardless of fail-mode.",
+          "PRACTICAL RECOMMENDATION: use toolsets for the agent's NATURE (a support agent doesn't need to even see a terminal) and policies for role-based GOVERNANCE (who can do what, auditable, identical across surfaces). Any agent that will be enrolled on devices should carry at least one policy — the role templates are the starting point.",
         ],
       },
       {
