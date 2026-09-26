@@ -1046,11 +1046,9 @@ class HermesInstallationManager:
         runtime_provider = normalize_runtime_provider(agent.provider)
         effective_base_url = self._effective_provider_base_url(agent)
 
-        from hermeshq.config import get_settings
 
         managed["HERMESHQ_AGENT_ID"] = agent.id
         managed["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id, agent.service_token_version or 1)
-        managed["HERMESHQ_INTERNAL_API_URL"] = get_settings().internal_api_base_url.rstrip("/")
         managed["HERMESHQ_GUARD_FAIL_MODE"] = "fail-open"
 
         api_key = await self._resolve_api_key(agent.api_key_ref)
