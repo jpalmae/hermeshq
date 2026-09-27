@@ -382,7 +382,7 @@ class HermesInstallationManager:
         desired_plugins = list_managed_plugins(
             enabled_integration_slugs,
             include_system_plugins=bool(agent.is_system_agent),
-            include_desktop_guard=bool(agent.desktop_access_enabled),
+            include_desktop_guard=True,
         )
         desired_names = {plugin["template_dir"] for plugin in desired_plugins}
         known_names = {
@@ -523,6 +523,7 @@ class HermesInstallationManager:
                     "name": teams_channel.home_chat_name or "Home",
                 }
             platforms["teams"] = teams_platform
+            config.setdefault("display", {}).setdefault("platforms", {})["teams"] = {"streaming": True}
         if sixagentic_channel and self._channel_runtime_enabled(sixagentic_channel):
             platforms = config.setdefault("platforms", {})
             platforms["sixagentic"] = {
@@ -590,7 +591,7 @@ class HermesInstallationManager:
             installed_plugin_dirs = {p.name for p in plugins_root.iterdir() if p.is_dir()}
             # enabled_toolsets contains slugs like "hermeshq_ms365_mail"
             plugins_to_enable = [slug for slug in (agent.enabled_toolsets or []) if slug in installed_plugin_dirs]
-            if agent.desktop_access_enabled and "hermeshq_guard" in installed_plugin_dirs:
+            if "hermeshq_guard" in installed_plugin_dirs:
                 plugins_to_enable.append("hermeshq_guard")
             if plugins_to_enable:
                 config["plugins"] = {"enabled": plugins_to_enable}
@@ -1045,6 +1046,11 @@ class HermesInstallationManager:
         runtime_provider = normalize_runtime_provider(agent.provider)
         effective_base_url = self._effective_provider_base_url(agent)
 
+
+        managed["HERMESHQ_AGENT_ID"] = agent.id
+        managed["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id, agent.service_token_version or 1)
+        managed["HERMESHQ_GUARD_FAIL_MODE"] = "fail-open"
+
         api_key = await self._resolve_api_key(agent.api_key_ref)
         if api_key:
             for env_name in self._provider_env_names(runtime_provider):
@@ -1136,6 +1142,10 @@ class HermesInstallationManager:
         # Keys managed by the integration system — these get stripped and rewritten
         managed_keys: set[str] = {
             "OPENAI_BASE_URL",
+            "HERMESHQ_AGENT_ID",
+            "HERMESHQ_AGENT_TOKEN",
+            "HERMESHQ_INTERNAL_API_URL",
+            "HERMESHQ_GUARD_FAIL_MODE",
             "HERMESHQ_SHAREPOINT_SITE_URL",
             "TELEGRAM_BOT_TOKEN",
             "TELEGRAM_ALLOWED_USERS",

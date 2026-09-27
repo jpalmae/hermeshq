@@ -182,6 +182,9 @@ class HermesRuntime(RuntimeBase):
     ) -> RuntimeExecutionResult:
         workspace_path = self.installation_manager.resolve_workspace_path(agent.workspace_path)
         process_env = await self.installation_manager.build_process_env(agent)
+        policy_master = (task.metadata_json or {}).get("policy_master_agent_id")
+        if isinstance(policy_master, str) and policy_master.strip() and policy_master != agent.id:
+            process_env["HERMESHQ_POLICY_MASTER"] = policy_master.strip()
         if fallback_override:
             process_env = {**process_env, **self._fallback_env(agent, fallback_override.get("api_key"))}
         enabled_toolsets, disabled_toolsets = resolve_effective_toolsets(

@@ -1,5 +1,5 @@
-name: hermeshq-control
-version: "1.0.0"
+name: hermeshq_control
+version: "1.1.0"
 description: HermesHQ administrative control-plane tools for system agents
 author: HermesHQ
 provides_tools:
@@ -29,3 +29,22 @@ provides_tools:
   - hq_control_create_schedule
   - hq_control_update_schedule
   - hq_control_delete_schedule
+  - hq_control_list_integration_drafts
+  - hq_control_create_integration_draft
+  - hq_control_get_integration_draft
+  - hq_control_update_integration_draft
+  - hq_control_get_integration_draft_file
+  - hq_control_put_integration_draft_file
+  - hq_control_delete_integration_draft_file
+  - hq_control_validate_integration_draft
+  - hq_control_publish_integration_draft
+  - hq_control_delete_integration_draft
+  - hq_control_list_policies
+  - hq_control_create_policy
+  - hq_control_update_policy
+  - hq_control_delete_policy
+  - hq_control_assign_policy
+  - hq_control_test_permission
+  - hq_control_list_devices
+  - hq_control_enroll_device
+  - hq_control_revoke_device

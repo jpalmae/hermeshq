@@ -20,13 +20,16 @@ from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.secret import Secret
 from hermeshq.models.task import Task
 from hermeshq.models.user import User
-from hermeshq.routers import agents as agents_router
+from hermeshq.routers import agents_crud as agents_router
+from hermeshq.routers import agents_runtime as agents_runtime_router
+from hermeshq.routers import agents_shared as agents_shared_router
 from hermeshq.routers import integration_factory as integration_factory_router
 from hermeshq.routers import integration_packages as integration_packages_router
 from hermeshq.routers import providers as providers_router
 from hermeshq.routers import scheduled_tasks as scheduled_tasks_router
 from hermeshq.routers import secrets as secrets_router
 from hermeshq.routers import users as users_router
+from hermeshq.routers.agents_shared import _serialize_agent as _agents_serialize_agent
 from hermeshq.schemas.agent import AgentCreate, AgentRead, AgentUpdate
 from hermeshq.schemas.integration_factory import (
     IntegrationDraftCreate,
@@ -236,7 +239,7 @@ async def control_archive_agent(
     await db.commit()
     result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id))
     agent = result.scalar_one()
-    serialized = agents_router._serialize_agent(request, agent)
+    serialized = _agents_serialize_agent(request, agent)
     await _log_control_action(
         db,
         current_agent,
@@ -258,11 +261,11 @@ async def control_agent_runtime(
 ) -> AgentRead:
     admin_user = await _load_admin_proxy(db)
     if action == "start":
-        result = await agents_router.start_agent(agent_id, request, admin_user, db)
+        result = await agents_runtime_router.start_agent(agent_id, request, admin_user, db)
     elif action == "stop":
-        result = await agents_router.stop_agent(agent_id, request, admin_user, db)
+        result = await agents_runtime_router.stop_agent(agent_id, request, admin_user, db)
     elif action == "restart":
-        result = await agents_router.restart_agent(agent_id, request, admin_user, db)
+        result = await agents_runtime_router.restart_agent(agent_id, request, admin_user, db)
     else:
         raise HTTPException(status_code=400, detail="Unsupported runtime action")
     await _log_control_action(
@@ -711,7 +714,7 @@ async def control_configure_agent_integration(
     agent = await db.get(Agent, agent_id)
     if not agent or agent.is_archived:
         raise HTTPException(status_code=404, detail="Agent not found")
-    enabled_slugs = await agents_router._load_enabled_integration_slugs(db)
+    enabled_slugs = await agents_shared_router._load_enabled_integration_slugs(db)
     integration = get_managed_integration(integration_slug, enabled_slugs)
     if not integration:
         raise HTTPException(status_code=404, detail="Integration is not installed in this instance")
@@ -731,12 +734,12 @@ async def control_configure_agent_integration(
 
     agent.integration_configs = configs
     agent.skills = skills
-    agents_router._sync_agent_integration_toolsets(agent, enabled_slugs)
+    agents_shared_router._sync_agent_integration_toolsets(agent, enabled_slugs)
     await db.commit()
     await request.app.state.installation_manager.sync_agent_installation(agent)
     result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id))
     updated = result.scalar_one()
-    serialized = agents_router._serialize_agent(request, updated)
+    serialized = _agents_serialize_agent(request, updated)
     await _log_control_action(
         db,
         current_agent,
@@ -905,9 +908,16 @@ async def evaluate_pi_permission(
     request: Request,
     payload: PermissionTestRequest,
     current_agent: Agent = Depends(_load_internal_system_agent),
+    db: AsyncSession = Depends(get_db_session),
+    master_agent_id: str | None = Header(default=None, alias="X-HermesHQ-Master-Agent-ID"),
 ) -> PermissionTestResult:
     enforcer = request.app.state.permission_enforcer
-    decision = await enforcer.evaluate(current_agent, payload.tool, payload.input)
+    master_agent = None
+    if master_agent_id and master_agent_id != current_agent.id:
+        master_agent = await db.get(Agent, master_agent_id)
+        if master_agent and master_agent.is_archived:
+            master_agent = None
+    decision = await enforcer.evaluate(current_agent, payload.tool, payload.input, master_agent=master_agent)
     decision = enforcer.apply_runtime_approval(decision, current_agent.approval_mode)
     return PermissionTestResult(
         allowed=decision.allowed,
@@ -1091,7 +1101,7 @@ async def control_run_integration_action(
     if not decision.allowed:
         raise HTTPException(status_code=403, detail=decision.reason or "Integration action denied by policy")
 
-    enabled_slugs = await agents_router._load_enabled_integration_slugs(db)
+    enabled_slugs = await agents_shared_router._load_enabled_integration_slugs(db)
     from hermeshq.services.managed_capabilities import get_managed_integration
 
     integration = get_managed_integration(integration_slug, enabled_slugs)
@@ -1239,3 +1249,130 @@ async def control_test_permission(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"allowed": allowed, "reason": reason, "requires_approval": requires_approval}
+
+
+# ─── Enrolled-device management (control agent) ────────────────────────────
+
+
+class ControlEnrollRequest(BaseModel):
+    agent_id: str
+    device_name: str = Field(min_length=1, max_length=128)
+    guard_fail_mode: str = "fail-open"
+
+
+@router.get("/enrollment/devices", include_in_schema=False)
+async def control_list_devices(
+    request: Request,
+    agent_id: str | None = None,
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> list[dict]:
+    service = getattr(request.app.state, "enrollment_service", None)
+    if service is None:
+        raise HTTPException(status_code=503, detail="Enrollment service unavailable")
+    admin_user = await _load_admin_proxy(db)
+    if agent_id:
+        from hermeshq.core.security import ensure_agent_access
+
+        await ensure_agent_access(db, admin_user, agent_id)
+    devices = await service.list_devices(agent_id)
+    await _log_control_action(
+        db,
+        _,
+        event_type="hq_control.devices.listed",
+        message="list enrolled devices",
+        details={"agent_id": agent_id or "all", "count": len(devices)},
+    )
+    return [
+        {
+            "id": d.id,
+            "agent_id": d.agent_id,
+            "name": d.name,
+            "status": d.status,
+            "guard_fail_mode": d.guard_fail_mode,
+            "last_heartbeat": d.last_heartbeat.isoformat() if d.last_heartbeat else None,
+            "last_sync_at": d.last_sync_at.isoformat() if d.last_sync_at else None,
+            "hermes_version": d.hermes_version,
+            "revoked_at": d.revoked_at.isoformat() if d.revoked_at else None,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+        }
+        for d in devices
+    ]
+
+
+@router.post("/enrollment/devices", include_in_schema=False)
+async def control_enroll_device(
+    payload: ControlEnrollRequest,
+    request: Request,
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from hermeshq.services.enrollment import EnrollmentError
+
+    service = getattr(request.app.state, "enrollment_service", None)
+    if service is None:
+        raise HTTPException(status_code=503, detail="Enrollment service unavailable")
+    admin_user = await _load_admin_proxy(db)
+    from hermeshq.core.security import ensure_agent_access
+
+    await ensure_agent_access(db, admin_user, payload.agent_id)
+    try:
+        device, enroll_token = await service.create_enrollment(
+            payload.agent_id,
+            admin_user.id,
+            payload.device_name,
+            guard_fail_mode=payload.guard_fail_mode,
+        )
+    except EnrollmentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _log_control_action(
+        db,
+        _,
+        event_type="hq_control.device.enrolled",
+        message=f"enroll device '{payload.device_name}' for agent {payload.agent_id}",
+        details={"device_id": device.id, "agent_id": payload.agent_id, "fail_mode": payload.guard_fail_mode},
+    )
+    return {
+        "device_id": device.id,
+        "agent_id": device.agent_id,
+        "name": device.name,
+        "status": device.status,
+        "guard_fail_mode": device.guard_fail_mode,
+        "enroll_token": enroll_token,
+        "activate_command": (
+            f"python enroll_device.py activate <server-url> --device-id {device.id} --token {enroll_token}"
+        ),
+    }
+
+
+@router.delete("/enrollment/devices/{device_id}", include_in_schema=False)
+async def control_revoke_device(
+    device_id: str,
+    request: Request,
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from hermeshq.services.enrollment import EnrollmentError
+
+    service = getattr(request.app.state, "enrollment_service", None)
+    if service is None:
+        raise HTTPException(status_code=503, detail="Enrollment service unavailable")
+    device = await service.get_device(device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    admin_user = await _load_admin_proxy(db)
+    from hermeshq.core.security import ensure_agent_access
+
+    await ensure_agent_access(db, admin_user, device.agent_id)
+    try:
+        revoked = await service.revoke_device(device_id)
+    except EnrollmentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _log_control_action(
+        db,
+        _,
+        event_type="hq_control.device.revoked",
+        message=f"revoke device '{revoked.name}' ({device_id})",
+        details={"device_id": device_id, "agent_id": revoked.agent_id},
+    )
+    return {"device_id": revoked.id, "status": revoked.status, "name": revoked.name}
