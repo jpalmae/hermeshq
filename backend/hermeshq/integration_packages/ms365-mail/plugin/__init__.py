@@ -3,10 +3,50 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 TOOLSET = "hermeshq_ms365_mail"
+
+
+def _resolve_session_user_id() -> str | None:
+    """Resolve the HermesHQ user for the in-flight live gateway turn.
+
+    Hermes Agent tracks the platform/sender of the current turn per-message
+    via contextvars (safe under concurrent messages in the same gateway
+    process), exposed through these env vars. Unused for punctual tasks,
+    which carry their user in HERMESHQ_TASK_PAYLOAD instead.
+    """
+    platform = os.environ.get("HERMES_SESSION_PLATFORM", "").strip().lower()
+    sender_id = os.environ.get("HERMES_SESSION_USER_ID", "").strip()
+    if not platform or not sender_id:
+        return None
+    base_url = os.environ.get("HERMESHQ_INTERNAL_API_URL", "").rstrip("/")
+    agent_id = os.environ.get("HERMESHQ_AGENT_ID", "")
+    agent_token = os.environ.get("HERMESHQ_AGENT_TOKEN", "")
+    if not base_url or not agent_id or not agent_token:
+        return None
+    url = (
+        f"{base_url}/control/resolve-channel-user"
+        f"?platform={urllib.parse.quote(platform)}&sender_id={urllib.parse.quote(sender_id)}"
+    )
+    req = urllib.request.Request(
+        url,
+        method="GET",
+        headers={
+            "X-HermesHQ-Agent-ID": agent_id,
+            "X-HermesHQ-Agent-Token": agent_token,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return str(data.get("hermeshq_user_id") or "").strip() or None
+    except urllib.error.HTTPError:
+        return None
+    except Exception:  # noqa: BLE001  # HTTP request catch-all
+        return None
 
 
 def _task_user_id() -> str | None:
@@ -20,7 +60,10 @@ def _task_user_id() -> str | None:
                 return uid
         except (json.JSONDecodeError, ValueError):
             pass
-    return None
+    resolved = _resolve_session_user_id()
+    if resolved:
+        return resolved
+    return os.environ.get("HERMESHQ_RESOLVED_USER_ID") or None
 
 
 def _get_m365_token(user_id: str) -> tuple[str | None, str]:
