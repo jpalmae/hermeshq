@@ -307,6 +307,7 @@ export function V2AgentDetailPage() {
                   <div key={`${task.id}-u`} className="v2-chat-msg" data-role="user">
                     {task.prompt}
                     <div className="v2-chat-meta">
+                      <span>{new Date(task.queued_at).toLocaleString()}</span>
                       <span>{task.status}</span>
                     </div>
                   </div>,
@@ -335,6 +336,7 @@ export function V2AgentDetailPage() {
                         <>
                           <MarkdownText>{response}</MarkdownText>
                           <div className="v2-chat-meta">
+                            <span>{task.completed_at ? new Date(task.completed_at).toLocaleString() : ""}</span>
                             <span className="v2-pill" data-tone={taskTone(task.status)} style={{ fontSize: 10 }}>
                               {task.status}
                             </span>
