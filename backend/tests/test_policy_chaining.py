@@ -29,14 +29,16 @@ def _policy(pid: str, name: str, **kwargs):
 
 
 DEVELOPER = _policy(
-    "sys-pi-developer", "Pi Developer",
+    "sys-pi-developer",
+    "Pi Developer",
     tool_rules={"allow": ["read", "bash", "edit", "write", "grep", "find", "ls"], "deny": []},
     command_rules={"allow": [], "deny": ["rm -rf /"]},
     approval_rules={"require_approval_for": ["bash:sudo *"], "auto_approve_threshold": "medium"},
 )
 
 RESTRICTED_DOMAINS = _policy(
-    "custom-1", "Corporate Domains",
+    "custom-1",
+    "Corporate Domains",
     network_rules={"allow_domains": ["corp.example.com"], "deny_all": True},
     approval_rules={"require_approval_for": [], "auto_approve_threshold": "high"},
 )
@@ -54,7 +56,8 @@ class TestMergePolicies:
 
     def test_deny_union(self):
         sandbox = _policy(
-            "sys-pi-sandboxed", "Pi Sandboxed",
+            "sys-pi-sandboxed",
+            "Pi Sandboxed",
             tool_rules={"allow": ["read", "bash", "edit"], "deny": []},
             command_rules={"allow": [], "deny": ["sudo *"]},
         )
@@ -65,7 +68,8 @@ class TestMergePolicies:
 
     def test_allow_union(self):
         extra = _policy(
-            "custom-2", "Extra Tools",
+            "custom-2",
+            "Extra Tools",
             tool_rules={"allow": ["web_search"], "deny": []},
         )
         e = PermissionEnforcer(None)
@@ -83,7 +87,8 @@ class TestMergePolicies:
 
     def test_two_blocking_policies_intersect_domains(self):
         other = _policy(
-            "custom-3", "Other Domains",
+            "custom-3",
+            "Other Domains",
             network_rules={"allow_domains": ["corp.example.com", "api.other.com"], "deny_all": True},
         )
         e = PermissionEnforcer(None)
@@ -93,7 +98,8 @@ class TestMergePolicies:
 
     def test_approval_union(self):
         extra = _policy(
-            "custom-4", "More Approvals",
+            "custom-4",
+            "More Approvals",
             approval_rules={"require_approval_for": ["bash:deploy *"], "auto_approve_threshold": "low"},
         )
         e = PermissionEnforcer(None)
@@ -105,7 +111,8 @@ class TestMergePolicies:
 class TestChainedEvaluation:
     def test_chained_deny_blocks_tool(self):
         blocker = _policy(
-            "block-write", "No Write",
+            "block-write",
+            "No Write",
             tool_rules={"allow": [], "deny": ["write"]},
         )
         e = PermissionEnforcer(None)
@@ -115,11 +122,13 @@ class TestChainedEvaluation:
 
     def test_chained_extra_allow_extends(self):
         base = _policy(
-            "read-only", "ReadOnly",
+            "read-only",
+            "ReadOnly",
             tool_rules={"allow": ["read"], "deny": []},
         )
         ext = _policy(
-            "ext", "Ext",
+            "ext",
+            "Ext",
             tool_rules={"allow": ["grep"], "deny": []},
         )
         e = PermissionEnforcer(None)
