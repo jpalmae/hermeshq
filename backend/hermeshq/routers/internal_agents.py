@@ -161,6 +161,9 @@ async def delegate_task(
     metadata = payload.metadata.copy()
     if payload.title:
         metadata["title"] = payload.title
+    raw_policy_master = metadata.get("policy_master_agent_id")
+    if not (isinstance(raw_policy_master, str) and raw_policy_master.strip()):
+        metadata["policy_master_agent_id"] = current_agent.id
     raw_parent_task_id = metadata.get("parent_task_id")
     if isinstance(raw_parent_task_id, str) and raw_parent_task_id.strip():
         parent_task = await db.get(Task, raw_parent_task_id.strip())

@@ -140,6 +140,26 @@ const manualContent: Record<"en" | "es", ManualContent> = {
         ],
       },
       {
+        id: "desktop",
+        eyebrow: "Hermes Desktop",
+        title: "Conectar Hermes Desktop y gestionar dispositivos",
+        summary:
+          "HermesHQ integra la app oficial Hermes Desktop en dos modos: puente remoto sobre agentes del servidor y runtimes enrolados que ejecutan en la máquina del usuario, ambos bajo el mismo sistema de políticas.",
+        image: {
+          src: "/manual/agent-detail.png",
+          alt: "Dispositivos enrolados",
+          caption: "El tab Devices de cada agente muestra los equipos enrolados, su estado y su revocación.",
+        },
+        bullets: [
+          "Modo puente remoto: en Hermes Desktop agrega una conexión Remote gateway apuntando a https://tu-instancia/desktop/<id-del-agente> y pega un token de sesión de HermesHQ. El agente sigue ejecutando en el servidor y todas las herramientas pasan por el evaluador de permisos.",
+          "Modo runtime enrolado: el agente corre EN la máquina del usuario como un perfil nativo de Hermes (~/Library o %LOCALAPPDATA% según el sistema), así que Desktop se abre normal, sin variables de entorno, y el agente tiene acceso real a los archivos y terminal del usuario.",
+          "Para enrolar un dispositivo entra al agente en la UI V2, tab Devices, pulsa Enroll new device, elige el fail-mode y copia los tres comandos del asistente: descargar el CLI (curl en macOS/Linux, Invoke-WebRequest en Windows), activar con el token entregado (no requiere credenciales de HermesHQ) y, opcionalmente, instalar el sync automático cada 5 minutos (launchd en macOS, Task Scheduler en Windows).",
+          "El fail-mode define el comportamiento si el dispositivo pierde conexión con HermesHQ: fail-open deja trabajar al agente, fail-closed bloquea toda herramienta, y fail-grace:<segundos> permite durante una ventana de gracia. fail-grace es el equilibrio recomendado.",
+          "Todo lo que se conversa por Desktop enrolado queda registrado: cada turno aparece en Tasks con source desktop, y el tab Activity muestra sesión iniciada y turnos completados, igual que el consumo por Telegram o WhatsApp.",
+          "Cambios centrales se propagan solos: system prompt, skills, proveedor y políticas se sincronizan al dispositivo en minutos; revocar el dispositivo desde la UI corta el acceso de inmediato (el guard bloquea las herramientas en cuanto HQ rechaza el token).",
+        ],
+      },
+      {
         id: "tasks",
         eyebrow: "Ejecucion",
         title: "Enviar tareas manualmente",
@@ -492,6 +512,39 @@ const manualContent: Record<"en" | "es", ManualContent> = {
         ],
       },
       {
+        id: "permissions-layers",
+        eyebrow: "Permisos",
+        title: "Toolsets y policies: las dos capas de permisos",
+        summary:
+          "HermesHQ controla lo que un agente puede hacer con dos capas complementarias: los toolsets (qué herramientas existen) y las policies (qué se permite hacer con ellas). Entender ambas es clave para gobernar agentes en todas las superficies.",
+        bullets: [
+          "ANALOGÍA: los toolsets son el cinturón de herramientas que le entregas al empleado — si no le das destornillador, no hay destornillador que supervisar. Las policies son el reglamento de uso: tiene la herramienta en la mano, pero antes de cada movimiento pasa por el supervisor que decide si puede hacerlo.",
+          "CAPA 1 — TOOLSETS (la caja de herramientas): definen QUÉ herramientas existen para el agente en las tareas del servidor. Se configuran en el agente (pestaña Config → perfil de runtime y toolsets habilitados). Sin terminal en los toolsets, el modelo ni siquiera ve esa herramienta: no la intenta, no existe en su mundo. Es la forma más limpia y barata de limitar: cero frustración del agente, cero llamadas de supervisión.",
+          "CAPA 2 — POLICIES (el reglamento): definen QUÉ se permite HACER con las herramientas que el agente tiene. Se evalúan contra HermesHQ en cada llamada a herramienta, en tiempo real. Se crean en Settings → Permission Policies (con plantillas de rol: No técnico/Oficina, Técnico/Dev/TI, Ciberseguridad) y se asignan al agente en su pestaña Permissions, donde también hay un panel para probar cómo evalúa cualquier herramienta antes de asignarla.",
+          "Las policies combinan cuatro tipos de reglas con patrones glob (ej: ping*, git status*, /tmp/**): herramientas permitidas/bloqueadas, comandos permitidos/bloqueados, rutas de archivo protegidas y reglas de red (dominios permitidos o red bloqueada). El deny siempre gana; si defines una lista permitida, todo lo que no esté en ella se bloquea.",
+          "DÓNDE APLICA CADA CAPA — esta es la clave: los toolsets SOLO aplican a las tareas que ejecuta el servidor (web, API, schedules, Teams, Telegram, WhatsApp). En un dispositivo enrolado (Hermes Desktop en la máquina del usuario) el runtime es local y completo, los toolsets NO viajan: la ÚNICA frontera real es la policy. Por eso el wizard de enrolamiento avisa cuando un agente no tiene policies: en la máquina del usuario tendría acceso total.",
+          "EJEMPLO REAL (agente Operador): en el servidor no tiene terminal en sus toolsets, así que si le pides hacer ping responde honestamente que no puede y hasta intenta delegar sin éxito. En tu Desktop enrolado el runtime local SÍ tiene terminal, y si su policy permite solo comandos ping*, el ping funciona y todo lo demás (traceroute, curl, python, nc, dig) se bloquea en el acto — incluso intentos de evasión como ejecutar python con un heredoc.",
+          "MATRIZ RÁPIDA: tarea web/schedule/Teams/Telegram → toolsets recortan la caja Y policies vigilan cada uso. Dispositivo enrolado → caja completa, SOLO policies vigilan. Agente Pi → extensión nativa de permisos. Delegación a subagente → el subagente corre bajo SUS policies y ADEMÁS hereda las del agente maestro (si alguna bloquea, bloquea).",
+          "DELEGACIÓN: los agentes siempre pueden usar subagentes (delegate_task no pasa por las reglas de herramientas), pero la policy del agente maestro PERSIGUE la ejecución dentro del subagente y en cadenas anidadas se conserva el maestro raíz. El bloqueo heredado se informa como \"inherited from master agent\" para que el administrador sepa de dónde viene la restricción.",
+          "DISPOSITIVOS ENROLADOS — modo de falla: si el dispositivo pierde conexión con HermesHQ, el guard decide según el fail-mode elegido al enrolar: fail-open (sigue trabajando sin validar), fail-closed (bloquea toda herramienta) o fail-grace:N segundos (permite durante una ventana de gracia y luego bloquea). La revocación de un dispositivo corta el acceso de inmediato sin importar el fail-mode.",
+          "RECOMENDACIÓN PRÁCTICA: usa los toolsets para la NATURALEZA del agente (un agente de soporte no necesita terminal ni la mira) y las policies para el GOBIERNO por rol de trabajo (quién puede hacer qué, auditable, idéntico en todas las superficies). Todo agente que vaya a enrolarse en dispositivos debería llevar al menos una policy — las plantillas de rol son el punto de partida.",
+        ],
+      },
+      {
+        id: "operator-skills-ssh",
+        eyebrow: "hq-operator",
+        title: "Compartir skills y acceso SSH acotado",
+        summary:
+          "El agente HQ Operator puede copiar skills entre agentes y alcanzar servidores SSH autorizados, siempre con autorización explícita, validación de contenido y auditoría.",
+        bullets: [
+          "COMPARTIR SKILLS: el operador lista las skills de cualquier agente (hq_control_list_agent_skills) y copia una de un agente a otro (hq_control_transfer_skill). La copia es un snapshot validado: solo archivos de texto con extensiones permitidas, sin binarios ni symlinks, máximo 512KB por archivo y 5MB por skill. Si el agente destino ya tiene una skill con ese nombre se exige overwrite=true; cada transferencia queda registrada en Auditoría (hq_control.skill.transferred). El aislamiento se preserva: el operador nunca escribe directamente en el workspace de otro agente, la copia pasa por el control plane.",
+          "ACCESO SSH ACOTADO: en Settings → SSH Destinations un administrador autoriza destinos explícitos (host + puerto + agente autorizado + puerto de escucha 20000-29999). El sistema levanta un relay TCP dedicado que SOLO el agente autorizado ve desde sus tareas como ssh-relay:<puerto>. Ningún otro agente puede resolverlo ni conectarse, y no se abre el egress ni puertos globales.",
+          "USO: el agente autorizado simplemente hace ssh usuario@ssh-relay -p <listen_port> dentro de una tarea. El destino solo acepta la conexión si está activo; el relay solo marca hacia el (host, puerto) autorizado.",
+          "REVOCACIÓN: desactiva (active=false) o borra el destino en Settings → SSH Destinations. El relay se reconcilia en el próximo ciclo (≤60s) y el acceso desaparece para el agente. Toda alta, baja o edición queda en Auditoría (ssh_destination.created/updated/deleted).",
+          "AMBAS CAPACIDADES son exclusivas del control plane: solo agentes del sistema con scope administrador pueden ejecutar transferencias de skills, y los destinos SSH los define un administrador humano — el operador puede listarlos (hq_control_list_ssh_destinations) pero no crearlos ni revocarlos por sí mismo.",
+        ],
+      },
+      {
         id: "tips",
         eyebrow: "Buenas practicas",
         title: "Consejos de uso y soporte",
@@ -620,6 +673,26 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "That same section now exposes `Effective capabilities`, clearly separating what comes from the base runtime profile, which plugins HermesHQ injects by default, and which integration packages are enabled on that specific agent.",
           "Hermes skill registry now lets you delete installed skills directly from the agent. If the skill is HermesHQ-managed, it is also unassigned so it does not come back on the next sync.",
           "Hermes skill registry, Logs, and Workspace are intended for investigation and technical support. They stay collapsed by default to keep the view clean.",
+        ],
+      },
+      {
+        id: "desktop",
+        eyebrow: "Hermes Desktop",
+        title: "Connect Hermes Desktop and manage devices",
+        summary:
+          "HermesHQ integrates the official Hermes Desktop app in two modes: a remote bridge over server agents and enrolled runtimes executing on the user's machine — both under the same policy system.",
+        image: {
+          src: "/manual/agent-detail.png",
+          alt: "Enrolled devices",
+          caption: "The agent's Devices tab lists enrolled machines, their status, and revocation.",
+        },
+        bullets: [
+          "Remote bridge mode: in Hermes Desktop add a Remote gateway connection pointing at https://your-instance/desktop/<agent-id> and paste a HermesHQ session token. The agent keeps executing on the server and every tool call goes through the permission enforcer.",
+          "Enrolled runtime mode: the agent runs ON the user's machine as a native Hermes profile (~/Library or %LOCALAPPDATA% depending on the OS), so Desktop opens normally — no environment variables — and the agent has real access to the user's files and terminal.",
+          "To enroll a device open the agent in the V2 UI, Devices tab, press Enroll new device, pick a fail-mode, and copy the three wizard commands: download the CLI (curl on macOS/Linux, Invoke-WebRequest on Windows), activate with the issued token (no HermesHQ credentials required), and optionally install the automatic 5-minute sync (launchd on macOS, Task Scheduler on Windows).",
+          "The fail-mode defines behavior when the device loses connectivity to HermesHQ: fail-open lets the agent keep working, fail-closed blocks every tool, and fail-grace:<seconds> allows during a grace window. fail-grace is the recommended balance.",
+          "Everything discussed over an enrolled Desktop is recorded: each turn shows up in Tasks with source desktop, and the Activity tab logs session starts and completed turns — the same trail you get from Telegram or WhatsApp.",
+          "Central changes propagate automatically: system prompt, skills, provider, and policies sync to the device within minutes; revoking the device from the UI cuts access immediately (the guard blocks tools as soon as HQ rejects the token).",
         ],
       },
       {
@@ -970,6 +1043,39 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "WebSocket authenticates with an auth message instead of a query parameter, preventing the token from appearing in server logs.",
           "Backups are encrypted with AES passphrase. Use `Settings -> General -> Backup & Restore` to create and restore.",
           "For additional protection, configure rate limiting in Nginx (directives are prepared; just activate them in the global `http` block).",
+        ],
+      },
+      {
+        id: "permissions-layers",
+        eyebrow: "Permissions",
+        title: "Toolsets and policies: the two permission layers",
+        summary:
+          "HermesHQ controls what an agent can do with two complementary layers: toolsets (which tools exist) and policies (what may be done with them). Understanding both is key to governing agents across every surface.",
+        bullets: [
+          "ANALOGY: toolsets are the tool belt you hand the employee — if you don't give them a screwdriver, there's no screwdriver to supervise. Policies are the rulebook: they hold the tool, but before every move a supervisor decides whether it's allowed.",
+          "LAYER 1 — TOOLSETS (the toolbox): define WHICH tools exist for the agent on server tasks. Configured on the agent (Config tab → runtime profile and enabled toolsets). Without terminal in the toolsets, the model never even sees that tool: it doesn't try, it doesn't exist in its world. It's the cleanest and cheapest limit: zero agent frustration, zero supervision calls.",
+          "LAYER 2 — POLICIES (the rulebook): define what the agent is ALLOWED TO DO with the tools it has. They are evaluated against HermesHQ on every tool call, in real time. Created under Settings → Permission Policies (with role templates: Office, Technical/Dev/IT, Security) and assigned on the agent's Permissions tab, which also has a panel to test how any tool evaluates before assigning.",
+          "Policies combine four rule types using glob patterns (e.g. ping*, git status*, /tmp/**): allowed/denied tools, allowed/denied commands, protected file paths, and network rules (allowed domains or network blocked). Deny always wins; if you define an allow list, anything not on it is blocked.",
+          "WHERE EACH LAYER APPLIES — this is the key: toolsets ONLY apply to server-executed tasks (web, API, schedules, Teams, Telegram, WhatsApp). On an enrolled device (Hermes Desktop on the user's machine) the runtime is local and complete — toolsets do NOT travel: the ONLY real boundary is the policy. That's why the enrollment wizard warns when an agent has no policies: on the user's machine it would have full access.",
+          "REAL EXAMPLE (agent Operador): on the server it has no terminal in its toolsets, so if you ask it to ping it honestly says it can't and even tries delegating without success. On your enrolled Desktop the local runtime DOES have terminal, and if its policy allows only ping* commands, ping works while everything else (traceroute, curl, python, nc, dig) is blocked on the spot — including evasion attempts like running python with a heredoc.",
+          "QUICK MATRIX: web/schedule/Teams/Telegram task → toolsets trim the box AND policies watch every use. Enrolled device → full box, ONLY policies watch. Pi agent → native permission extension. Delegation to a subagent → the subagent runs under ITS policies AND inherits the master agent's (if either blocks, it blocks).",
+          "DELEGATION: agents can always use subagents (delegate_task bypasses tool rules), but the master agent's policy FOLLOWS execution inside the subagent, and nested chains preserve the root master. Inherited blocks are reported as \"inherited from master agent\" so the administrator knows where the restriction comes from.",
+          "ENROLLED DEVICES — fail mode: if the device loses connectivity to HermesHQ, the guard decides per the fail-mode chosen at enrollment: fail-open (keeps working unvalidated), fail-closed (blocks every tool), or fail-grace:N seconds (allows during a grace window, then blocks). Revoking a device cuts access immediately regardless of fail-mode.",
+          "PRACTICAL RECOMMENDATION: use toolsets for the agent's NATURE (a support agent doesn't need to even see a terminal) and policies for role-based GOVERNANCE (who can do what, auditable, identical across surfaces). Any agent that will be enrolled on devices should carry at least one policy — the role templates are the starting point.",
+        ],
+      },
+      {
+        id: "operator-skills-ssh",
+        eyebrow: "hq-operator",
+        title: "Sharing skills and scoped SSH access",
+        summary:
+          "The HQ Operator agent can copy skills between agents and reach authorized SSH servers, always with explicit authorization, content validation and auditing.",
+        bullets: [
+          "SHARING SKILLS: the operator lists any agent's skills (hq_control_list_agent_skills) and copies one from agent to agent (hq_control_transfer_skill). The copy is a validated snapshot: text files with allowed extensions only, no binaries or symlinks, max 512KB per file and 5MB per skill. If the target agent already has a skill with that name, overwrite=true is required; every transfer is recorded in Audit (hq_control.skill.transferred). Isolation is preserved: the operator never writes directly into another agent's workspace — copies go through the control plane.",
+          "SCOPED SSH ACCESS: in Settings → SSH Destinations an admin authorizes explicit destinations (host + port + authorized agent + listen port 20000-29999). The system runs a dedicated TCP relay that ONLY the authorized agent can see from its tasks as ssh-relay:<port>. No other agent can resolve or reach it, and neither the egress nor any global port is opened.",
+          "USAGE: the authorized agent simply runs ssh user@ssh-relay -p <listen_port> inside a task. The destination only accepts connections while active; the relay only dials the authorized (host, port).",
+          "REVOCATION: deactivate (active=false) or delete the destination in Settings → SSH Destinations. The relay reconciles within the next cycle (≤60s) and the agent's access disappears. Every create, update and delete lands in Audit (ssh_destination.created/updated/deleted).",
+          "BOTH CAPABILITIES are control-plane exclusive: only system agents with admin scope can execute skill transfers, and SSH destinations are defined by a human admin — the operator can list them (hq_control_list_ssh_destinations) but cannot create or revoke them on its own.",
         ],
       },
       {

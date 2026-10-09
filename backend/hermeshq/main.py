@@ -30,6 +30,8 @@ from hermeshq.routers import (
     backup,
     comms,
     dashboard,
+    desktop_gateway,
+    enrollment,
     hermes_versions,
     integration_factory,
     integration_packages,
@@ -62,10 +64,14 @@ from hermeshq.routers.public_chat import management_router as public_chat_manage
 from hermeshq.routers.public_chat import public_router as public_chat_router
 from hermeshq.routers.public_chat_test_page import router as public_chat_test_router
 from hermeshq.routers.public_chat_widget import router as public_chat_widget_router
+from hermeshq.routers.ssh_destinations import router as ssh_destinations_router
 from hermeshq.schemas.common import HealthResponse
 from hermeshq.services.agent_identity import derive_agent_identity
 from hermeshq.services.agent_supervisor import AgentSupervisor
 from hermeshq.services.comms_router import CommsRouter
+from hermeshq.services.desktop_gateway import DesktopGatewayService
+from hermeshq.services.egress_allowlist import push_allowlist_to_runner
+from hermeshq.services.enrollment import EnrollmentService
 from hermeshq.services.enterprise_gateway_manager import EnterpriseGatewayManager
 from hermeshq.services.gateway_supervisor import GatewaySupervisor
 from hermeshq.services.hermes_installation import HermesInstallationManager
@@ -202,6 +208,10 @@ async def bootstrap_defaults(secret_vault: SecretVault | None = None) -> None:
             agent.slug = candidate_slug
             normalized_provider = normalize_runtime_provider(agent.provider)
             if normalized_provider != agent.provider:
+                if not (agent.base_url or "").strip():
+                    definition = await session.get(ProviderDefinition, agent.provider)
+                    if definition is not None and definition.base_url:
+                        agent.base_url = definition.base_url.strip()
                 agent.provider = normalized_provider
             agent.runtime_profile = normalize_runtime_profile_slug(agent.runtime_profile)
             if secret_vault and agent.auxiliary_models:
@@ -289,6 +299,14 @@ async def lifespan(app: FastAPI):
         app.state.secret_vault,
     )
     app.state.gateway_supervisor.set_enterprise_gateways(app.state.enterprise_gateways)
+    app.state.desktop_gateway_service = DesktopGatewayService(
+        AsyncSessionLocal,
+        app.state.installation_manager,
+    )
+    await app.state.desktop_gateway_service.start()
+    app.state.enrollment_service = EnrollmentService(
+        AsyncSessionLocal, app.state.permission_enforcer, app.state.secret_vault
+    )
     # Expose individual gateway maps for webhook routing
     app.state.session_factory = AsyncSessionLocal
     app.state.google_chat_gateways = app.state.enterprise_gateways.google_chat_gateways
@@ -375,6 +393,14 @@ async def lifespan(app: FastAPI):
     await app.state.scheduler.start()
     app.state.gateway_bootstrap_task = asyncio.create_task(app.state.gateway_supervisor.bootstrap_gateways())
     app.state.enterprise_bootstrap_task = asyncio.create_task(app.state.enterprise_gateways.bootstrap())
+    if app.state.runtime_runner_client is not None:
+
+        async def _push_egress_allowlist() -> None:
+            with contextlib.suppress(Exception):
+                async with AsyncSessionLocal() as session:
+                    await push_allowlist_to_runner(app.state.runtime_runner_client, session)
+
+        app.state.egress_allowlist_task = asyncio.create_task(_push_egress_allowlist())
 
     app.state.public_chat_service = PublicChatService(
         session_factory=AsyncSessionLocal,
@@ -385,11 +411,16 @@ async def lifespan(app: FastAPI):
 
     async def _periodic_cleanup() -> None:
         from hermeshq.routers.mcp_server import _analytics, _rate_limiter
+        from hermeshq.services.ssh_relay import reconcile_ssh_relays
 
         while True:
             await asyncio.sleep(60)
             _rate_limiter.cleanup()
             _analytics.evict_stale()
+            if app.state.runtime_runner_client is not None:
+                with contextlib.suppress(Exception):
+                    async with AsyncSessionLocal() as session:
+                        await reconcile_ssh_relays(app, session)
 
     app.state._cleanup_task = asyncio.create_task(_periodic_cleanup())
 
@@ -410,6 +441,7 @@ async def lifespan(app: FastAPI):
         with contextlib.suppress(asyncio.CancelledError):
             await enterprise_bootstrap_task
     await app.state.scheduler.stop()
+    await app.state.desktop_gateway_service.shutdown()
     await app.state.supervisor.shutdown_runtime()
     await app.state.gateway_supervisor.shutdown()
     await app.state.enterprise_gateways.shutdown()
@@ -453,6 +485,7 @@ app.include_router(dashboard.router, prefix=settings.api_prefix)
 app.include_router(comms.router, prefix=settings.api_prefix)
 app.include_router(internal_agents.router, prefix=settings.api_prefix)
 app.include_router(internal_control.router, prefix=settings.api_prefix)
+app.include_router(ssh_destinations_router, prefix=settings.api_prefix)
 app.include_router(secrets.router, prefix=settings.api_prefix)
 app.include_router(settings_router.router, prefix=settings.api_prefix)
 app.include_router(backup.router, prefix=settings.api_prefix)
@@ -467,6 +500,8 @@ app.include_router(users.router, prefix=settings.api_prefix)
 app.include_router(permission_policies.router, prefix=settings.api_prefix)
 app.include_router(audit.router, prefix=settings.api_prefix)
 app.include_router(mcp_server.router)
+app.include_router(desktop_gateway.router)
+app.include_router(enrollment.router, prefix=settings.api_prefix)
 app.include_router(webhooks.router)
 app.include_router(attachments.router, prefix=settings.api_prefix)
 app.include_router(m365.router, prefix=settings.api_prefix)
