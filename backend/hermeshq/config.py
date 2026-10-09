@@ -1,6 +1,8 @@
 import contextlib
 import logging
+import re
 from pathlib import Path
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -53,13 +55,21 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     pty_shell: str = "/bin/sh"
     internal_api_base_url: str = "http://127.0.0.1:8000/api/internal"
-    # Max concurrent hermes_task_runner subprocesses.
-    # Each process uses ~50MB RAM. Default: 8 (safe for 1GB container).
-    # For production sizing: available_RAM_MB / 60 (50MB per process + 20% headroom)
+    enrollment_public_api_url: str = ""
+    # Max concurrent agent task executions.
+    # Each isolated runtime is limited independently by Docker in production.
     concurrency_semaphore: int = 8
-    # Max wall-clock seconds a single task runner subprocess may run before
-    # being killed. Prevents hung LLM calls from occupying slots forever.
+    # Max wall-clock seconds a single task execution may run.
     task_timeout_seconds: int = 3600
+    task_queue_poll_seconds: float = Field(default=1.0, gt=0, le=60)
+    task_lease_seconds: int = Field(default=45, ge=15, le=600)
+    task_heartbeat_seconds: int = Field(default=10, ge=5, le=300)
+    task_max_attempts: int = Field(default=3, ge=1, le=20)
+    agent_service_token_days: int = Field(default=30, gt=0)
+    runtime_isolation_mode: Literal["required", "subprocess"] = "subprocess"
+    runtime_runner_url: str = "http://runtime-runner:8080"
+    runtime_runner_token: str = ""
+    runtime_egress_allowlist: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -70,6 +80,11 @@ class Settings(BaseSettings):
 
     def model_post_init(self, __context) -> None:
         if self.jwt_secret == "":
+            if not self.debug:
+                raise RuntimeError(
+                    "JWT_SECRET is not set. Set a persistent JWT_SECRET before running in production, "
+                    "or set DEBUG=true for development."
+                )
             import secrets as _secrets
 
             self.jwt_secret = _secrets.token_urlsafe(32)
@@ -77,10 +92,15 @@ class Settings(BaseSettings):
             # Without this, the SecretVault (which uses jwt_secret as Fernet seed
             # when FERNET_KEY is unset) would be unable to decrypt stored secrets
             # after every restart.
-            env_path = self.model_config.get("env_file", ".env")
-            if not Path(env_path).is_absolute():
+            configured_env = self.model_config.get("env_file")
+            if isinstance(configured_env, (str, Path)):
+                env_path = Path(configured_env)
+            elif configured_env:
+                env_path = Path(configured_env[0])
+            else:
+                env_path = Path(".env")
+            if not env_path.is_absolute():
                 env_path = Path(__file__).resolve().parents[1] / env_path
-            env_path = Path(env_path)
             try:
                 lines = env_path.read_text().splitlines() if env_path.exists() else []
                 found = False
@@ -127,14 +147,31 @@ class Settings(BaseSettings):
                 "This is insecure for production. To rotate, set FERNET_KEY first "
                 "and then use the rotate-secrets CLI command."
             )
-        if self.admin_password in ("", "admin123"):
-            if not self.debug and self.admin_password == "admin123":
+        if not self.fernet_key:
+            if not self.debug:
                 raise RuntimeError(
-                    "ADMIN_PASSWORD is using default value 'admin123'. "
+                    "FERNET_KEY is not set. Set an independent, persistent FERNET_KEY "
+                    "before running in production, or set DEBUG=true for development."
+                )
+            logger.warning("⚠️ FERNET_KEY is not set; JWT_SECRET will be used for development-only encryption.")
+        if self.admin_password in ("", "admin123") or len(self.admin_password) < 12:
+            if not self.debug:
+                raise RuntimeError(
+                    "ADMIN_PASSWORD is empty, too short, or uses the default value. "
                     "Set a secure ADMIN_PASSWORD before running in production, "
                     "or set DEBUG=true to bypass this check."
                 )
             logger.warning("⚠️ ADMIN_PASSWORD is not set or using default value. This is insecure for production!")
+        if not self.debug and self.runtime_isolation_mode != "required":
+            raise RuntimeError("RUNTIME_ISOLATION_MODE=required is mandatory outside DEBUG mode")
+        if self.runtime_isolation_mode == "required" and not re.fullmatch(
+            r"[A-Za-z0-9_-]{32,256}", self.runtime_runner_token
+        ):
+            raise RuntimeError("RUNTIME_RUNNER_TOKEN must be a 32-256 character URL-safe token")
+        if not self.debug and not self.cookie_secure:
+            raise RuntimeError("COOKIE_SECURE=true is mandatory outside DEBUG mode")
+        if self.task_heartbeat_seconds * 2 >= self.task_lease_seconds:
+            raise RuntimeError("TASK_HEARTBEAT_SECONDS must be less than half of TASK_LEASE_SECONDS")
         self.workspaces_root = self.workspaces_root.resolve()
         if self.branding_root is None:
             self.branding_root = self.workspaces_root / "_branding"

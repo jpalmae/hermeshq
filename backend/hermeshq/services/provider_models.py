@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 MODELS_CACHE_TTL_SECONDS = 3600
 
+
 def _can_fetch_models(runtime_provider: str) -> bool:
     return True
 
@@ -56,9 +57,7 @@ async def _resolve_api_key(
                 return key
 
     # 3. Secret associated with this provider (Secret.provider == slug)
-    result = await db.execute(
-        select(Secret).where(Secret.provider == provider.slug)
-    )
+    result = await db.execute(select(Secret).where(Secret.provider == provider.slug))
     for secret in result.scalars().all():
         key = _decrypt(secret)
         if key:
@@ -66,10 +65,12 @@ async def _resolve_api_key(
 
     # 4. Any agent using this provider — use its api_key_ref
     result = await db.execute(
-        select(Agent.api_key_ref).where(
+        select(Agent.api_key_ref)
+        .where(
             Agent.provider == provider.runtime_provider,
             Agent.api_key_ref.isnot(None),
-        ).limit(1)
+        )
+        .limit(1)
     )
     agent_ref = result.scalar_one_or_none()
     if agent_ref:
@@ -122,7 +123,7 @@ async def _fetch_gemini_models(api_key: str) -> list[str]:
     for item in data.get("models", []):
         name = item.get("name", "")
         if name.startswith("models/"):
-            name = name[len("models/"):]
+            name = name[len("models/") :]
         if name:
             models.append(name)
     return sorted(set(models))

@@ -282,7 +282,7 @@ export function ChannelsTab({
                     <button
                       type="button"
                       className="panel-button-secondary"
-                      disabled={integrationPending[integration.slug] === "test"}
+                      disabled={!enabled || integrationPending[integration.slug] === "test"}
                       onClick={() => void onTestIntegration(integration.slug)}
                     >
                       {integrationPending[integration.slug] === "test" ? t("common.loading") : t("agent.testIntegration")}

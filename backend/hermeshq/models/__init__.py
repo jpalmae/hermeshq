@@ -5,6 +5,7 @@ from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.audit_log import AuditLog
 from hermeshq.models.base import Base
 from hermeshq.models.conversation_thread import ConversationThread
+from hermeshq.models.enrolled_device import EnrolledDevice
 from hermeshq.models.hermes_version import HermesVersion
 from hermeshq.models.integration_draft import IntegrationDraft
 from hermeshq.models.mcp_access import McpAccessToken
@@ -14,6 +15,7 @@ from hermeshq.models.mfa_code import MfaCode
 from hermeshq.models.node import Node
 from hermeshq.models.oidc_provider import OidcProvider
 from hermeshq.models.password_reset import PasswordResetToken
+from hermeshq.models.permission_policy import PermissionPolicy
 from hermeshq.models.provider import ProviderDefinition
 from hermeshq.models.public_chat import (
     PublicChatApiKey,
@@ -23,6 +25,7 @@ from hermeshq.models.public_chat import (
 )
 from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.secret import Secret
+from hermeshq.models.ssh_destination import SshDestination
 from hermeshq.models.task import Task
 from hermeshq.models.template import AgentTemplate
 from hermeshq.models.terminal_session import TerminalSession
@@ -39,6 +42,7 @@ __all__ = [
     "AuditLog",
     "Base",
     "ConversationThread",
+    "EnrolledDevice",
     "HermesVersion",
     "IntegrationDraft",
     "McpAccessToken",
@@ -47,6 +51,7 @@ __all__ = [
     "Node",
     "OidcProvider",
     "PasswordResetToken",
+    "PermissionPolicy",
     "ProviderDefinition",
     "PublicChatApiKey",
     "PublicChatMessage",
@@ -54,6 +59,7 @@ __all__ = [
     "PublicChatTranscript",
     "ScheduledTask",
     "Secret",
+    "SshDestination",
     "Task",
     "TerminalSession",
     "User",

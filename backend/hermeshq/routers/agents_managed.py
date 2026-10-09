@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hermeshq.core.security import ensure_agent_access, get_current_user
+from hermeshq.core.security import ensure_agent_access, get_current_user, require_admin
 from hermeshq.database import get_db_session
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.secret import Secret
@@ -33,7 +33,7 @@ async def test_agent_integration(
     integration_slug: str,
     payload: ManagedIntegrationTestRequest,
     request: Request,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> ManagedIntegrationTestResult:
     agent = await ensure_agent_access(db, current_user, agent_id)
@@ -50,7 +50,6 @@ async def test_agent_integration(
         success, message, details = await test_managed_integration(
             agent,
             integration_slug,
-            payload.config or {},
             enabled_integration_slugs,
             _resolve_secret,
         )
@@ -86,7 +85,7 @@ async def run_agent_integration_action(
             agent,
             integration_slug,
             action_slug,
-            payload.config or {},
+            payload.arguments,
             enabled_integration_slugs,
             _resolve_secret,
         )

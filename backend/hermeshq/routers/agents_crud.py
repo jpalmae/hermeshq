@@ -130,6 +130,11 @@ async def create_agent(
         integration_configs=_normalize_integration_configs(payload.integration_configs),
         team_tags=payload.team_tags,
         supervisor_agent_id=payload.supervisor_agent_id,
+        runtime_type=payload.runtime_type,
+        pi_config=payload.pi_config,
+        permission_policy_id=payload.permission_policy_id,
+        permission_policy_ids=list(payload.permission_policy_ids or []),
+        desktop_access_enabled=payload.desktop_access_enabled,
         workspace_path="pending",
         auxiliary_models=encrypt_auxiliary_models(
             payload.auxiliary_models,
@@ -400,6 +405,10 @@ async def delete_agent(
             details={"deleted_by": current_user.username},
         )
         await db.commit()
+        workspace_manager = getattr(request.app.state, "workspace_manager", None)
+        if workspace_manager is not None:
+            with contextlib.suppress(Exception):
+                workspace_manager.delete_workspace(agent_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     active_task_ids = list(
@@ -445,6 +454,7 @@ async def delete_agent(
     was_already_archived = agent.is_archived
     agent.status = "stopped"
     agent.is_archived = True
+    agent.service_token_version = (agent.service_token_version or 1) + 1
     agent.archived_at = datetime.now(UTC)
     agent.archive_reason = f"Archived by {current_user.username}"
     agent.last_activity = agent.archived_at

@@ -12,6 +12,7 @@ from hermeshq.core.security import (
     decode_access_token_subject,
     hash_password,
     is_admin,
+    verify_agent_service_token,
     verify_password,
 )
 
@@ -135,21 +136,18 @@ class TestAccessToken(unittest.TestCase):
 class TestAgentServiceToken(unittest.TestCase):
     """Tests for create_agent_service_token."""
 
-    def test_deterministic_same_agent_id(self) -> None:
-        tok1 = create_agent_service_token("agent-007")
-        tok2 = create_agent_service_token("agent-007")
-        self.assertEqual(tok1, tok2)
+    def test_token_validates_for_agent_and_version(self) -> None:
+        token = create_agent_service_token("agent-007", 3)
+        self.assertTrue(verify_agent_service_token(token, "agent-007", 3))
 
     def test_different_agent_id_different_token(self) -> None:
         tok1 = create_agent_service_token("agent-001")
         tok2 = create_agent_service_token("agent-002")
         self.assertNotEqual(tok1, tok2)
 
-    def test_token_is_hex_string(self) -> None:
+    def test_version_rotation_revokes_token(self) -> None:
         tok = create_agent_service_token("agent-x")
-        # SHA-256 hex digest is 64 hex chars
-        self.assertEqual(len(tok), 64)
-        self.assertTrue(all(c in "0123456789abcdef" for c in tok))
+        self.assertFalse(verify_agent_service_token(tok, "agent-x", 2))
 
 
 # ---------------------------------------------------------------------------

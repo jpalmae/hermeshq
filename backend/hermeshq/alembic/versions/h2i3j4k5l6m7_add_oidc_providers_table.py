@@ -45,5 +45,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    if _table_exists("oidc_providers"):
-        op.drop_table("oidc_providers")
+    pass

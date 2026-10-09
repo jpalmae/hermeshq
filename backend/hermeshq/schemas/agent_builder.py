@@ -21,6 +21,8 @@ class AgentDraft(BaseModel):
     slug: str | None = None
     description: str | None = None
     runtime_profile: str = "standard"
+    runtime_type: str = "hermes"
+    permission_policy_id: str | None = None
     system_prompt: str | None = None
     enabled_toolsets: list[str] | None = None
     integration_configs: dict[str, dict] | None = None

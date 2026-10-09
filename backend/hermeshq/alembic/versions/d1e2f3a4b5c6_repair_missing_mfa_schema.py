@@ -38,6 +38,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("ALTER TABLE app_settings DROP COLUMN IF EXISTS mfa_email_enabled")
-    op.execute("DROP INDEX IF EXISTS ix_mfa_codes_user_id")
-    op.execute("DROP TABLE IF EXISTS mfa_codes")
+    pass

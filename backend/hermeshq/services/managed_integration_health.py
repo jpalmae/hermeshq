@@ -9,6 +9,10 @@ from uuid import uuid4
 from hermeshq.config import get_settings
 from hermeshq.models.agent import Agent
 from hermeshq.services.managed_capabilities import get_managed_integration
+from hermeshq.services.managed_integration_config import (
+    build_scoped_secret_resolver,
+    build_trusted_integration_config,
+)
 
 
 class ManagedIntegrationTestError(RuntimeError):
@@ -18,24 +22,18 @@ class ManagedIntegrationTestError(RuntimeError):
 async def test_managed_integration(
     agent: Agent,
     integration_slug: str,
-    config: dict[str, str] | None,
     enabled_integration_slugs: list[str],
     resolve_secret,
 ) -> tuple[bool, str, dict | None]:
-    integration = get_managed_integration(integration_slug, enabled_integration_slugs, include_uninstalled=True)
+    integration = get_managed_integration(integration_slug, enabled_integration_slugs)
     if not integration:
         raise ManagedIntegrationTestError("Managed integration not found")
 
-    merged = {
-        **{key: str(value) for key, value in (integration.get("defaults") or {}).items()},
-        **{
-            key: str(value)
-            for key, value in ((agent.integration_configs or {}).get(integration_slug) or {}).items()
-            if isinstance(key, str)
-        },
-        **{key: str(value) for key, value in (config or {}).items() if isinstance(key, str)},
-    }
-    merged["__workspaces_root"] = str(get_settings().workspaces_root)
+    trusted_config = build_trusted_integration_config(agent, integration_slug, integration)
+    if trusted_config is None:
+        raise ManagedIntegrationTestError("Managed integration is not enabled for this agent")
+    trusted_config["__workspaces_root"] = str(get_settings().workspaces_root)
+    scoped_resolve_secret = build_scoped_secret_resolver(integration, trusted_config, resolve_secret)
 
     module = _load_healthcheck_module(integration)
     if not module:
@@ -44,7 +42,7 @@ async def test_managed_integration(
     if not callable(test_connection):
         raise ManagedIntegrationTestError("Managed integration healthcheck is missing test_connection()")
 
-    result = test_connection(config=merged, resolve_secret=resolve_secret)
+    result = test_connection(config=trusted_config, resolve_secret=scoped_resolve_secret)
     if asyncio.iscoroutine(result):
         result = await result
     if not isinstance(result, tuple) or len(result) != 3:

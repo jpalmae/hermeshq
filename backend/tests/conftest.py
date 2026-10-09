@@ -16,6 +16,11 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+os.environ.setdefault("JWT_SECRET", "test-secret-that-is-long-enough")
+os.environ.setdefault("FERNET_KEY", "test-fernet-key")
+os.environ.setdefault("ADMIN_PASSWORD", "test-admin-password")
+os.environ.setdefault("DEBUG", "true")
+
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql+asyncpg://hermeshq:hermeshq@localhost:5432/hermeshq",

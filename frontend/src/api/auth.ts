@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient } from "./client";
 import { resolveApiBase } from "../lib/apiBase";
+import { queryClient } from "../lib/queryClient";
+import { useSessionStore } from "../stores/sessionStore";
 import type { AuthProvidersResponse, User } from "../types/api";
 
 export interface MfaRequiredResponse {
@@ -179,9 +181,7 @@ export async function performLogout(): Promise<void> {
   } catch {
     // Best-effort: clear local state even if the request fails
   }
-  const { useSessionStore } = await import("../stores/sessionStore");
   useSessionStore.getState().logout();
-  const { queryClient } = await import("../lib/queryClient");
   queryClient.clear();
 }
 

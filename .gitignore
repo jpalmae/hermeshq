@@ -17,3 +17,7 @@ tmp-*.png
 backend/.coverage
 coverage.xml
 frontend/*.tsbuildinfo
+
+# macOS Finder metadata
+Icon
+Icon?

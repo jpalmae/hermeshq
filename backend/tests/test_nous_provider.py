@@ -92,6 +92,13 @@ class TestNousProviderCatalogEntry:
         assert entry["docs_url"] == "https://portal.nousresearch.com/api-docs"
 
 
+class TestNvidiaProviderCatalogEntry:
+    def test_deepseek_v4_flash_uses_live_model_id(self):
+        entry = _find_provider("nvidia-nim")
+        assert "deepseek-ai/deepseek-v4-flash-0731" in entry["available_models"]
+        assert "deepseek-ai/deepseek-v4-flash" not in entry["available_models"]
+
+
 # ── Catalog dict structure tests ─────────────────────────────
 
 

@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import type { Agent, ProviderDefinition, Secret, HermesVersion, AuxiliaryModelEntry } from "../../types/api";
 import type { UseMutationResult } from "@tanstack/react-query";
 import { useUploadAgentAvatar, useGenerateAgentAvatar, useGenerateAIAgentAvatar, useDeleteAgentAvatar } from "../../api/agents";
+import { usePermissionPolicies } from "../../api/permissionPolicies";
 import { AgentAvatar } from "../../components/AgentAvatar";
 import { v2toast, extractErrorMessage } from "../toast";
 import { useI18n } from "../../lib/i18n";
@@ -48,6 +49,11 @@ export function V2AgentConfigTab({
   const generateAvatar = useGenerateAgentAvatar();
   const generateAIAvatar = useGenerateAIAgentAvatar();
   const removeAvatar = useDeleteAgentAvatar();
+  const { data: permissionPolicies } = usePermissionPolicies();
+  const [runtimeType, setRuntimeType] = useState(agent.runtime_type ?? "hermes");
+  const [permissionPolicyId, setPermissionPolicyId] = useState(agent.permission_policy_id ?? "");
+  const [piTools, setPiTools] = useState(((agent.pi_config as Record<string, unknown> | null)?.tools as string[]) ?? ["read", "bash", "edit"]);
+  const [piThinking, setPiThinking] = useState(((agent.pi_config as Record<string, unknown> | null)?.thinking_level as string) ?? "off");
   const AUX_TASKS = [
     { key: "vision", label: t("v2.vision") },
     { key: "compression", label: t("v2.compression") },
@@ -119,8 +125,17 @@ export function V2AgentConfigTab({
       fallback_api_key_ref: fbKeyRef || null,
       fallback_base_url: fbBaseUrl || null,
       auxiliary_models: Object.keys(auxDraft).length > 0 ? auxDraft : null,
+      runtime_type: runtimeType,
+      permission_policy_id: permissionPolicyId || null,
     };
     if (!useProviderDefault) payload.model = customModel || null;
+    if (runtimeType === "pi") {
+      const piConfig: Record<string, unknown> = {
+        tools: piTools,
+        thinking_level: piThinking,
+      };
+      payload.pi_config = piConfig;
+    }
     updateAgent
       .mutateAsync({ agentId: agent.id, payload })
       .then(() => v2toast.success(t("v2.runtimeConfigSaved")))
@@ -266,8 +281,8 @@ export function V2AgentConfigTab({
             <select className="v2-select" value={approvalMode} onChange={(e) => setApprovalMode(e.target.value)} disabled={!isAdmin}>
               <option value="inherit">{t("v2.inherit")}</option>
               <option value="off">{t("v2.off")}</option>
-              <option value="on_request">{t("v2.onRequest")}</option>
-              <option value="on_failure">{t("v2.onFailure")}</option>
+              <option value="on-request">{t("v2.onRequest")}</option>
+              <option value="on-failure">{t("v2.onFailure")}</option>
             </select>
           </div>
           <div className="v2-field">
@@ -393,6 +408,59 @@ export function V2AgentConfigTab({
               );
             })}
           </div>
+        </div>
+      </section>
+
+      <section className="v2-card" style={{ gridColumn: "1 / -1" }}>
+        <div className="v2-card-header"><h2 className="v2-card-title">{t("v2.runtimeEngine")}</h2></div>
+        <div className="v2-card-body">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div className="v2-field">
+              <label className="v2-field-label">{t("v2.runtimeType")}</label>
+              <select className="v2-select" value={runtimeType} onChange={(e) => setRuntimeType(e.target.value)} disabled={!isAdmin}>
+                <option value="hermes">{t("v2.runtimeHermes")}</option>
+                <option value="pi">{t("v2.runtimePi")}</option>
+              </select>
+            </div>
+            {runtimeType === "pi" ? (
+              <div className="v2-field">
+                <label className="v2-field-label">{t("v2.permissionPolicy")}</label>
+                <select className="v2-select" value={permissionPolicyId} onChange={(e) => setPermissionPolicyId(e.target.value)} disabled={!isAdmin}>
+                  <option value="">{t("v2.none")}</option>
+                  {(permissionPolicies ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+          </div>
+          {runtimeType === "pi" ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}>
+              <div className="v2-field">
+                <label className="v2-field-label">{t("v2.piTools")}</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {["read", "bash", "edit", "write", "grep", "find", "ls"].map((tool) => (
+                    <label key={tool} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12.5 }}>
+                      <input type="checkbox" checked={piTools.includes(tool)} onChange={(e) => {
+                        if (e.target.checked) setPiTools([...piTools, tool]);
+                        else setPiTools(piTools.filter((t) => t !== tool));
+                      }} disabled={!isAdmin} />
+                      {tool}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="v2-field">
+                <label className="v2-field-label">{t("v2.piThinking")}</label>
+                <select className="v2-select" value={piThinking} onChange={(e) => setPiThinking(e.target.value)} disabled={!isAdmin}>
+                  <option value="off">Off</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
 

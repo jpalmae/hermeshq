@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 
 import { useMe, exchangeOidcCookie } from "./api/auth";
 import { usePublicBranding, resolveAssetUrl } from "./api/settings";
@@ -66,6 +66,8 @@ export default function App() {
   const setSession = useSessionStore((state) => state.setSession);
   const setUser = useSessionStore((state) => state.setUser);
   const currentUser = useSessionStore((state) => state.user);
+  const [sessionReady, setSessionReady] = useState(false);
+  const bootstrapStarted = useRef(false);
   const { data: branding } = usePublicBranding();
   const { data: me } = useMe(Boolean(token));
   const publicThemeMode = branding?.theme_mode ?? getStoredPublicThemeMode() ?? "dark";
@@ -79,26 +81,19 @@ export default function App() {
     ? resolveEffectiveLocale(branding?.default_locale, currentUser?.locale_preference)
     : (branding?.default_locale ?? "en");
 
-  // Detect OIDC token in URL (e.g. /?token=...) before App redirects to /login
   useEffect(() => {
+    if (bootstrapStarted.current) return;
+    bootstrapStarted.current = true;
     const params = new URLSearchParams(location.search);
-    const urlToken = params.get("token");
-    if (urlToken && !token) {
-      setSession(urlToken, null);
+    if (params.get("oidc") === "complete") {
       window.history.replaceState({}, "", location.pathname);
-      return;
     }
-    // OIDC completion: the JWT only exists as an httpOnly cookie — exchange
-    // it for a token via the refresh endpoint (never travels in the URL).
-    if (params.get("oidc") === "complete" && !token) {
-      window.history.replaceState({}, "", location.pathname);
-      void exchangeOidcCookie()
-        .then((newToken) => {
-          if (newToken) setSession(newToken, null);
-        })
-        .catch(() => undefined);
-    }
-  }, [location.search, token, setSession]);
+    void exchangeOidcCookie()
+      .then((newToken) => {
+        if (newToken) setSession(newToken, null);
+      })
+      .finally(() => setSessionReady(true));
+  }, [location.pathname, location.search, setSession]);
 
   useEffect(() => {
     if (me) {
@@ -139,6 +134,10 @@ export default function App() {
       mediaQuery.removeEventListener("change", syncTheme);
     };
   }, [branding?.app_name, branding?.favicon_url, effectiveLocale, effectiveThemeMode]);
+
+  if (!sessionReady) {
+    return <PageFallback />;
+  }
 
   if (!token) {
     return (

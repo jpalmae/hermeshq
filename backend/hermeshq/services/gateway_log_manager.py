@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from hermeshq.core.events import EventBroker
+from hermeshq.core.events import EventAudience, EventBroker
 from hermeshq.models.activity import ActivityLog
 from hermeshq.services.gateway_types import GatewayProcessHandle
 from hermeshq.services.hermes_installation import HermesInstallationManager
@@ -145,7 +145,8 @@ class GatewayLogManager:
                             "message": entry["content"],
                             "platform": platform,
                             "direction": entry["direction"],
-                        }
+                        },
+                        audience=EventAudience.for_agent(agent_id),
                     )
                 for task_id in created_task_ids:
                     await self.event_broker.publish(
@@ -153,7 +154,8 @@ class GatewayLogManager:
                             "type": "task.completed",
                             "task_id": task_id,
                             "agent_id": agent_id,
-                        }
+                        },
+                        audience=EventAudience.for_agent(agent_id),
                     )
             except asyncio.CancelledError:
                 return

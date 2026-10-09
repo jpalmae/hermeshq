@@ -58,8 +58,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_audit_logs_target_id", table_name="audit_logs")
-    op.drop_index("ix_audit_logs_target_type", table_name="audit_logs")
-    op.drop_index("ix_audit_logs_action", table_name="audit_logs")
-    op.drop_index("ix_audit_logs_actor_id", table_name="audit_logs")
-    op.drop_table("audit_logs")
+    pass

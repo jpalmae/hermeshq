@@ -38,11 +38,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    if _column_exists("agents", "fallback_base_url"):
-        op.drop_column("agents", "fallback_base_url")
-    if _column_exists("agents", "fallback_api_key_ref"):
-        op.drop_column("agents", "fallback_api_key_ref")
-    if _column_exists("agents", "fallback_model"):
-        op.drop_column("agents", "fallback_model")
-    if _column_exists("agents", "fallback_provider"):
-        op.drop_column("agents", "fallback_provider")
+    pass

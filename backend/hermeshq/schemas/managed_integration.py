@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ManagedIntegrationFieldRead(BaseModel):
@@ -40,7 +42,7 @@ class ManagedIntegrationRead(BaseModel):
 
 
 class ManagedIntegrationTestRequest(BaseModel):
-    config: dict[str, str] | None = None
+    model_config = ConfigDict(extra="forbid")
 
 
 class ManagedIntegrationTestResult(BaseModel):
@@ -50,7 +52,9 @@ class ManagedIntegrationTestResult(BaseModel):
 
 
 class ManagedIntegrationActionRequest(BaseModel):
-    config: dict[str, str] | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    arguments: dict[str, Any] = Field(default_factory=dict)
 
 
 class ManagedIntegrationActionResult(BaseModel):

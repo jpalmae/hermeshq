@@ -5,6 +5,7 @@ No endpoints are defined here — see ``local.py``, ``mfa.py`` and ``oidc.py``.
 
 import logging
 import re
+import secrets
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -89,33 +90,44 @@ MFA_CODE_MAX_ATTEMPTS = 5  # max verification attempts per code
 MFA_RESEND_COOLDOWN_SECONDS = 30
 
 COOKIE_NAME = "hermeshq_token"
-COOKIE_MAX_AGE = 60 * 60 * 12  # 12 hours, matches access_token_minutes default
+CSRF_COOKIE_NAME = "hermeshq_csrf"
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
-    """Set the JWT as an httpOnly secure cookie."""
+    settings = get_settings()
+    max_age = settings.access_token_minutes * 60
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
-        max_age=COOKIE_MAX_AGE,
+        max_age=max_age,
         httponly=True,
-        secure=get_settings().cookie_secure,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+    response.set_cookie(
+        key=CSRF_COOKIE_NAME,
+        value=secrets.token_urlsafe(32),
+        max_age=max_age,
+        httponly=False,
+        secure=settings.cookie_secure,
         samesite="lax",
         path="/",
     )
 
 
 def _clear_auth_cookie(response: Response) -> None:
-    """Clear the auth cookie."""
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value="",
-        max_age=0,
-        httponly=True,
-        secure=get_settings().cookie_secure,
-        samesite="lax",
-        path="/",
-    )
+    settings = get_settings()
+    for name, httponly in ((COOKIE_NAME, True), (CSRF_COOKIE_NAME, False)):
+        response.set_cookie(
+            key=name,
+            value="",
+            max_age=0,
+            httponly=httponly,
+            secure=settings.cookie_secure,
+            samesite="lax",
+            path="/",
+        )
 
 
 def _serialize_user(request: Request, user: User) -> UserRead:

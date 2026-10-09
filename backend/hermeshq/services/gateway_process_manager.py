@@ -12,13 +12,18 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from hermeshq.core.events import EventBroker
+from hermeshq.core.events import EventAudience, EventBroker
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
 from hermeshq.models.base import utcnow
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.services.gateway_types import GatewayProcessHandle
-from hermeshq.services.hermes_installation import HermesInstallationError, HermesInstallationManager, _invalidate_install_cached
+from hermeshq.services.hermes_installation import (
+    HermesInstallationError,
+    HermesInstallationManager,
+    _invalidate_install_cached,
+)
+from hermeshq.services.runtime_runner_client import RuntimeRunnerClient
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +45,14 @@ class GatewayProcessManager:
         installation_manager: HermesInstallationManager,
         processes: dict[str, GatewayProcessHandle],
         enterprise_gateways: object | None = None,
+        runtime_runner_client: RuntimeRunnerClient | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.event_broker = event_broker
         self.installation_manager = installation_manager
         self.processes = processes
         self._enterprise_gateways = enterprise_gateways
+        self.runtime_runner_client = runtime_runner_client
         self._restart_tasks: dict[str, asyncio.Task] = {}
         self._shutting_down = False
 
@@ -179,7 +186,13 @@ class GatewayProcessManager:
                 channel.updated_at = utcnow()
                 await session.commit()
                 await self.event_broker.publish(
-                    {"type": "messaging.status_changed", "agent_id": agent_id, "status": "running", "message": platform}
+                    {
+                        "type": "messaging.status_changed",
+                        "agent_id": agent_id,
+                        "status": "running",
+                        "message": platform,
+                    },
+                    audience=EventAudience.for_agent(agent_id),
                 )
                 return
 
@@ -310,7 +323,8 @@ class GatewayProcessManager:
                     "agent_id": agent_id,
                     "status": "running",
                     "message": item.platform,
-                }
+                },
+                audience=EventAudience.for_agent(agent_id),
             )
 
     # ── Stop channel ────────────────────────────────────────────────────────
@@ -402,7 +416,8 @@ class GatewayProcessManager:
             await session.commit()
 
         await self.event_broker.publish(
-            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "stopped", "message": platform}
+            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "stopped", "message": platform},
+            audience=EventAudience.for_agent(agent_id),
         )
         if restarted_handle:
             for remaining_platform in restarted_handle.platforms:
@@ -412,7 +427,8 @@ class GatewayProcessManager:
                         "agent_id": agent_id,
                         "status": "running",
                         "message": remaining_platform,
-                    }
+                    },
+                    audience=EventAudience.for_agent(agent_id),
                 )
 
     # ── Enterprise gateways ─────────────────────────────────────────────────
@@ -464,7 +480,8 @@ class GatewayProcessManager:
                 await session.commit()
 
         await self.event_broker.publish(
-            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "running", "message": platform}
+            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "running", "message": platform},
+            audience=EventAudience.for_agent(agent_id),
         )
 
     async def _stop_enterprise_channel(self, agent_id: str, platform: str) -> None:
@@ -481,7 +498,8 @@ class GatewayProcessManager:
                 await session.commit()
 
         await self.event_broker.publish(
-            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "stopped", "message": platform}
+            {"type": "messaging.status_changed", "agent_id": agent_id, "status": "stopped", "message": platform},
+            audience=EventAudience.for_agent(agent_id),
         )
 
     # ── Process lifecycle ───────────────────────────────────────────────────
@@ -504,15 +522,24 @@ class GatewayProcessManager:
         self._rotate_gateway_log(log_path)
         log_handle = log_path.open("a", encoding="utf-8")
         try:
-            process = subprocess.Popen(
-                [runtime_selection.hermes_bin, "gateway", "run", "--replace"],
-                cwd=str(workspace_path),
-                env=env,
-                stdin=subprocess.DEVNULL,
-                stdout=log_handle,
-                stderr=subprocess.STDOUT,
-                close_fds=True,
-            )
+            if self.runtime_runner_client is not None:
+                process = await self.runtime_runner_client.start_gateway(
+                    agent_id=agent.id,
+                    environment=env,
+                    hermes_version=(
+                        runtime_selection.effective_version if runtime_selection.source == "managed" else None
+                    ),
+                )
+            else:
+                process = subprocess.Popen(
+                    [runtime_selection.hermes_bin, "gateway", "run", "--replace"],
+                    cwd=str(workspace_path),
+                    env=env,
+                    stdin=subprocess.DEVNULL,
+                    stdout=log_handle,
+                    stderr=subprocess.STDOUT,
+                    close_fds=True,
+                )
         except Exception:
             log_handle.close()
             raise
@@ -676,7 +703,8 @@ class GatewayProcessManager:
                     "agent_id": agent_id,
                     "status": "stopped" if return_code == 0 else "error",
                     "message": platform,
-                }
+                },
+                audience=EventAudience.for_agent(agent_id),
             )
 
         # ── Auto-restart logic ──────────────────────────────────────────────
@@ -805,7 +833,8 @@ class GatewayProcessManager:
                             "agent_id": agent_id,
                             "status": "running",
                             "message": platform,
-                        }
+                        },
+                        audience=EventAudience.for_agent(agent_id),
                     )
 
                 logger.info("Gateway for agent %s auto-restarted successfully on attempt %d", agent_id, attempt + 1)
@@ -849,7 +878,8 @@ class GatewayProcessManager:
 
             for platform in platforms:
                 await self.event_broker.publish(
-                    {"type": "messaging.status_changed", "agent_id": agent_id, "status": "error", "message": platform}
+                    {"type": "messaging.status_changed", "agent_id": agent_id, "status": "error", "message": platform},
+                    audience=EventAudience.for_agent(agent_id),
                 )
 
         await asyncio.sleep(GATEWAY_RECOVERY_RETRY_DELAY)

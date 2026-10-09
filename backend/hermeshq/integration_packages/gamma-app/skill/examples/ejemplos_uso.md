@@ -55,7 +55,8 @@ python3 scripts/create_from_template.py \
 ```python
 #!/usr/bin/env python3
 import sys
-sys.path.insert(0, '/home/preventa/.openclaw/workspace/skills/gamma-app/scripts')
+
+sys.path.insert(0, "/home/preventa/.openclaw/workspace/skills/gamma-app/scripts")
 
 from gamma_client import GammaAPI
 
@@ -66,13 +67,13 @@ gamma = GammaAPI()
 result = gamma.create_presentation(
     input_text="""
     Pitch Deck: Solución de Ciberseguridad
-    
+
     PROBLEMA:
     Las empresas enfrentan amenazas cibernéticas cada vez más sofisticadas.
-    
+
     SOLUCIÓN:
     Sixmanager ofrece servicios de seguridad gestionada 24/7.
-    
+
     BENEFICIOS:
     • Detección temprana de amenazas
     • Respuesta inmediata a incidentes
@@ -81,20 +82,18 @@ result = gamma.create_presentation(
     text_mode="generate",
     num_cards=8,
     text_options={"language": "es-419"},
-    image_options={
-        "source": "aiGenerated",
-        "model": "imagen-3-pro"
-    },
+    image_options={"source": "aiGenerated", "model": "imagen-3-pro"},
     additional_instructions="Diseño moderno y profesional para pitch de inversión",
-    export_as="pdf"
+    export_as="pdf",
 )
 
 # Obtener ID
-gen_id = result['data']['generationId']
+gen_id = result["data"]["generationId"]
 print(f"Presentación creada: {gen_id}")
 
 # Verificar estado
 from gamma_client import GammaDownloadAPI
+
 download = GammaDownloadAPI()
 urls = download.poll_until_ready(gen_id)
 

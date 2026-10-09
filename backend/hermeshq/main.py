@@ -3,6 +3,7 @@ import base64
 import contextlib
 import json
 import logging
+import shutil
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,7 +15,8 @@ from sqlalchemy import select
 from starlette.websockets import WebSocketState
 
 from hermeshq.config import get_settings
-from hermeshq.core.events import EventBroker
+from hermeshq.core.csrf import CSRFMiddleware
+from hermeshq.core.events import EventAudience, EventBroker
 from hermeshq.core.public_chat_cors import PublicChatCORSMiddleware
 from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
 from hermeshq.database import AsyncSessionLocal, init_database
@@ -28,6 +30,8 @@ from hermeshq.routers import (
     backup,
     comms,
     dashboard,
+    desktop_gateway,
+    enrollment,
     hermes_versions,
     integration_factory,
     integration_packages,
@@ -41,6 +45,7 @@ from hermeshq.routers import (
     messaging_channels,
     nodes,
     oidc_admin,
+    permission_policies,
     providers,
     runtime_ledger,
     runtime_profiles,
@@ -59,16 +64,21 @@ from hermeshq.routers.public_chat import management_router as public_chat_manage
 from hermeshq.routers.public_chat import public_router as public_chat_router
 from hermeshq.routers.public_chat_test_page import router as public_chat_test_router
 from hermeshq.routers.public_chat_widget import router as public_chat_widget_router
+from hermeshq.routers.ssh_destinations import router as ssh_destinations_router
 from hermeshq.schemas.common import HealthResponse
 from hermeshq.services.agent_identity import derive_agent_identity
 from hermeshq.services.agent_supervisor import AgentSupervisor
 from hermeshq.services.comms_router import CommsRouter
+from hermeshq.services.desktop_gateway import DesktopGatewayService
+from hermeshq.services.egress_allowlist import push_allowlist_to_runner
+from hermeshq.services.enrollment import EnrollmentService
 from hermeshq.services.enterprise_gateway_manager import EnterpriseGatewayManager
 from hermeshq.services.gateway_supervisor import GatewaySupervisor
 from hermeshq.services.hermes_installation import HermesInstallationManager
 from hermeshq.services.hermes_runtime import HermesRuntime
 from hermeshq.services.hermes_version_manager import HermesVersionManager
 from hermeshq.services.instance_backup import InstanceBackupService
+from hermeshq.services.permission_enforcer import PermissionEnforcer
 from hermeshq.services.provider_catalog import BUILTIN_PROVIDERS, normalize_runtime_provider, seed_provider_defaults
 from hermeshq.services.pty_manager import PTYManager
 from hermeshq.services.public_chat_service import PublicChatService
@@ -77,6 +87,7 @@ from hermeshq.services.runtime_profiles import (
     normalize_runtime_profile_slug,
     terminal_allowed_for_profile,
 )
+from hermeshq.services.runtime_runner_client import RuntimeRunnerClient
 from hermeshq.services.scheduler import SchedulerService
 from hermeshq.services.secret_vault import SecretVault, build_vault_from_settings
 from hermeshq.services.workspace_manager import WorkspaceManager
@@ -94,17 +105,16 @@ DEFAULT_ENABLED_INTEGRATION_PACKAGES = (
 async def bootstrap_defaults(secret_vault: SecretVault | None = None) -> None:
     import secrets as _secrets
 
+    from hermeshq.models.oidc_provider import OidcProvider
     from hermeshq.services.auxiliary_models import migrate_auxiliary_models
     from hermeshq.services.secret_vault import encrypt_value, is_encrypted_value
 
-    # Generate random admin password if not set
     admin_password = settings.admin_password
     if not admin_password or not admin_password.strip():
+        if not settings.debug:
+            raise RuntimeError("ADMIN_PASSWORD must be configured before the initial administrator is created")
         admin_password = _secrets.token_urlsafe(16)
-        logger.warning(
-            "⚠️ ADMIN_PASSWORD was not set — auto-generated a secure password. "
-            "Set ADMIN_PASSWORD in your environment to control this value."
-        )
+        logger.warning("Using an ephemeral development-only administrator password")
 
     async with AsyncSessionLocal() as session:
         user_result = await session.execute(select(User).where(User.username == settings.admin_username))
@@ -170,6 +180,11 @@ async def bootstrap_defaults(secret_vault: SecretVault | None = None) -> None:
         obsolete_openai_oauth = await session.get(ProviderDefinition, "openai-oauth")
         if obsolete_openai_oauth:
             await session.delete(obsolete_openai_oauth)
+        if secret_vault:
+            oidc_result = await session.execute(select(OidcProvider))
+            for oidc_provider in oidc_result.scalars().all():
+                if oidc_provider.client_secret and not is_encrypted_value(oidc_provider.client_secret):
+                    oidc_provider.client_secret = encrypt_value(secret_vault, oidc_provider.client_secret)
         agent_result = await session.execute(select(Agent).order_by(Agent.created_at.asc()))
         seen_slugs: set[str] = set()
         for agent in agent_result.scalars().all():
@@ -193,6 +208,10 @@ async def bootstrap_defaults(secret_vault: SecretVault | None = None) -> None:
             agent.slug = candidate_slug
             normalized_provider = normalize_runtime_provider(agent.provider)
             if normalized_provider != agent.provider:
+                if not (agent.base_url or "").strip():
+                    definition = await session.get(ProviderDefinition, agent.provider)
+                    if definition is not None and definition.base_url:
+                        agent.base_url = definition.base_url.strip()
                 agent.provider = normalized_provider
             agent.runtime_profile = normalize_runtime_profile_slug(agent.runtime_profile)
             if secret_vault and agent.auxiliary_models:
@@ -229,6 +248,15 @@ async def lifespan(app: FastAPI):
     await bootstrap_defaults(app.state.secret_vault)
     app.state.event_broker = EventBroker()
     app.state.workspace_manager = WorkspaceManager(settings.workspaces_root)
+    try:
+        result = await AsyncSessionLocal.execute(select(Agent.id))
+        live_ids = set(result.scalars())
+        reclaimed = app.state.workspace_manager.cleanup_orphan_pi_configs(live_ids)
+        if reclaimed:
+            logger.info("Reclaimed %d orphan Pi config dirs: %s", len(reclaimed), ", ".join(reclaimed))
+    except Exception:
+        logger.warning("Pi config orphan sweep failed", exc_info=True)
+    app.state.permission_enforcer = PermissionEnforcer(AsyncSessionLocal)
     app.state.hermes_version_manager = HermesVersionManager(AsyncSessionLocal)
     await app.state.hermes_version_manager.ensure_default_catalog_entries()
     app.state.instance_backup_service = InstanceBackupService(AsyncSessionLocal)
@@ -237,7 +265,21 @@ async def lifespan(app: FastAPI):
         app.state.secret_vault,
         app.state.hermes_version_manager,
     )
-    app.state.runtime = HermesRuntime(AsyncSessionLocal, app.state.secret_vault, app.state.installation_manager)
+    app.state.runtime_runner_client = None
+    if settings.runtime_isolation_mode == "required":
+        app.state.runtime_runner_client = RuntimeRunnerClient(
+            settings.runtime_runner_url,
+            settings.runtime_runner_token,
+        )
+        if not await app.state.runtime_runner_client.health():
+            await app.state.runtime_runner_client.close()
+            raise RuntimeError("Required isolated runtime runner is unavailable")
+    app.state.runtime = HermesRuntime(
+        AsyncSessionLocal,
+        app.state.secret_vault,
+        app.state.installation_manager,
+        app.state.runtime_runner_client,
+    )
     app.state.supervisor = AgentSupervisor(
         AsyncSessionLocal,
         app.state.event_broker,
@@ -248,6 +290,7 @@ async def lifespan(app: FastAPI):
         AsyncSessionLocal,
         app.state.event_broker,
         app.state.installation_manager,
+        app.state.runtime_runner_client,
     )
     app.state.enterprise_gateways = EnterpriseGatewayManager(
         AsyncSessionLocal,
@@ -256,6 +299,14 @@ async def lifespan(app: FastAPI):
         app.state.secret_vault,
     )
     app.state.gateway_supervisor.set_enterprise_gateways(app.state.enterprise_gateways)
+    app.state.desktop_gateway_service = DesktopGatewayService(
+        AsyncSessionLocal,
+        app.state.installation_manager,
+    )
+    await app.state.desktop_gateway_service.start()
+    app.state.enrollment_service = EnrollmentService(
+        AsyncSessionLocal, app.state.permission_enforcer, app.state.secret_vault
+    )
     # Expose individual gateway maps for webhook routing
     app.state.session_factory = AsyncSessionLocal
     app.state.google_chat_gateways = app.state.enterprise_gateways.google_chat_gateways
@@ -315,17 +366,41 @@ async def lifespan(app: FastAPI):
                 "agent_id": agent_id,
                 "event_type": event_type,
                 "message": message,
-            }
+            },
+            audience=EventAudience.for_agent(agent_id),
         )
 
     app.state.pty_manager = PTYManager(settings.pty_shell, audit_callback=log_terminal_activity)
     app.state.supervisor.pty_manager = app.state.pty_manager
     app.state.supervisor.gateway_supervisor = app.state.gateway_supervisor
+
+    pi_available = app.state.runtime_runner_client is not None or shutil.which("node") is not None
+    if pi_available:
+        from hermeshq.services.pi_runtime import PiRuntime
+
+        app.state.pi_runtime = PiRuntime(
+            AsyncSessionLocal,
+            app.state.secret_vault,
+            app.state.workspace_manager,
+            app.state.runtime_runner_client,
+        )
+        app.state.supervisor.register_runtime("pi", app.state.pi_runtime)
+        logger.info("Pi runtime registered")
+    else:
+        logger.warning("Node.js not found — Pi runtime unavailable")
     app.state.scheduler = SchedulerService(AsyncSessionLocal, app.state.supervisor.submit_task)
     await app.state.supervisor.bootstrap_runtime()
     await app.state.scheduler.start()
     app.state.gateway_bootstrap_task = asyncio.create_task(app.state.gateway_supervisor.bootstrap_gateways())
     app.state.enterprise_bootstrap_task = asyncio.create_task(app.state.enterprise_gateways.bootstrap())
+    if app.state.runtime_runner_client is not None:
+
+        async def _push_egress_allowlist() -> None:
+            with contextlib.suppress(Exception):
+                async with AsyncSessionLocal() as session:
+                    await push_allowlist_to_runner(app.state.runtime_runner_client, session)
+
+        app.state.egress_allowlist_task = asyncio.create_task(_push_egress_allowlist())
 
     app.state.public_chat_service = PublicChatService(
         session_factory=AsyncSessionLocal,
@@ -336,11 +411,16 @@ async def lifespan(app: FastAPI):
 
     async def _periodic_cleanup() -> None:
         from hermeshq.routers.mcp_server import _analytics, _rate_limiter
+        from hermeshq.services.ssh_relay import reconcile_ssh_relays
 
         while True:
             await asyncio.sleep(60)
             _rate_limiter.cleanup()
             _analytics.evict_stale()
+            if app.state.runtime_runner_client is not None:
+                with contextlib.suppress(Exception):
+                    async with AsyncSessionLocal() as session:
+                        await reconcile_ssh_relays(app, session)
 
     app.state._cleanup_task = asyncio.create_task(_periodic_cleanup())
 
@@ -361,8 +441,12 @@ async def lifespan(app: FastAPI):
         with contextlib.suppress(asyncio.CancelledError):
             await enterprise_bootstrap_task
     await app.state.scheduler.stop()
+    await app.state.desktop_gateway_service.shutdown()
+    await app.state.supervisor.shutdown_runtime()
     await app.state.gateway_supervisor.shutdown()
     await app.state.enterprise_gateways.shutdown()
+    if app.state.runtime_runner_client is not None:
+        await app.state.runtime_runner_client.close()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
@@ -373,13 +457,14 @@ from hermeshq.core.structured_errors import StructuredErrorMiddleware
 
 app.add_middleware(StructuredErrorMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(CSRFMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With", "X-CSRF-Token", "Accept", "Origin"],
 )
 
 app.add_middleware(PublicChatCORSMiddleware)
@@ -400,6 +485,7 @@ app.include_router(dashboard.router, prefix=settings.api_prefix)
 app.include_router(comms.router, prefix=settings.api_prefix)
 app.include_router(internal_agents.router, prefix=settings.api_prefix)
 app.include_router(internal_control.router, prefix=settings.api_prefix)
+app.include_router(ssh_destinations_router, prefix=settings.api_prefix)
 app.include_router(secrets.router, prefix=settings.api_prefix)
 app.include_router(settings_router.router, prefix=settings.api_prefix)
 app.include_router(backup.router, prefix=settings.api_prefix)
@@ -411,8 +497,11 @@ app.include_router(terminal_sessions.router, prefix=settings.api_prefix)
 app.include_router(scheduled_tasks.router, prefix=settings.api_prefix)
 app.include_router(oidc_admin.router, prefix=settings.api_prefix)
 app.include_router(users.router, prefix=settings.api_prefix)
+app.include_router(permission_policies.router, prefix=settings.api_prefix)
 app.include_router(audit.router, prefix=settings.api_prefix)
 app.include_router(mcp_server.router)
+app.include_router(desktop_gateway.router)
+app.include_router(enrollment.router, prefix=settings.api_prefix)
 app.include_router(webhooks.router)
 app.include_router(attachments.router, prefix=settings.api_prefix)
 app.include_router(m365.router, prefix=settings.api_prefix)
@@ -455,8 +544,7 @@ async def health() -> HealthResponse:
 async def stream(websocket: WebSocket) -> None:
     broker: EventBroker = app.state.event_broker
 
-    # --- Authentication: support both query-param (legacy) and first-message auth ---
-    token: str | None = websocket.query_params.get("token")
+    token: str | None = websocket.cookies.get("hermeshq_token")
 
     if not token:
         # Accept the connection provisionally and wait for an auth message.
@@ -513,6 +601,9 @@ async def stream(websocket: WebSocket) -> None:
             msg = await websocket.receive_text()
             try:
                 data = json.loads(msg)
+                if data.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+                    continue
                 if data.get("type") == "pong":
                     continue
             except (json.JSONDecodeError, KeyError, TypeError):
@@ -529,9 +620,7 @@ async def stream(websocket: WebSocket) -> None:
 @app.websocket("/ws/pty/{agent_id}")
 async def pty_stream(websocket: WebSocket, agent_id: str) -> None:
     mode = "hybrid"
-    # Authentication: prefer first-message auth so tokens never appear in
-    # URLs/access logs; query-param token still accepted for legacy clients.
-    token: str | None = websocket.query_params.get("token")
+    token: str | None = websocket.cookies.get("hermeshq_token")
     if not token:
         await websocket.accept()
         try:

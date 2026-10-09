@@ -6,6 +6,15 @@ import { useSessionStore } from "../stores/sessionStore";
 
 const baseURL = resolveApiBase();
 
+function readCookie(name: string): string | null {
+  const prefix = `${encodeURIComponent(name)}=`;
+  for (const part of document.cookie.split(";")) {
+    const value = part.trim();
+    if (value.startsWith(prefix)) return decodeURIComponent(value.slice(prefix.length));
+  }
+  return null;
+}
+
 export const apiClient = axios.create({
   baseURL,
   timeout: 30_000, // 30 second timeout for all requests
@@ -23,7 +32,10 @@ async function _tryRefreshToken(): Promise<string | null> {
     const { data } = await axios.post<{ access_token: string; expires_at: string }>(
       `${baseURL}/auth/refresh`,
       undefined,
-      { withCredentials: true },
+      {
+        withCredentials: true,
+        headers: { "X-CSRF-Token": readCookie("hermeshq_csrf") ?? "" },
+      },
     );
     const newToken = data.access_token;
     store.setToken(newToken);
@@ -49,6 +61,8 @@ apiClient.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  const csrfToken = readCookie("hermeshq_csrf");
+  if (csrfToken) config.headers.set("X-CSRF-Token", csrfToken);
   // Include cookies (for httpOnly auth cookie support)
   config.withCredentials = true;
   return config;

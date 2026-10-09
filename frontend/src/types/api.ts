@@ -130,6 +130,10 @@ export interface Agent {
   fallback_base_url: string | null;
   auxiliary_models: Record<string, AuxiliaryModelEntry> | null;
   system_prompt: string | null;
+  runtime_type?: string;
+  pi_config?: Record<string, unknown> | null;
+  permission_policy_id?: string | null;
+  permission_policy_ids?: string[];
   workspace_path: string;
   enabled_toolsets: string[];
   disabled_toolsets: string[];
@@ -287,6 +291,7 @@ export interface ProviderDefinition {
     sort_order: number;
     api_key_ref: string | null;
     models_refreshed_at: string | null;
+    egress_notice: string | null;
     created_at: string;
   updated_at: string;
 }

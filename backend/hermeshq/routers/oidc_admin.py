@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from hermeshq.config import get_settings
 from hermeshq.core.security import require_admin
 from hermeshq.database import get_db_session
 from hermeshq.models.oidc_provider import OidcProvider
@@ -15,6 +16,7 @@ from hermeshq.schemas.oidc_provider import (
     OidcProviderRead,
     OidcProviderUpdate,
 )
+from hermeshq.services.secret_vault import build_vault_from_settings, encrypt_value
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/oidc-providers", tags=["oidc-providers"])
@@ -38,7 +40,9 @@ async def create_provider(
     existing = await db.execute(select(OidcProvider).where(OidcProvider.slug == payload.slug))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail=f"Provider '{payload.slug}' already exists")
-    provider = OidcProvider(**payload.model_dump())
+    values = payload.model_dump()
+    values["client_secret"] = encrypt_value(build_vault_from_settings(get_settings()), values["client_secret"])
+    provider = OidcProvider(**values)
     db.add(provider)
     await db.commit()
     await db.refresh(provider)
@@ -67,7 +71,10 @@ async def update_provider(
     provider = await db.get(OidcProvider, provider_id)
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    values = payload.model_dump(exclude_unset=True)
+    if "client_secret" in values:
+        values["client_secret"] = encrypt_value(build_vault_from_settings(get_settings()), values["client_secret"])
+    for key, value in values.items():
         setattr(provider, key, value)
     await db.commit()
     await db.refresh(provider)

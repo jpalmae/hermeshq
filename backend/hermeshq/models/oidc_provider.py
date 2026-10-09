@@ -15,7 +15,7 @@ class OidcProvider(TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(128))
     client_id: Mapped[str] = mapped_column(String(512))
-    client_secret: Mapped[str] = mapped_column(String(512))
+    client_secret: Mapped[str] = mapped_column(Text)
     discovery_url: Mapped[str] = mapped_column(String(1024))
     scopes: Mapped[str] = mapped_column(String(512), default="openid profile email")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)

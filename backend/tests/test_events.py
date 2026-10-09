@@ -4,7 +4,7 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from hermeshq.core.events import EventBroker, EventSubscription
+from hermeshq.core.events import EventAudience, EventBroker, EventSubscription
 
 
 class TestEventSubscription(unittest.TestCase):
@@ -28,6 +28,18 @@ class TestEventSubscription(unittest.TestCase):
     def test_user_id_set(self):
         sub = EventSubscription(websocket=MagicMock(), is_admin=False, agent_ids=set(), user_id="user-42")
         self.assertEqual(sub.user_id, "user-42")
+
+
+class TestEventAudience(unittest.TestCase):
+    def test_empty_audience_is_rejected(self):
+        with self.assertRaises(ValueError):
+            EventAudience()
+
+    def test_agent_and_user_scopes_are_immutable(self):
+        audience = EventAudience.for_agent("agent-1", user_id="user-1")
+
+        self.assertEqual(audience.agent_ids, frozenset({"agent-1"}))
+        self.assertEqual(audience.user_ids, frozenset({"user-1"}))
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +201,7 @@ class TestPublishWebSocketDelivery(unittest.IsolatedAsyncioTestCase):
         await self.broker.connect(ws, is_admin=False, agent_ids={"agent-1"})
 
         event = {"type": "log", "agent_id": "agent-1"}
-        await self.broker.publish(event)
+        await self.broker.publish(event, audience=EventAudience.for_agent("agent-1"))
 
         ws.send_json.assert_awaited_once_with(event)
 
@@ -199,12 +211,26 @@ class TestPublishWebSocketDelivery(unittest.IsolatedAsyncioTestCase):
         await self.broker.connect(ws, is_admin=False, agent_ids={"agent-1"})
 
         event = {"type": "log", "agent_id": "agent-2"}
-        await self.broker.publish(event)
+        await self.broker.publish(event, audience=EventAudience.for_agent("agent-2"))
 
         ws.send_json.assert_not_awaited()
 
-    async def test_event_without_agent_id_goes_to_all(self):
-        """Events with no agent_id field are delivered to every connection."""
+    async def test_multi_agent_audience_reaches_either_agent_only(self):
+        source_ws = _make_ws()
+        target_ws = _make_ws()
+        unrelated_ws = _make_ws()
+        await self.broker.connect(source_ws, is_admin=False, agent_ids={"source"})
+        await self.broker.connect(target_ws, is_admin=False, agent_ids={"target"})
+        await self.broker.connect(unrelated_ws, is_admin=False, agent_ids={"unrelated"})
+
+        event = {"type": "comms.message", "from_agent_id": "source", "to_agent_id": "target"}
+        await self.broker.publish(event, audience=EventAudience.for_agents("source", "target"))
+
+        source_ws.send_json.assert_awaited_once_with(event)
+        target_ws.send_json.assert_awaited_once_with(event)
+        unrelated_ws.send_json.assert_not_awaited()
+
+    async def test_event_without_explicit_audience_is_denied_to_non_admins(self):
         ws1 = _make_ws()
         ws2 = _make_ws()
         await self.broker.connect(ws1, is_admin=False, agent_ids={"a"})
@@ -213,8 +239,8 @@ class TestPublishWebSocketDelivery(unittest.IsolatedAsyncioTestCase):
         event = {"type": "broadcast"}
         await self.broker.publish(event)
 
-        ws1.send_json.assert_awaited_once_with(event)
-        ws2.send_json.assert_awaited_once_with(event)
+        ws1.send_json.assert_not_awaited()
+        ws2.send_json.assert_not_awaited()
 
     async def test_stale_connection_gets_disconnected(self):
         """A connection whose send_json raises is removed from _connections."""
@@ -275,7 +301,10 @@ class TestPublishUserIdFiltering(unittest.IsolatedAsyncioTestCase):
         await self.broker.connect(ws, is_admin=False, agent_ids={"agent-1"}, user_id="user-A")
 
         event = {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-A"}
-        await self.broker.publish(event)
+        await self.broker.publish(
+            event,
+            audience=EventAudience.for_agent("agent-1", user_id="user-A"),
+        )
 
         ws.send_json.assert_awaited_once_with(event)
 
@@ -285,7 +314,10 @@ class TestPublishUserIdFiltering(unittest.IsolatedAsyncioTestCase):
         await self.broker.connect(ws, is_admin=False, agent_ids={"agent-1"}, user_id="user-A")
 
         event = {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-B"}
-        await self.broker.publish(event)
+        await self.broker.publish(
+            event,
+            audience=EventAudience.for_agent("agent-1", user_id="user-B"),
+        )
 
         ws.send_json.assert_not_awaited()
 
@@ -299,8 +331,14 @@ class TestPublishUserIdFiltering(unittest.IsolatedAsyncioTestCase):
         event_a = {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-A"}
         event_b = {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-B"}
 
-        await self.broker.publish(event_a)
-        await self.broker.publish(event_b)
+        await self.broker.publish(
+            event_a,
+            audience=EventAudience.for_agent("agent-1", user_id="user-A"),
+        )
+        await self.broker.publish(
+            event_b,
+            audience=EventAudience.for_agent("agent-1", user_id="user-B"),
+        )
 
         ws_a.send_json.assert_awaited_once_with(event_a)
         ws_b.send_json.assert_awaited_once_with(event_b)
@@ -311,7 +349,10 @@ class TestPublishUserIdFiltering(unittest.IsolatedAsyncioTestCase):
         await self.broker.connect(admin_ws, is_admin=True, agent_ids=set(), user_id="admin-1")
 
         event = {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-B"}
-        await self.broker.publish(event)
+        await self.broker.publish(
+            event,
+            audience=EventAudience.for_agent("agent-1", user_id="user-B"),
+        )
 
         admin_ws.send_json.assert_awaited_once_with(event)
 
@@ -323,20 +364,22 @@ class TestPublishUserIdFiltering(unittest.IsolatedAsyncioTestCase):
         await self.broker.connect(ws_b, is_admin=False, agent_ids={"agent-1"}, user_id="user-B")
 
         event = {"type": "agent.status_changed", "agent_id": "agent-1"}
-        await self.broker.publish(event)
+        await self.broker.publish(event, audience=EventAudience.for_agent("agent-1"))
 
         ws_a.send_json.assert_awaited_once_with(event)
         ws_b.send_json.assert_awaited_once_with(event)
 
-    async def test_subscription_without_user_id_receives_all(self):
-        """Connections without user_id (legacy) receive all events for their agents."""
+    async def test_subscription_without_user_id_denies_user_scoped_events(self):
         ws = _make_ws()
         await self.broker.connect(ws, is_admin=False, agent_ids={"agent-1"})
 
         event = {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-B"}
-        await self.broker.publish(event)
+        await self.broker.publish(
+            event,
+            audience=EventAudience.for_agent("agent-1", user_id="user-B"),
+        )
 
-        ws.send_json.assert_awaited_once_with(event)
+        ws.send_json.assert_not_awaited()
 
 
 # ===================================================================
@@ -457,23 +500,18 @@ class TestPublishMany(unittest.IsolatedAsyncioTestCase):
         """publish_many with an empty iterable should complete without error."""
         await self.broker.publish_many([])
 
-    async def test_publish_many_respects_filtering(self):
+    async def test_publish_many_respects_agent_audience(self):
         admin_ws = _make_ws()
         user_ws = _make_ws()
         await self.broker.connect(admin_ws, is_admin=True, agent_ids=set())
         await self.broker.connect(user_ws, is_admin=False, agent_ids={"agent-1"})
 
-        events = [
-            {"type": "t1", "agent_id": "agent-1"},
-            {"type": "t2", "agent_id": "agent-2"},
-            {"type": "t3", "agent_id": "agent-1"},
-        ]
-        await self.broker.publish_many(events)
+        events = [{"type": "t1"}, {"type": "t2"}, {"type": "t3"}]
+        await self.broker.publish_many(events, audience=EventAudience.for_agent("agent-1"))
 
         # Admin sees all 3
         self.assertEqual(admin_ws.send_json.await_count, 3)
-        # User only sees the 2 matching agent-1
-        self.assertEqual(user_ws.send_json.await_count, 2)
+        self.assertEqual(user_ws.send_json.await_count, 3)
 
     async def test_publish_many_respects_user_filtering(self):
         """publish_many respects user_id filtering across multiple events."""
@@ -482,15 +520,14 @@ class TestPublishMany(unittest.IsolatedAsyncioTestCase):
         await self.broker.connect(ws_a, is_admin=False, agent_ids={"agent-1"}, user_id="user-A")
         await self.broker.connect(ws_b, is_admin=False, agent_ids={"agent-1"}, user_id="user-B")
 
-        events = [
-            {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-A"},
-            {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-B"},
-            {"type": "task.progress", "agent_id": "agent-1", "created_by_user_id": "user-A"},
-        ]
-        await self.broker.publish_many(events)
+        events = [{"type": "task.progress"}, {"type": "task.progress"}]
+        await self.broker.publish_many(
+            events,
+            audience=EventAudience.for_agent("agent-1", user_id="user-A"),
+        )
 
         self.assertEqual(ws_a.send_json.await_count, 2)
-        self.assertEqual(ws_b.send_json.await_count, 1)
+        self.assertEqual(ws_b.send_json.await_count, 0)
 
 
 # ===================================================================

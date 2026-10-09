@@ -52,11 +52,12 @@ const EmailTab = lazy(() => import("../../components/settings/EmailTab").then((m
 const ResourcesTab = lazy(() => import("../../components/settings/ResourcesTab"));
 const M365Tab = lazy(() => import("../../components/settings/M365Tab"));
 const PublicChatKeysTab = lazy(() => import("../../components/settings/PublicChatKeysTab"));
+const PermissionPoliciesTab = lazy(() => import("../../components/settings/PermissionPoliciesTab").then((m) => ({ default: m.PermissionPoliciesTab })));
 
 type SettingsTab =
   | "general" | "runtime" | "providers" | "integrations" | "factory"
   | "externalAccess" | "hermesVersions" | "secrets" | "templates"
-  | "authentication" | "email" | "resources" | "m365" | "publicChatKeys";
+  | "authentication" | "email" | "resources" | "m365" | "publicChatKeys" | "permissionPolicies";
 
 const TAB_GROUPS: Array<{ groupKey: string; tabs: Array<{ id: SettingsTab; labelKey: string }> }> = [
   {
@@ -75,6 +76,7 @@ const TAB_GROUPS: Array<{ groupKey: string; tabs: Array<{ id: SettingsTab; label
       { id: "integrations", labelKey: "v2.integrations" },
       { id: "factory", labelKey: "v2.factoryTab" },
       { id: "templates", labelKey: "v2.templatesTab" },
+      { id: "permissionPolicies", labelKey: "v2.permissionPolicies" },
     ],
   },
   {
@@ -259,6 +261,7 @@ export function V2SettingsPage() {
                 permanentlyDeletePublicChatKey={permanentlyDeletePublicChatKey}
               />
             )}
+            {activeTab === "permissionPolicies" && <PermissionPoliciesTab />}
           </Suspense>
         </div>
       </div>

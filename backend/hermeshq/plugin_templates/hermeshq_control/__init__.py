@@ -124,6 +124,9 @@ def register(ctx):
                     "integration_configs": {"type": "object"},
                     "team_tags": {"type": "array", "items": {"type": "string"}},
                     "supervisor_agent_id": {"type": "string"},
+                    "runtime_type": {"type": "string", "enum": ["hermes", "pi"]},
+                    "pi_config": {"type": "object"},
+                    "permission_policy_id": {"type": "string"},
                 },
                 "required": ["node_id"],
             },
@@ -157,6 +160,11 @@ def register(ctx):
                     "team_tags": {"type": "array", "items": {"type": "string"}},
                     "status": {"type": "string"},
                     "supervisor_agent_id": {"type": "string"},
+                    "runtime_type": {"type": "string", "enum": ["hermes", "pi"]},
+                    "pi_config": {"type": "object"},
+                    "permission_policy_id": {"type": "string"},
+                    "permission_policy_ids": {"type": "array", "items": {"type": "string"}},
+                    "desktop_access_enabled": {"type": "boolean"},
                 },
                 "required": ["agent_id"],
             },
@@ -710,6 +718,211 @@ def register(ctx):
                 lambda args: f"/control/integration-drafts/{args.get('draft_id')}", required=["draft_id"]
             ),
             "emoji": "🧹",
+        },
+        {
+            "name": "hq_control_list_policies",
+            "description": "List permission policies available for Pi agents.",
+            "parameters": {"type": "object", "properties": {}},
+            "handler": _payload_handler("GET", lambda _args: "/control/permission-policies"),
+            "emoji": "🛡️",
+        },
+        {
+            "name": "hq_control_create_policy",
+            "description": "Create a new permission policy for Pi agents. Specify name, tool_rules, path_rules, command_rules, network_rules, and approval_rules as needed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "tool_rules": {"type": "object"},
+                    "path_rules": {"type": "object"},
+                    "command_rules": {"type": "object"},
+                    "network_rules": {"type": "object"},
+                    "approval_rules": {"type": "object"},
+                },
+                "required": ["name"],
+            },
+            "handler": _payload_handler("POST", lambda _args: "/control/permission-policies", required=["name"]),
+            "emoji": "📜",
+        },
+        {
+            "name": "hq_control_update_policy",
+            "description": "Update a permission policy by id.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "policy_id": {"type": "string"},
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "tool_rules": {"type": "object"},
+                    "path_rules": {"type": "object"},
+                    "command_rules": {"type": "object"},
+                    "network_rules": {"type": "object"},
+                    "approval_rules": {"type": "object"},
+                },
+                "required": ["policy_id"],
+            },
+            "handler": _payload_handler(
+                "PUT",
+                lambda args: f"/control/permission-policies/{args.get('policy_id')}",
+                required=["policy_id"],
+                payload_builder=lambda args: {key: value for key, value in dict(args or {}).items() if key != "policy_id"},
+            ),
+            "emoji": "✏️",
+        },
+        {
+            "name": "hq_control_delete_policy",
+            "description": "Delete a permission policy by id. System policies cannot be deleted.",
+            "parameters": {"type": "object", "properties": {"policy_id": {"type": "string"}}, "required": ["policy_id"]},
+            "handler": _delete_handler(lambda args: f"/control/permission-policies/{args.get('policy_id')}", required=["policy_id"]),
+            "emoji": "🗑️",
+        },
+        {
+            "name": "hq_control_assign_policy",
+            "description": "Assign a primary permission policy to any agent by agent_id and policy_id. Pass empty policy_id to remove it. For chained policies use hq_control_update_agent with permission_policy_ids.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string"},
+                    "policy_id": {"type": "string"},
+                },
+                "required": ["agent_id"],
+            },
+            "handler": _payload_handler(
+                "PUT",
+                lambda args: f"/control/agents/{args.get('agent_id')}",
+                required=["agent_id"],
+                payload_builder=lambda args: {"permission_policy_id": args.get("policy_id") or None},
+            ),
+            "emoji": "🔗",
+        },
+        {
+            "name": "hq_control_test_permission",
+            "description": "Test whether a tool call, path, or command would be allowed by an agent's permission policies (own plus any inherited master policies when delegated).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string"},
+                    "tool": {"type": "string"},
+                    "input": {"type": "object"},
+                },
+                "required": ["agent_id", "tool"],
+            },
+            "handler": _payload_handler(
+                "POST",
+                lambda args: f"/control/agents/{args.get('agent_id')}/test-permission",
+                required=["agent_id", "tool"],
+                payload_builder=lambda args: {"tool": args.get("tool"), "input": args.get("input") or {}},
+            ),
+            "emoji": "🧪",
+        },
+        {
+            "name": "hq_control_list_devices",
+            "description": "List enrolled Hermes Desktop devices with status, heartbeat, and last sync. Filter by agent_id optionally.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string"},
+                },
+            },
+            "handler": _payload_handler(
+                "GET",
+                lambda args: "/control/enrollment/devices" + (("?agent_id=" + args["agent_id"]) if args.get("agent_id") else ""),
+            ),
+            "emoji": "💻",
+        },
+        {
+            "name": "hq_control_enroll_device",
+            "description": "Enroll a new Hermes Desktop device for an agent. Returns a one-time enrollment token plus the exact activation command to give the user. guard_fail_mode: fail-open | fail-closed | fail-grace:<seconds>.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string"},
+                    "device_name": {"type": "string"},
+                    "guard_fail_mode": {"type": "string"},
+                },
+                "required": ["agent_id", "device_name"],
+            },
+            "handler": _payload_handler(
+                "POST",
+                lambda args: "/control/enrollment/devices",
+                required=["agent_id", "device_name"],
+                payload_builder=lambda args: {
+                    "agent_id": args.get("agent_id"),
+                    "device_name": args.get("device_name"),
+                    "guard_fail_mode": args.get("guard_fail_mode") or "fail-open",
+                },
+            ),
+            "emoji": "📲",
+        },
+        {
+            "name": "hq_control_revoke_device",
+            "description": "Revoke an enrolled device by device_id. The device's guard blocks all tools immediately on the next evaluation.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_id": {"type": "string"},
+                },
+                "required": ["device_id"],
+            },
+            "handler": _payload_handler(
+                "DELETE",
+                lambda args: f"/control/enrollment/devices/{args.get('device_id')}",
+                required=["device_id"],
+            ),
+            "emoji": "🚫",
+        },
+        {
+            "name": "hq_control_list_agent_skills",
+            "description": "List installed skills of any agent (name, description, path, managed flag). Use before transferring a skill between agents.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string"},
+                },
+                "required": ["agent_id"],
+            },
+            "handler": _payload_handler(
+                "GET",
+                lambda args: f"/control/agents/{args.get('agent_id')}/skills",
+                required=["agent_id"],
+            ),
+            "emoji": "🗂️",
+        },
+        {
+            "name": "hq_control_transfer_skill",
+            "description": "Copy a skill from one agent to another (validated: text files only, size-capped, path-safe). Collision requires overwrite=true. Returns the copied skill summary.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_agent_id": {"type": "string"},
+                    "target_agent_id": {"type": "string"},
+                    "skill_path": {"type": "string"},
+                    "target_name": {"type": "string"},
+                    "overwrite": {"type": "boolean"},
+                },
+                "required": ["source_agent_id", "target_agent_id", "skill_path"],
+            },
+            "handler": _payload_handler(
+                "POST",
+                lambda args: "/control/skills/transfer",
+                required=["source_agent_id", "target_agent_id", "skill_path"],
+                payload_builder=lambda args: {
+                    "source_agent_id": args.get("source_agent_id"),
+                    "target_agent_id": args.get("target_agent_id"),
+                    "skill_path": args.get("skill_path"),
+                    "target_name": args.get("target_name"),
+                    "overwrite": bool(args.get("overwrite")),
+                },
+            ),
+            "emoji": "📤",
+        },
+        {
+            "name": "hq_control_list_ssh_destinations",
+            "description": "List active SSH destinations (host, port, listen_port, allowed agent). Authorized agents reach them from tasks as ssh-relay:<listen_port>.",
+            "parameters": {"type": "object", "properties": {}},
+            "handler": _payload_handler("GET", lambda args: "/control/ssh/destinations"),
+            "emoji": "🔐",
         },
     ]
 

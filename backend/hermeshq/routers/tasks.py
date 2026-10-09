@@ -133,11 +133,7 @@ async def cancel_task(
     if not is_admin(current_user) and task.created_by_user_id and task.created_by_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     await request.app.state.supervisor.cancel_task(task_id)
-    # The supervisor updates the DB asynchronously via CancelledError handler.
-    # Return the expected post-cancel state immediately so the caller sees
-    # the cancellation rather than the stale running/queued status.
-    if task.status in ("pending", "running", "queued"):
-        task.status = "cancelled"
+    await db.refresh(task)
     return TaskRead.model_validate(task)
 
 
@@ -171,7 +167,7 @@ async def delete_task(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> None:
-    task = await db.get(Task, task_id)
+    task = (await db.execute(select(Task).where(Task.id == task_id).with_for_update())).scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     await ensure_agent_access(db, current_user, task.agent_id)

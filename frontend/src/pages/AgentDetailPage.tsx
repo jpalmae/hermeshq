@@ -19,6 +19,7 @@ import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../stores/sessionStore";
 import { useRealtimeStore } from "../stores/realtimeStore";
 import { ChannelsTab } from "./agent-detail/ChannelsTab";
+import { DevicesSection } from "./agent-detail/DevicesSection";
 import { ChatLedger } from "./agent-detail/ChatLedger";
 import { HeroSection } from "./agent-detail/HeroSection";
 import { LogsTab } from "./agent-detail/LogsTab";
@@ -301,13 +302,11 @@ export function AgentDetailPage() {
   }
 
   async function onTestIntegration(integrationSlug: string) {
-    const currentDraft = drafts.integrationDrafts[integrationSlug] ?? {};
     setIntegrationPending((p) => ({ ...p, [integrationSlug]: "test" }));
     try {
       const result = await testAgentIntegration.mutateAsync({
         agentId: currentAgent.id,
         integrationSlug,
-        config: currentDraft,
       });
       drafts.setIntegrationTestResults((current) => ({ ...current, [integrationSlug]: result }));
     } catch (error) {
@@ -318,14 +317,13 @@ export function AgentDetailPage() {
   }
 
   async function onRunIntegrationAction(integrationSlug: string, actionSlug: string) {
-    const currentDraft = drafts.integrationDrafts[integrationSlug] ?? {};
     setIntegrationPending((p) => ({ ...p, [integrationSlug]: actionSlug }));
     try {
       const result = await runAgentIntegrationAction.mutateAsync({
         agentId: currentAgent.id,
         integrationSlug,
         actionSlug,
-        config: currentDraft,
+        arguments: {},
       });
       drafts.setIntegrationActionResults((current) => ({
         ...current,
@@ -482,6 +480,12 @@ export function AgentDetailPage() {
         fetchOlderLogs={fetchOlderLogs}
         sectionState={sectionState}
         onToggleSection={toggleSection}
+      />
+
+      <DevicesSection
+        agent={agent}
+        isOpen={sectionState.devices}
+        onToggle={() => toggleSection("devices")}
       />
 
       <SectionShell

@@ -7,6 +7,7 @@ import re
 import uuid
 from pathlib import Path
 
+import aiofiles
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -135,12 +136,12 @@ async def upload_attachment(
     total_size = 0
     chunk_size = 1024 * 1024  # 1 MB
     try:
-        with open(file_path, "wb") as f:
+        async with aiofiles.open(file_path, "wb") as f:
             while chunk := await file.read(chunk_size):
                 total_size += len(chunk)
                 if total_size > MAX_FILE_SIZE:
                     break
-                f.write(chunk)
+                await f.write(chunk)
     except Exception:
         file_path.unlink(missing_ok=True)
         raise
@@ -182,7 +183,12 @@ async def download_attachment(
 
     file_path = matches[0]
     media_type = _resolve_media_type(file_path.name)
-    return FileResponse(file_path, media_type=media_type, filename=file_path.name)
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        filename=file_path.name,
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.delete("/{agent_id}/attachments/{file_id}", response_model=AttachmentDeleteRead)

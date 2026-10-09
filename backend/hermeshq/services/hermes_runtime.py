@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -11,7 +10,9 @@ from hermeshq.models.task import Task
 from hermeshq.services.credentials import require_secret_value
 from hermeshq.services.hermes_installation import HermesInstallationManager
 from hermeshq.services.provider_catalog import normalize_runtime_provider
+from hermeshq.services.runtime_base import RuntimeBase, RuntimeExecutionError, RuntimeExecutionResult
 from hermeshq.services.runtime_profiles import resolve_effective_toolsets
+from hermeshq.services.runtime_runner_client import RuntimeRunnerClient
 from hermeshq.services.secret_vault import SecretVault
 
 logger = logging.getLogger(__name__)
@@ -88,31 +89,18 @@ _MEDIA_EXT_MIME_MAP = {
 }
 
 
-@dataclass
-class RuntimeExecutionResult:
-    final_response: str
-    messages: list[dict]
-    tool_calls: list[dict]
-    tokens_used: int
-    iterations: int
-    engine: str
-    response_attachments: list[dict]
-
-
-class RuntimeExecutionError(RuntimeError):
-    pass
-
-
-class HermesRuntime:
+class HermesRuntime(RuntimeBase):
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         secret_vault: SecretVault,
         installation_manager: HermesInstallationManager,
+        runtime_runner_client: RuntimeRunnerClient | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.secret_vault = secret_vault
         self.installation_manager = installation_manager
+        self.runtime_runner_client = runtime_runner_client
 
     @property
     def available(self) -> bool:
@@ -146,6 +134,7 @@ class HermesRuntime:
                 api_key,
                 runtime_system_prompt,
                 runtime_selection.python_bin,
+                runtime_selection.effective_version if runtime_selection.source == "managed" else None,
                 conversation_history=conversation_history,
                 session_id=session_id,
             )
@@ -163,6 +152,7 @@ class HermesRuntime:
                     fallback_api_key,
                     runtime_system_prompt,
                     runtime_selection.python_bin,
+                    runtime_selection.effective_version if runtime_selection.source == "managed" else None,
                     conversation_history=conversation_history,
                     session_id=session_id,
                     fallback_override={
@@ -185,13 +175,16 @@ class HermesRuntime:
         api_key: str | None,
         runtime_system_prompt: str,
         runtime_python_bin: str,
+        runtime_version: str | None,
         conversation_history: list[dict] | None = None,
         session_id: str | None = None,
         fallback_override: dict | None = None,
     ) -> RuntimeExecutionResult:
         workspace_path = self.installation_manager.resolve_workspace_path(agent.workspace_path)
-        hermes_home = self.installation_manager.build_hermes_home(agent.workspace_path)
         process_env = await self.installation_manager.build_process_env(agent)
+        policy_master = (task.metadata_json or {}).get("policy_master_agent_id")
+        if isinstance(policy_master, str) and policy_master.strip() and policy_master != agent.id:
+            process_env["HERMESHQ_POLICY_MASTER"] = policy_master.strip()
         if fallback_override:
             process_env = {**process_env, **self._fallback_env(agent, fallback_override.get("api_key"))}
         enabled_toolsets, disabled_toolsets = resolve_effective_toolsets(
@@ -200,7 +193,7 @@ class HermesRuntime:
             agent.disabled_toolsets,
         )
         runtime_provider = self.installation_manager._model_provider_for_agent(agent)
-        effective_base_url = self.installation_manager._effective_provider_base_url(agent)
+        effective_base_url = await self.installation_manager._effective_provider_base_url(agent)
         effective_model = await self._resolve_effective_model(agent, runtime_provider)
         # ── Channel routing: suppress external channels for mobile_app tasks ──
         _task_meta = task.metadata_json or {}
@@ -221,6 +214,11 @@ class HermesRuntime:
                 "as response_attachments."
             )
 
+        execution_workspace = (
+            self.runtime_runner_client.workspace_path(agent.id)
+            if self.runtime_runner_client is not None
+            else str(workspace_path)
+        )
         payload = {
             "task_id": str(task.id),
             "prompt": task.prompt,
@@ -233,8 +231,8 @@ class HermesRuntime:
             "disabled_toolsets": disabled_toolsets or None,
             "max_iterations": agent.max_iterations,
             "system_prompt": runtime_system_prompt,
-            "cwd": str(workspace_path),
-            "hermes_home": str(hermes_home),
+            "cwd": execution_workspace,
+            "hermes_home": f"{execution_workspace}/.hermes",
             "conversation_history": conversation_history or [],
             "session_id": session_id,
             "metadata": task.metadata_json or {},
@@ -245,21 +243,53 @@ class HermesRuntime:
                 if value is not None:
                     payload[key] = value
 
-        process = await asyncio.create_subprocess_exec(
-            runtime_python_bin,
-            str(Path(__file__).resolve().parents[1] / "scripts" / "hermes_task_runner.py"),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            limit=1024 * 1024,
-            cwd=str(Path(__file__).resolve().parents[2]),
-            env=process_env,
-        )
+        process: asyncio.subprocess.Process | None = None
+        if self.runtime_runner_client is None:
+            process = await asyncio.create_subprocess_exec(
+                runtime_python_bin,
+                str(Path(__file__).resolve().parents[1] / "scripts" / "hermes_task_runner.py"),
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                limit=1024 * 1024,
+                cwd=str(Path(__file__).resolve().parents[2]),
+                env=process_env,
+            )
 
         final_result: dict | None = None
 
         async def _consume() -> dict | None:
             result: dict | None = None
+
+            async def handle_line(text: str) -> None:
+                nonlocal result
+                if not text:
+                    return
+                try:
+                    event = json.loads(text)
+                except json.JSONDecodeError:
+                    await stream_callback(text)
+                    return
+
+                if event.get("event") == "delta" and event.get("data"):
+                    await stream_callback(str(event["data"]))
+                elif event.get("event") == "result":
+                    result = event
+                elif event.get("event") == "error":
+                    raise RuntimeExecutionError(str(event.get("error") or "Hermes runtime process failed"))
+
+            if self.runtime_runner_client is not None:
+                async for text in self.runtime_runner_client.run(
+                    engine="hermes",
+                    agent_id=agent.id,
+                    environment=process_env,
+                    input_data=json.dumps(payload),
+                    hermes_version=runtime_version,
+                ):
+                    await handle_line(text.strip())
+                return result
+
+            assert process is not None
             assert process.stdin is not None
             try:
                 process.stdin.write(json.dumps(payload).encode("utf-8"))
@@ -272,21 +302,7 @@ class HermesRuntime:
                 line = await process.stdout.readline()
                 if not line:
                     break
-                text = line.decode("utf-8", errors="replace").strip()
-                if not text:
-                    continue
-                try:
-                    event = json.loads(text)
-                except json.JSONDecodeError:
-                    await stream_callback(text)
-                    continue
-
-                if event.get("event") == "delta" and event.get("data"):
-                    await stream_callback(str(event["data"]))
-                elif event.get("event") == "result":
-                    result = event
-                elif event.get("event") == "error":
-                    raise RuntimeExecutionError(str(event.get("error") or "Hermes runtime process failed"))
+                await handle_line(line.decode("utf-8", errors="replace").strip())
             return result
 
         try:
@@ -296,20 +312,20 @@ class HermesRuntime:
                 f"Hermes runtime exceeded the task timeout of {self._task_timeout_seconds()}s"
             ) from exc
         finally:
-            if process.returncode is None:
+            if process is not None and process.returncode is None:
                 process.kill()
                 try:
                     await asyncio.wait_for(process.wait(), timeout=10)
                 except TimeoutError:
                     logger.warning("Task runner subprocess %s did not exit after kill", process.pid)
 
-        stderr_output = ""
-        if process.stderr is not None:
-            stderr_output = (await process.stderr.read()).decode("utf-8", errors="replace").strip()
-
-        return_code = process.returncode if process.returncode is not None else await process.wait()
-        if return_code != 0 and not final_result:
-            raise RuntimeExecutionError(stderr_output or "Hermes runtime process exited with an error")
+        if process is not None:
+            stderr_output = ""
+            if process.stderr is not None:
+                stderr_output = (await process.stderr.read()).decode("utf-8", errors="replace").strip()
+            return_code = process.returncode if process.returncode is not None else await process.wait()
+            if return_code != 0 and not final_result:
+                raise RuntimeExecutionError(stderr_output or "Hermes runtime process exited with an error")
         if not final_result:
             raise RuntimeExecutionError("Hermes runtime returned no result payload")
 
@@ -355,16 +371,27 @@ class HermesRuntime:
 
         media_matches = list(media_pattern.finditer(raw_response))
         if media_matches:
-            workspace_path = _Path(payload["cwd"])
             uploads_dir = workspace_path / "uploads"
             uploads_dir.mkdir(parents=True, exist_ok=True)
+            workspace_root = workspace_path.resolve()
+            isolated_root = _Path(execution_workspace)
 
             for match in media_matches:
                 file_path_str = match.group(1).strip()
                 file_path = _Path(file_path_str)
+                if self.runtime_runner_client is not None and file_path.is_absolute():
+                    try:
+                        file_path = workspace_path / file_path.relative_to(isolated_root)
+                    except ValueError:
+                        logger.warning("MEDIA: path is outside the isolated workspace: %s", file_path_str)
+                        continue
                 if not file_path.exists():
-                    # Try relative to workspace
                     file_path = workspace_path / file_path_str
+                resolved_file = file_path.resolve()
+                if workspace_root not in [resolved_file, *resolved_file.parents]:
+                    logger.warning("MEDIA: path escapes the agent workspace: %s", file_path_str)
+                    continue
+                file_path = resolved_file
                 if not file_path.exists() or not file_path.is_file():
                     logger.warning("MEDIA: file not found: %s", file_path_str)
                     continue
