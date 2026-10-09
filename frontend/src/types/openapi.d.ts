@@ -1148,6 +1148,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/enrollment/cli": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Enroll Cli */
+        get: operations["download_enroll_cli_api_enrollment_cli_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/enrollment/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Devices */
+        get: operations["list_devices_api_enrollment_devices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/enrollment/devices/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Device Bundle */
+        get: operations["device_bundle_api_enrollment_devices_bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/enrollment/devices/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Device Heartbeat */
+        post: operations["device_heartbeat_api_enrollment_devices_heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/enrollment/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Device */
+        get: operations["get_device_api_enrollment_devices__device_id__get"];
+        put?: never;
+        post?: never;
+        /** Revoke Device */
+        delete: operations["revoke_device_api_enrollment_devices__device_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/enrollment/devices/{device_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Device */
+        post: operations["activate_device_api_enrollment_devices__device_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/enrollment/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enroll Device */
+        post: operations["enroll_device_api_enrollment_enroll_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/hermes-versions": {
         parameters: {
             query?: never;
@@ -2374,6 +2494,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ssh-destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Ssh Destinations */
+        get: operations["list_ssh_destinations_api_ssh_destinations_get"];
+        put?: never;
+        /** Create Ssh Destination */
+        post: operations["create_ssh_destination_api_ssh_destinations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ssh-destinations/{destination_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Ssh Destination */
+        put: operations["update_ssh_destination_api_ssh_destinations__destination_id__put"];
+        post?: never;
+        /** Delete Ssh Destination */
+        delete: operations["delete_ssh_destination_api_ssh_destinations__destination_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks": {
         parameters: {
             query?: never;
@@ -2629,6 +2785,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/desktop/{agent_id}/api/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Desktop Health */
+        get: operations["desktop_health_desktop__agent_id__api_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desktop/{agent_id}/api/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Desktop Status */
+        get: operations["desktop_status_desktop__agent_id__api_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desktop/{agent_id}/{path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Desktop Http Proxy */
+        get: operations["desktop_http_proxy"];
+        /** Desktop Http Proxy */
+        put: operations["desktop_http_proxy"];
+        /** Desktop Http Proxy */
+        post: operations["desktop_http_proxy"];
+        /** Desktop Http Proxy */
+        delete: operations["desktop_http_proxy"];
+        /** Desktop Http Proxy */
+        options: operations["desktop_http_proxy"];
+        /** Desktop Http Proxy */
+        head: operations["desktop_http_proxy"];
+        /** Desktop Http Proxy */
+        patch: operations["desktop_http_proxy"];
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -2767,6 +2980,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivateRequest */
+        ActivateRequest: {
+            /** Os Info */
+            os_info?: {
+                [key: string]: unknown;
+            };
+        };
         /** ActivityPageRead */
         ActivityPageRead: {
             /** Has More */
@@ -2946,6 +3166,11 @@ export interface components {
             base_url?: string | null;
             /** Description */
             description?: string | null;
+            /**
+             * Desktop Access Enabled
+             * @default false
+             */
+            desktop_access_enabled: boolean;
             /** Disabled Toolsets */
             disabled_toolsets?: string[] | null;
             /** Enabled Toolsets */
@@ -2981,6 +3206,8 @@ export interface components {
             node_id: string;
             /** Permission Policy Id */
             permission_policy_id?: string | null;
+            /** Permission Policy Ids */
+            permission_policy_ids?: string[] | null;
             /** Pi Config */
             pi_config?: {
                 [key: string]: unknown;
@@ -3087,6 +3314,11 @@ export interface components {
             created_at: string;
             /** Description */
             description: string | null;
+            /**
+             * Desktop Access Enabled
+             * @default false
+             */
+            desktop_access_enabled: boolean;
             /** Disabled Toolsets */
             disabled_toolsets: string[];
             /** Enabled Toolsets */
@@ -3137,6 +3369,8 @@ export interface components {
             node_id: string;
             /** Permission Policy Id */
             permission_policy_id?: string | null;
+            /** Permission Policy Ids */
+            permission_policy_ids?: string[] | null;
             /** Pi Config */
             pi_config?: {
                 [key: string]: unknown;
@@ -3229,6 +3463,8 @@ export interface components {
             base_url?: string | null;
             /** Description */
             description?: string | null;
+            /** Desktop Access Enabled */
+            desktop_access_enabled?: boolean | null;
             /** Disabled Toolsets */
             disabled_toolsets?: string[] | null;
             /** Enabled Toolsets */
@@ -3263,6 +3499,8 @@ export interface components {
             name?: string | null;
             /** Permission Policy Id */
             permission_policy_id?: string | null;
+            /** Permission Policy Ids */
+            permission_policy_ids?: string[] | null;
             /** Pi Config */
             pi_config?: {
                 [key: string]: unknown;
@@ -3881,6 +4119,41 @@ export interface components {
             /** Fail Count */
             fail_count: number;
         };
+        /** DeviceRead */
+        DeviceRead: {
+            /** Agent Id */
+            agent_id: string;
+            /** Bundle Etag */
+            bundle_etag?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Enroll Token */
+            enroll_token?: string | null;
+            /** Guard Fail Mode */
+            guard_fail_mode: string;
+            /** Hermes Version */
+            hermes_version?: string | null;
+            /** Id */
+            id: string;
+            /** Last Heartbeat */
+            last_heartbeat?: string | null;
+            /** Last Sync At */
+            last_sync_at?: string | null;
+            /** Name */
+            name: string;
+            /** Os Info */
+            os_info: {
+                [key: string]: unknown;
+            };
+            /** Revoked At */
+            revoked_at?: string | null;
+            /** Status */
+            status: string;
+            /** Token Version */
+            token_version: number;
+            /** User Id */
+            user_id: string;
+        };
         /**
          * EmailConfigStatus
          * @description Status of email configuration for the settings UI.
@@ -3897,6 +4170,22 @@ export interface components {
             from_name?: string | null;
             /** Public Base Url */
             public_base_url?: string | null;
+        };
+        /** EnrollRequest */
+        EnrollRequest: {
+            /** Agent Id */
+            agent_id: string;
+            /** Device Name */
+            device_name: string;
+            /**
+             * Guard Fail Mode
+             * @default fail-open
+             */
+            guard_fail_mode: string;
+            /** Os Info */
+            os_info?: {
+                [key: string]: unknown;
+            };
         };
         /** ForgotPasswordRequest */
         ForgotPasswordRequest: {
@@ -3949,6 +4238,13 @@ export interface components {
             timestamp: string;
             /** Version */
             version: string;
+        };
+        /** HeartbeatRequest */
+        HeartbeatRequest: {
+            /** Bundle Etag */
+            bundle_etag?: string | null;
+            /** Hermes Version */
+            hermes_version?: string | null;
         };
         /** HermesUpstreamCatalogCreate */
         HermesUpstreamCatalogCreate: {
@@ -5027,6 +5323,29 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** PermissionTestRequest */
+        PermissionTestRequest: {
+            /** Input */
+            input?: {
+                [key: string]: unknown;
+            };
+            /** Tool */
+            tool: string;
+        };
+        /** PermissionTestResult */
+        PermissionTestResult: {
+            /** Allowed */
+            allowed: boolean;
+            /** Policy Name */
+            policy_name?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Requires Approval
+             * @default false
+             */
+            requires_approval: boolean;
+        };
         /** ProviderRead */
         ProviderRead: {
             /** Api Key Ref */
@@ -5048,6 +5367,8 @@ export interface components {
             description: string | null;
             /** Docs Url */
             docs_url: string | null;
+            /** Egress Notice */
+            egress_notice?: string | null;
             /** Enabled */
             enabled: boolean;
             /** Models Refreshed At */
@@ -5442,6 +5763,70 @@ export interface components {
             skills: {
                 [key: string]: unknown;
             }[];
+        };
+        /** SshDestinationCreate */
+        SshDestinationCreate: {
+            /** Allowed Agent Id */
+            allowed_agent_id?: string | null;
+            /** Host */
+            host: string;
+            /** Listen Port */
+            listen_port: number;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Port
+             * @default 22
+             */
+            port: number;
+        };
+        /** SshDestinationRead */
+        SshDestinationRead: {
+            /** Active */
+            active: boolean;
+            /** Allowed Agent Id */
+            allowed_agent_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Host */
+            host: string;
+            /** Id */
+            id: string;
+            /** Listen Port */
+            listen_port: number;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes: string | null;
+            /** Port */
+            port: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SshDestinationUpdate */
+        SshDestinationUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Allowed Agent Id */
+            allowed_agent_id?: string | null;
+            /** Host */
+            host?: string | null;
+            /** Listen Port */
+            listen_port?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Port */
+            port?: number | null;
         };
         /** TTSRequest */
         TTSRequest: {
@@ -7091,9 +7476,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["PermissionTestRequest"];
             };
         };
         responses: {
@@ -7103,9 +7486,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PermissionTestResult"];
                 };
             };
             /** @description Validation Error */
@@ -8283,6 +8664,265 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardTokenStatsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_enroll_cli_api_enrollment_cli_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_devices_api_enrollment_devices_get: {
+        parameters: {
+            query?: {
+                agent_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    device_bundle_api_enrollment_devices_bundle_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+            };
+            header?: {
+                "X-HermesHQ-Device-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    device_heartbeat_api_enrollment_devices_heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-HermesHQ-Device-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeartbeatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_device_api_enrollment_devices__device_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_device_api_enrollment_devices__device_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_device_api_enrollment_devices__device_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-HermesHQ-Enroll-Token"?: string | null;
+            };
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enroll_device_api_enrollment_enroll_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnrollRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceRead"];
                 };
             };
             /** @description Validation Error */
@@ -11619,6 +12259,142 @@ export interface operations {
             };
         };
     };
+    list_ssh_destinations_api_ssh_destinations_get: {
+        parameters: {
+            query?: {
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshDestinationRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ssh_destination_api_ssh_destinations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SshDestinationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshDestinationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_ssh_destination_api_ssh_destinations__destination_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                destination_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SshDestinationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshDestinationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ssh_destination_api_ssh_destinations__destination_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                destination_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_tasks_api_tasks_get: {
         parameters: {
             query?: {
@@ -12339,6 +13115,292 @@ export interface operations {
                 "application/json": components["schemas"]["TTSRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    desktop_health_desktop__agent_id__api_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    desktop_status_desktop__agent_id__api_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    desktop_http_proxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    desktop_http_proxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    desktop_http_proxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    desktop_http_proxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    desktop_http_proxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    desktop_http_proxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    desktop_http_proxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

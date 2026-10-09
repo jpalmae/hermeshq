@@ -1,7 +1,7 @@
 # ============================================================
 # Stage 1 – builder: compile everything heavy
 # ============================================================
-FROM golang:1.26.6-bookworm AS docker-cli
+FROM mirror.gcr.io/library/golang:1.27.2-bookworm AS docker-cli
 
 ARG DOCKER_CLI_VERSION=29.6.2
 ARG DOCKER_CLI_COMMIT=dfc4efb1e2ab8c06d70d2a1366ad448d2f917e90
@@ -21,9 +21,9 @@ RUN VERSION="${DOCKER_CLI_VERSION}" \
     ./scripts/build/binary \
     && cp -L /out/docker /docker \
     && /docker --version \
-    && go version -m /docker | grep -F 'go1.26.6'
+    && go version -m /docker | grep -F 'go1.27.2'
 
-FROM python:3.11-slim AS builder
+FROM mirror.gcr.io/library/python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -78,7 +78,7 @@ RUN cd /app/pi-runtime && npm ci --omit=dev --no-audit --no-fund
 # ============================================================
 # Stage 2 – runtime: slim image, non-root user
 # ============================================================
-FROM python:3.11-slim
+FROM mirror.gcr.io/library/python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -107,11 +107,15 @@ RUN apt-get update && apt-get upgrade -y \
     && apt-get update && apt-get install -y --no-install-recommends nodejs \
     && npm install --global npm@12.0.2 --no-audit --no-fund \
     && npm install --prefix /tmp/npm-security-deps --omit=dev --no-save --no-audit --no-fund \
-       brace-expansion@5.0.9 ip-address@10.3.1 \
+       brace-expansion@5.0.11 ip-address@10.3.1 tar@7.5.21 undici@6.28.1 \
     && cp -a /tmp/npm-security-deps/node_modules/brace-expansion/. \
        /usr/lib/node_modules/npm/node_modules/brace-expansion/ \
     && cp -a /tmp/npm-security-deps/node_modules/ip-address/. \
        /usr/lib/node_modules/npm/node_modules/ip-address/ \
+    && cp -a /tmp/npm-security-deps/node_modules/tar/. \
+       /usr/lib/node_modules/npm/node_modules/tar/ \
+    && cp -a /tmp/npm-security-deps/node_modules/undici/. \
+       /usr/lib/node_modules/npm/node_modules/undici/ \
     && rm -rf /tmp/npm-security-deps \
     && rm -rf /var/lib/apt/lists/* \
     && /usr/local/bin/python -m pip install --no-cache-dir \

@@ -223,10 +223,16 @@ async def _execute_tool(
         )
 
     if tool_name == "list_runtimes":
-        return json.dumps([
-            {"id": "hermes", "name": "Hermes", "description": "Python runtime with toolsets and gallery skills"},
-            {"id": "pi", "name": "Pi", "description": "TypeScript runtime with permission policies and strict sandboxing"},
-        ])
+        return json.dumps(
+            [
+                {"id": "hermes", "name": "Hermes", "description": "Python runtime with toolsets and gallery skills"},
+                {
+                    "id": "pi",
+                    "name": "Pi",
+                    "description": "TypeScript runtime with permission policies and strict sandboxing",
+                },
+            ]
+        )
 
     if tool_name == "propose_agent_draft":
         draft_data = {k: v for k, v in arguments.items() if k != "ready_to_create"}
@@ -514,12 +520,12 @@ async def finalize_agent_from_draft(
         slug=draft.slug or agent_name.lower().replace(" ", "-"),
         description=draft.description,
         runtime_profile=draft.runtime_profile,
-        runtime_type=draft.runtime_type if hasattr(draft, 'runtime_type') else "hermes",
+        runtime_type=draft.runtime_type if hasattr(draft, "runtime_type") else "hermes",
         system_prompt=draft.system_prompt,
         enabled_toolsets=draft.enabled_toolsets,
         integration_configs=draft.integration_configs,
     )
-    if hasattr(draft, 'permission_policy_id') and draft.permission_policy_id:
+    if hasattr(draft, "permission_policy_id") and draft.permission_policy_id:
         payload.permission_policy_id = draft.permission_policy_id
 
     workspace_manager = getattr(app_state, "workspace_manager", None)

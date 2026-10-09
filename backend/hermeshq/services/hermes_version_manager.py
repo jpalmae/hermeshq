@@ -123,7 +123,9 @@ class HermesVersionManager:
                         client_kwargs["default_headers"] = {"User-Agent": "HermesAgent"}"""
 
     _TEAMS_EDIT_HOTFIX_MARKER = "HERMESHQ_TEAMS_EDIT_MESSAGE_HOTFIX"
-    _TEAMS_SEND_TYPING_NEEDLE = "    async def send_typing(self, chat_id: str, metadata: Optional[Dict[str, Any]] = None) -> None:"
+    _TEAMS_SEND_TYPING_NEEDLE = (
+        "    async def send_typing(self, chat_id: str, metadata: Optional[Dict[str, Any]] = None) -> None:"
+    )
     _TEAMS_EDIT_METHOD = '''    async def edit_message(
         self, chat_id: str, message_id: str, content: str, *, finalize: bool = False, metadata: Optional[Dict[str, Any]] = None
     ) -> SendResult:
