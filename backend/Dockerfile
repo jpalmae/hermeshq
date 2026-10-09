@@ -1,7 +1,7 @@
 # ============================================================
 # Stage 1 – builder: compile everything heavy
 # ============================================================
-FROM golang:1.26.6-bookworm AS docker-cli
+FROM golang:1.27.2-bookworm AS docker-cli
 
 ARG DOCKER_CLI_VERSION=29.6.2
 ARG DOCKER_CLI_COMMIT=dfc4efb1e2ab8c06d70d2a1366ad448d2f917e90
@@ -21,7 +21,7 @@ RUN VERSION="${DOCKER_CLI_VERSION}" \
     ./scripts/build/binary \
     && cp -L /out/docker /docker \
     && /docker --version \
-    && go version -m /docker | grep -F 'go1.26.6'
+    && go version -m /docker | grep -F 'go1.27.2'
 
 FROM python:3.11-slim AS builder
 
