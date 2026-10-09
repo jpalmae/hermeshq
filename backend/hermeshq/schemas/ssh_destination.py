@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from hermeshq.schemas.common import ORMModel
+
 
 class SshDestinationCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
@@ -30,7 +32,7 @@ class SshDestinationUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=512)
 
 
-class SshDestinationRead(BaseModel):
+class SshDestinationRead(ORMModel):
     id: str
     name: str
     host: str
