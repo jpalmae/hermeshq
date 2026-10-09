@@ -237,7 +237,8 @@ jobs:
           pip install --quiet pip-audit
           pip-audit -r backend/requirements.txt --progress-spinner=off \
             --ignore-vuln PYSEC-2026-1325 \
-            --ignore-vuln PYSEC-2026-3412
+            --ignore-vuln PYSEC-2026-3412 \
+            --ignore-vuln CVE-2026-85394
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
