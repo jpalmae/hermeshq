@@ -49,3 +49,41 @@ class TestProviderBaseUrlFallback:
         result = await HermesInstallationManager._effective_provider_base_url(manager, agent)
         assert result == "https://api.openai.com/v1"
         manager.session_factory.assert_not_called()
+
+
+class TestCreateSnapshot:
+    async def test_resolve_runtime_defaults_snapshots_catalog_base_url(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, MagicMock
+
+        from hermeshq.routers.agents_shared import _resolve_runtime_defaults
+        from hermeshq.schemas.agent import AgentCreate
+
+        db = MagicMock()
+        settings = SimpleNamespace(
+            default_model=None, default_provider=None, default_api_key_ref=None, default_base_url=None
+        )
+        definition = SimpleNamespace(base_url="https://puget.sixmanager.io/v1")
+
+        async def get(model, key):
+            if key == "default":
+                return settings
+            return definition if key == "puget" else None
+
+        db.get = AsyncMock(side_effect=get)
+        payload = AgentCreate(node_id="n1", name="T", provider="puget")
+        result = await _resolve_runtime_defaults(db, payload)
+        assert result["base_url"] == "https://puget.sixmanager.io/v1"
+        assert result["provider"] == "puget"
+
+    async def test_resolve_runtime_defaults_keeps_explicit_base_url(self) -> None:
+        from unittest.mock import AsyncMock, MagicMock
+
+        from hermeshq.routers.agents_shared import _resolve_runtime_defaults
+        from hermeshq.schemas.agent import AgentCreate
+
+        db = MagicMock()
+        db.get = AsyncMock(return_value=None)
+        payload = AgentCreate(node_id="n1", name="T", provider="puget", base_url="https://custom.example.com/v1")
+        result = await _resolve_runtime_defaults(db, payload)
+        assert result["base_url"] == "https://custom.example.com/v1"
