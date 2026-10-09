@@ -18,6 +18,8 @@ _DELEGATION_TOOLS = {"delegate_task", "hq_delegate_task", "delegate", "handoff"}
 def _is_delegation_tool(tool_name: str) -> bool:
     normalized = tool_name.strip().lower()
     return normalized in _DELEGATION_TOOLS
+
+
 _NETWORK_COMMAND_RE = re.compile(
     r"(?:^|[\s;&|])(?:curl|wget|nc|ncat|netcat|ssh|scp|sftp|ftp|telnet)(?:\s|$)"
     r"|(?:^|[\s;&|])git\s+(?:clone|fetch|pull|push|ls-remote)(?:\s|$)"
