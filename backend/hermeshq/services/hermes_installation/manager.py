@@ -111,6 +111,7 @@ class HermesInstallationManager:
         # Resolve effective model: when use_provider_default=True, use the provider's
         # current default_model from DB instead of the snapshot taken at creation time.
         effective_model = await self._resolve_effective_model(agent)
+        effective_base_url = await self._effective_provider_base_url(agent)
         self._write_config(
             agent,
             hermes_home,
@@ -120,6 +121,7 @@ class HermesInstallationManager:
             runtime_selection,
             resolved_aux_api_keys,
             effective_model,
+            effective_base_url,
         )
         self._write_soul(agent, hermes_home, app_name)
         await self._sync_auth_store(agent, hermes_home)
@@ -131,7 +133,7 @@ class HermesInstallationManager:
         hermes_home = self.build_hermes_home(agent.workspace_path)
         profile = get_runtime_profile(agent.runtime_profile)
         runtime_provider = normalize_runtime_provider(agent.provider)
-        effective_base_url = self._effective_provider_base_url(agent)
+        effective_base_url = await self._effective_provider_base_url(agent)
         # Providers with auth_type "aws_sdk" (currently: bedrock) authenticate via
         # the standard AWS credential chain (env vars or an EC2 instance role)
         # instead of a per-agent secret ref — see
@@ -431,6 +433,7 @@ class HermesInstallationManager:
         runtime_selection: HermesRuntimeSelection,
         resolved_aux_api_keys: dict[str, str] | None = None,
         effective_model: str | None = None,
+        effective_base_url: str | None = None,
     ) -> None:
         profile = get_runtime_profile(agent.runtime_profile)
         telegram_channel = next((item for item in messaging_channels if item.platform == "telegram"), None)
@@ -438,7 +441,8 @@ class HermesInstallationManager:
         teams_channel = next((item for item in messaging_channels if item.platform == "microsoft_teams"), None)
         sixagentic_channel = next((item for item in messaging_channels if item.platform == "sixagentic"), None)
         model_provider = self._model_provider_for_agent(agent)
-        effective_base_url = self._effective_provider_base_url(agent)
+        if effective_base_url is None:
+            effective_base_url = (agent.base_url or "").strip()
         config = {
             "model": {
                 "default": effective_model or agent.model,
@@ -1044,7 +1048,7 @@ class HermesInstallationManager:
     ) -> dict[str, str]:
         managed: dict[str, str] = {}
         runtime_provider = normalize_runtime_provider(agent.provider)
-        effective_base_url = self._effective_provider_base_url(agent)
+        effective_base_url = await self._effective_provider_base_url(agent)
 
 
         managed["HERMESHQ_AGENT_ID"] = agent.id
@@ -1304,7 +1308,7 @@ class HermesInstallationManager:
         api_key = await self._resolve_api_key(agent.api_key_ref)
         entries: list[dict] = []
         if api_key:
-            base_url = self._effective_provider_base_url(agent)
+            base_url = await self._effective_provider_base_url(agent)
             for priority, env_name in enumerate(self._provider_env_names(runtime_provider)):
                 entries.append(
                     {
@@ -1339,8 +1343,13 @@ class HermesInstallationManager:
             return self._CUSTOM_OPENAI_PROVIDER_KEY
         return normalize_runtime_provider(agent.provider) or ""
 
-    def _effective_provider_base_url(self, agent: Agent) -> str:
+    async def _effective_provider_base_url(self, agent: Agent) -> str:
         base_url = (agent.base_url or "").strip()
+        if not base_url and agent.provider and self.session_factory is not None:
+            async with self.session_factory() as session:
+                definition = await session.get(ProviderDefinition, agent.provider)
+            if definition is not None and definition.base_url:
+                base_url = definition.base_url.strip()
         if self._uses_custom_openai_provider(agent):
             return self._normalize_openai_compatible_base_url(base_url)
         return base_url
