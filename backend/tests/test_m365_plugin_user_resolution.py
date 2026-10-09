@@ -76,9 +76,7 @@ class TaskUserIdResolutionTests(unittest.TestCase):
         for name, path in PLUGIN_MODULES.items():
             with self.subTest(plugin=name):
                 module = _load_plugin(name, path)
-                os.environ["HERMESHQ_TASK_PAYLOAD"] = json.dumps(
-                    {"metadata": {"thread_user_id": "user-from-task"}}
-                )
+                os.environ["HERMESHQ_TASK_PAYLOAD"] = json.dumps({"metadata": {"thread_user_id": "user-from-task"}})
                 os.environ["HERMES_SESSION_PLATFORM"] = "telegram"
                 os.environ["HERMES_SESSION_USER_ID"] = "999"
                 try:

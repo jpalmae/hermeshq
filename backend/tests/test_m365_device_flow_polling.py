@@ -171,7 +171,9 @@ class PollConnectStatusTests(unittest.IsolatedAsyncioTestCase):
         # "authorization_pending" — only the error code does. Before the
         # fix, complete_device_flow discarded the code in favour of the
         # description, so this case would incorrectly surface as a failure.
-        error = M365TokenError("Autenticación fallida: Esperando que el usuario autorice.", error_code="authorization_pending")
+        error = M365TokenError(
+            "Autenticación fallida: Esperando que el usuario autorice.", error_code="authorization_pending"
+        )
         result = await self._poll(error)
         self.assertEqual(result.status, "pending")
 
