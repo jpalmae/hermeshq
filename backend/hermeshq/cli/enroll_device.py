@@ -48,6 +48,8 @@ def _default_hermes_home() -> Path:
 
 def _profile_home(agent_slug: str) -> Path:
     return _default_hermes_home() / "profiles" / (agent_slug or "hermeshq-agent")
+
+
 STATE_FILE = STATE_DIR / "enrollment.json"
 PROVIDER_ENV_FALLBACK = {
     "nvidia": ["NVIDIA_API_KEY"],
@@ -152,7 +154,11 @@ def cmd_enroll(args: argparse.Namespace) -> None:
     activation_request = urllib.request.Request(
         f"{server}/api/enrollment/devices/{device_id}/activate",
         data=json.dumps({"os_info": {}}).encode(),
-        headers={"Content-Type": "application/json", "X-HermesHQ-Enroll-Token": enroll_token, "User-Agent": ENROLL_USER_AGENT},
+        headers={
+            "Content-Type": "application/json",
+            "X-HermesHQ-Enroll-Token": enroll_token,
+            "User-Agent": ENROLL_USER_AGENT,
+        },
         method="POST",
     )
     with urllib.request.urlopen(activation_request, timeout=30) as response:
@@ -184,7 +190,11 @@ def cmd_activate(args: argparse.Namespace) -> None:
     request = urllib.request.Request(
         f"{server}/api/enrollment/devices/{args.device_id}/activate",
         data=json.dumps({"os_info": {"platform": sys.platform, "hostname": _hostname()}}).encode(),
-        headers={"Content-Type": "application/json", "X-HermesHQ-Enroll-Token": args.token, "User-Agent": ENROLL_USER_AGENT},
+        headers={
+            "Content-Type": "application/json",
+            "X-HermesHQ-Enroll-Token": args.token,
+            "User-Agent": ENROLL_USER_AGENT,
+        },
         method="POST",
     )
     try:
@@ -390,9 +400,17 @@ def cmd_install(args: argparse.Namespace) -> None:
 
         subprocess.run(
             [
-                "schtasks", "/Create", "/TN", "HermesHQEnroll", "/SC", "MINUTE",
-                "/MO", str(max(1, interval // 60)), "/TR",
-                f'"{sys.executable}" "{cli_path}" run --interval {interval}', "/F",
+                "schtasks",
+                "/Create",
+                "/TN",
+                "HermesHQEnroll",
+                "/SC",
+                "MINUTE",
+                "/MO",
+                str(max(1, interval // 60)),
+                "/TR",
+                f'"{sys.executable}" "{cli_path}" run --interval {interval}',
+                "/F",
             ],
             check=True,
         )
@@ -451,7 +469,9 @@ def main() -> int:
     activate_parser.add_argument("--device-id", required=True)
     activate_parser.add_argument("--token", required=True, help="Enrollment token from the admin UI")
     activate_parser.add_argument("--home", default=None, help="HERMES_HOME for the agent")
-    activate_parser.add_argument("--standalone-home", action="store_true", help="Use a standalone HERMES_HOME instead of a Hermes profile")
+    activate_parser.add_argument(
+        "--standalone-home", action="store_true", help="Use a standalone HERMES_HOME instead of a Hermes profile"
+    )
     activate_parser.set_defaults(func=cmd_activate)
 
     sync_parser = subparsers.add_parser("sync", help="Pull the latest agent bundle")

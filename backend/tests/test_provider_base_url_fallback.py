@@ -13,8 +13,8 @@ def _manager_with_provider(base_url: str | None) -> HermesInstallationManager:
     manager = MagicMock(spec=HermesInstallationManager)
     manager.session_factory = session_factory
     manager._uses_custom_openai_provider = MagicMock(return_value=True)
-    manager._normalize_openai_compatible_base_url = lambda value: HermesInstallationManager._normalize_openai_compatible_base_url(
-        manager, value
+    manager._normalize_openai_compatible_base_url = lambda value: (
+        HermesInstallationManager._normalize_openai_compatible_base_url(manager, value)
     )
     return manager
 
