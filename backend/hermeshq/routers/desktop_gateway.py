@@ -221,6 +221,8 @@ async def _ws_pump_both_directions(client_ws: WebSocket, upstream) -> None:
 @router.api_route(
     "/desktop/{agent_id}/{path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+    operation_id="desktop_http_proxy",
+    generate_unique_id_function=lambda route: route.name or "desktop_http_proxy",
 )
 async def desktop_http_proxy(
     agent_id: str,
