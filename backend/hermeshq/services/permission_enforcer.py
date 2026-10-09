@@ -12,6 +12,12 @@ from hermeshq.models.permission_policy import PermissionPolicy
 
 _FILE_TOOLS = {"read", "write", "edit", "file", "grep", "find", "ls"}
 _SHELL_TOOLS = {"bash", "shell", "terminal"}
+_DELEGATION_TOOLS = {"delegate_task", "hq_delegate_task", "delegate", "handoff"}
+
+
+def _is_delegation_tool(tool_name: str) -> bool:
+    normalized = tool_name.strip().lower()
+    return normalized in _DELEGATION_TOOLS
 _NETWORK_COMMAND_RE = re.compile(
     r"(?:^|[\s;&|])(?:curl|wget|nc|ncat|netcat|ssh|scp|sftp|ftp|telnet)(?:\s|$)"
     r"|(?:^|[\s;&|])git\s+(?:clone|fetch|pull|push|ls-remote)(?:\s|$)"
@@ -134,9 +140,25 @@ class PermissionEnforcer:
         agent: Agent,
         tool_name: str,
         tool_input: dict,
+        master_agent: Agent | None = None,
     ) -> PermissionDecision:
+        if _is_delegation_tool(tool_name):
+            return PermissionDecision(True)
         policy = await self.get_policy(agent)
-        return self.evaluate_policy(agent, policy, tool_name, tool_input)
+        decision = self.evaluate_policy(agent, policy, tool_name, tool_input)
+        if not decision.allowed:
+            return decision
+        if master_agent is not None and master_agent.id != agent.id:
+            master_policy = await self.get_policy(master_agent)
+            if master_policy is not None:
+                master_decision = self.evaluate_policy(master_agent, master_policy, tool_name, tool_input)
+                if not master_decision.allowed:
+                    return PermissionDecision(
+                        False,
+                        f"{master_decision.reason} (inherited from master agent '{master_agent.name}')",
+                        policy_name=master_decision.policy_name,
+                    )
+        return decision
 
     def evaluate_policy(
         self,

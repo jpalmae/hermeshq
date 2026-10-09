@@ -91,6 +91,32 @@ def verify_agent_service_token(token: str, agent_id: str, token_version: int = 1
     )
 
 
+def create_device_token(agent_id: str, device_id: str, token_version: int = 1) -> str:
+    now = datetime.now(UTC)
+    return jwt.encode(
+        {
+            "sub": agent_id,
+            "sub_kind": "agent",
+            "did": device_id,
+            "token_version": token_version,
+            "iat": now,
+            "exp": now + timedelta(days=settings.agent_service_token_days),
+        },
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def decode_device_token_claims(token: str) -> dict | None:
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except JWTError:
+        return None
+    if payload.get("sub_kind") != "agent" or not payload.get("did"):
+        return None
+    return payload
+
+
 async def get_user_by_username(db: AsyncSession, username: str | None) -> User | None:
     if not username:
         return None

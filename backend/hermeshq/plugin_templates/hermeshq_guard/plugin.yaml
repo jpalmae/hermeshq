@@ -1,0 +1,6 @@
+name: hermeshq_guard
+version: "1.0.0"
+description: "HermesHQ permission guard. Evaluates every tool call against the agent's permission policies via the HermesHQ internal control API and blocks denied calls. Only active when desktop access is enabled for the agent."
+author: HermesHQ
+hooks:
+  - pre_tool_call

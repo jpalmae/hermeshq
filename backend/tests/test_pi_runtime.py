@@ -1,13 +1,9 @@
 """Tests for PiRuntime model resolution and task lifecycle."""
 
 import json
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
-
-from hermeshq.services.runtime_base import RuntimeBase, RuntimeExecutionResult, RuntimeExecutionError
-from hermeshq.services.pi_rpc_client import PiRpcClient
+from hermeshq.services.runtime_base import RuntimeBase, RuntimeExecutionResult
 
 
 class TestRuntimeExecutionResult:
