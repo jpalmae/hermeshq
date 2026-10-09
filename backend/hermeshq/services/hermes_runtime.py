@@ -193,7 +193,7 @@ class HermesRuntime(RuntimeBase):
             agent.disabled_toolsets,
         )
         runtime_provider = self.installation_manager._model_provider_for_agent(agent)
-        effective_base_url = self.installation_manager._effective_provider_base_url(agent)
+        effective_base_url = await self.installation_manager._effective_provider_base_url(agent)
         effective_model = await self._resolve_effective_model(agent, runtime_provider)
         # ── Channel routing: suppress external channels for mobile_app tasks ──
         _task_meta = task.metadata_json or {}
