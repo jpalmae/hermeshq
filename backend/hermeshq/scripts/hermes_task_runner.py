@@ -50,6 +50,18 @@ def main() -> int:
 
     os.chdir(payload["cwd"])
 
+    # ── Plugin discovery ────────────────────────────────────────
+    # One-shot task subprocesses construct AIAgent directly and never enter a
+    # hermes_cli entrypoint, so user plugins (including hermeshq_guard) are not
+    # discovered and their hooks never register. Force discovery against the
+    # agent home so policy enforcement and telemetry run in tasks too.
+    try:
+        from hermes_cli.plugins import _ensure_plugins_discovered
+
+        _ensure_plugins_discovered(force=True)
+    except Exception as _plugin_err:  # noqa: BLE001  # plugins are best-effort in tasks
+        _emit({"event": "warning", "warning": f"plugin discovery failed: {_plugin_err}"})
+
     # ── Auxiliary client env injection ─────────────────────────
     # When HermesHQ passes explicit api_key + base_url, the main agent
     # client is constructed directly. But the auxiliary clients (vision,

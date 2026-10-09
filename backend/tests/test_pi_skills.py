@@ -12,7 +12,7 @@ def _make_skill(root: Path, name: str, with_metadata: bool = True) -> None:
     (skill_dir / "SKILL.md").write_text(f"# {name}\n\nInstructions for {name}.\n", encoding="utf-8")
     (skill_dir / "example.txt").write_text("example", encoding="utf-8")
     if with_metadata:
-        (skill_dir / ".hermeshq-skill.json").write_text('{"name": "%s"}' % name, encoding="utf-8")
+        (skill_dir / ".hermeshq-skill.json").write_text('{"name": "' + name + '"}', encoding="utf-8")
 
 
 def _manager(tmp_path: Path) -> tuple[PiInstallationManager, Path]:

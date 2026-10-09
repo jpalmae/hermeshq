@@ -14,6 +14,7 @@ import { useI18n } from "../../lib/i18n";
 export function PermissionPoliciesTab() {
   const { t } = useI18n();
   const { data: policies, isLoading } = usePermissionPolicies();
+  const roleTemplates = (policies ?? []).filter((p) => p.is_system && p.id.startsWith("sys-role"));
   const createPolicy = useCreatePermissionPolicy();
   const updatePolicy = useUpdatePermissionPolicy();
   const deletePolicy = useDeletePermissionPolicy();
@@ -32,6 +33,7 @@ export function PermissionPoliciesTab() {
     return (
       <PolicyEditor
         isNew
+        templates={roleTemplates}
         onSave={async (data) => {
           try {
             await createPolicy.mutateAsync(data);
@@ -131,17 +133,34 @@ function PolicyEditor({
   isNew,
   onSave,
   onCancel,
+  templates = [],
 }: {
   policy?: PermissionPolicy;
   isNew?: boolean;
   onSave: (data: PermissionPolicyCreate) => Promise<void>;
   onCancel: () => void;
+  templates?: PermissionPolicy[];
 }) {
   const { t } = useI18n();
   const [name, setName] = useState(policy?.name ?? "");
   const [description, setDescription] = useState(policy?.description ?? "");
   const [allowTools, setAllowTools] = useState((policy?.tool_rules?.allow ?? ["*"]).join(", "));
   const [denyCommands, setDenyCommands] = useState((policy?.command_rules?.deny ?? []).join(", "));
+  const [allowCommands, setAllowCommands] = useState((policy?.command_rules?.allow ?? []).join(", "));
+  const [templateId, setTemplateId] = useState("");
+
+  function applyTemplate(nextTemplateId: string) {
+    setTemplateId(nextTemplateId);
+    const tpl = templates.find((tp) => tp.id === nextTemplateId);
+    if (!tpl) return;
+    setAllowTools((tpl.tool_rules?.allow ?? []).join(", "));
+    setDenyCommands((tpl.command_rules?.deny ?? []).join(", "));
+    setAllowCommands((tpl.command_rules?.allow ?? []).join(", "));
+    setDenyPaths((tpl.path_rules?.deny_paths ?? []).join(", "));
+    setDenyAllNet(tpl.network_rules?.deny_all ?? false);
+    setAllowDomains((tpl.network_rules?.allow_domains ?? []).join(", "));
+    if (!description) setDescription(tpl.description ?? "");
+  }
   const [denyPaths, setDenyPaths] = useState((policy?.path_rules?.deny_paths ?? []).join(", "));
   const [requireApproval, setRequireApproval] = useState((policy?.approval_rules?.require_approval_for ?? []).join(", "));
   const [denyAllNet, setDenyAllNet] = useState(policy?.network_rules?.deny_all ?? false);
@@ -153,7 +172,10 @@ function PolicyEditor({
       description: description || undefined,
       tool_rules: { allow: allowTools.split(",").map((s) => s.trim()).filter(Boolean), deny: [] },
       path_rules: { allow_paths: ["/workspace/**"], deny_paths: denyPaths.split(",").map((s) => s.trim()).filter(Boolean) },
-      command_rules: { allow: [], deny: denyCommands.split(",").map((s) => s.trim()).filter(Boolean) },
+      command_rules: {
+        allow: allowCommands.split(",").map((s) => s.trim()).filter(Boolean),
+        deny: denyCommands.split(",").map((s) => s.trim()).filter(Boolean),
+      },
       network_rules: { allow_domains: allowDomains.split(",").map((s) => s.trim()).filter(Boolean), deny_all: denyAllNet },
       approval_rules: { require_approval_for: requireApproval.split(",").map((s) => s.trim()).filter(Boolean), auto_approve_threshold: "medium" },
     };
@@ -169,6 +191,17 @@ function PolicyEditor({
         <section className="v2-card">
           <div className="v2-card-header"><h2 className="v2-card-title">{t("v2.identity")}</h2></div>
           <div className="v2-card-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {isNew && templates.length > 0 ? (
+              <div className="v2-field">
+                <label className="v2-field-label">{t("v2.startFromTemplate")}</label>
+                <select className="v2-select" value={templateId} onChange={(e) => applyTemplate(e.target.value)}>
+                  <option value="">{t("v2.noTemplate")}</option>
+                  {templates.map((tp) => (
+                    <option key={tp.id} value={tp.id}>{tp.name}</option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
             <div className="v2-field">
               <label className="v2-field-label">{t("v2.name")}</label>
               <input className="v2-input" value={name} onChange={(e) => setName(e.target.value)} disabled={policy?.is_system} />
@@ -208,7 +241,11 @@ function PolicyEditor({
           <div className="v2-card-header"><h2 className="v2-card-title">{t("v2.commandRules")}</h2></div>
           <div className="v2-card-body">
             <div className="v2-field">
-              <label className="v2-field-label">{t("v2.deniedCommands")} <span style={{ fontSize: 11, color: "var(--v2-text-muted)" }}>(comma-separated glob patterns)</span></label>
+              <label className="v2-field-label">{t("v2.allowedCommands")} <span style={{ fontSize: 11, color: "var(--v2-text-muted)" }}>({t("v2.globHint")} — {t("v2.allowlistHint")})</span></label>
+              <textarea className="v2-textarea" rows={2} value={allowCommands} onChange={(e) => setAllowCommands(e.target.value)} placeholder="git status*, ping*, npm test*" />
+            </div>
+            <div className="v2-field">
+              <label className="v2-field-label">{t("v2.deniedCommands")} <span style={{ fontSize: 11, color: "var(--v2-text-muted)" }}>({t("v2.globHint")})</span></label>
               <textarea className="v2-textarea" rows={3} value={denyCommands} onChange={(e) => setDenyCommands(e.target.value)} placeholder="rm -rf /, sudo *, curl * | sh" />
             </div>
           </div>

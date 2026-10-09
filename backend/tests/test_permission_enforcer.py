@@ -1,6 +1,5 @@
 """Tests for PermissionEnforcer — tool/path/command/network/approval rules."""
 
-import pytest
 from unittest.mock import MagicMock
 
 from hermeshq.models.agent import Agent
@@ -124,3 +123,35 @@ class TestEvaluateWithNoPolicy:
         e = PermissionEnforcer(None)
         d = e.evaluate_policy(_agent(), p, "", {})
         assert d.allowed is False
+
+
+class TestDelegationAndMasterPropagation:
+    def test_delegation_tools_always_allowed(self):
+        import asyncio
+
+        enforcer = PermissionEnforcer(session_factory=MagicMock())
+        agent = _agent()
+        decision = asyncio.run(enforcer.evaluate(agent, "delegate_task", {"target_agent": "x"}))
+        assert decision.allowed
+        decision = asyncio.run(enforcer.evaluate(agent, "hq_delegate_task", {}))
+        assert decision.allowed
+
+    def test_master_policy_blocks_subagent_tool(self):
+        import asyncio
+
+        master = _agent("master-1")
+        master.name = "Master"
+        agent = _agent("agent-1")
+
+        async def fake_get_policy(a):
+            if a.id == "master-1":
+                return _policy(name="MasterStrict", tool_rules={"allow": [], "deny": ["read_file", "read"]})
+            return None
+
+        enforcer = PermissionEnforcer(session_factory=MagicMock())
+        enforcer.get_policy = fake_get_policy
+        decision = asyncio.run(enforcer.evaluate(agent, "read", {"path": "/tmp"}, master_agent=master))
+        assert not decision.allowed
+        assert "inherited from master agent 'Master'" in decision.reason
+        decision = asyncio.run(enforcer.evaluate(agent, "web_search", {}, master_agent=master))
+        assert decision.allowed

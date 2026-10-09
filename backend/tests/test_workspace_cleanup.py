@@ -1,7 +1,5 @@
 """Tests for workspace cleanup + orphan Pi config sweep (Phase 4a/4b)."""
 
-from pathlib import Path
-from unittest.mock import MagicMock
 
 from hermeshq.services.workspace_manager import WorkspaceManager
 

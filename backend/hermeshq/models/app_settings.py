@@ -19,6 +19,7 @@ class AppSettings(TimestampMixin, Base):
     default_hermes_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     default_tui_skin: Mapped[str | None] = mapped_column(String(128), nullable=True)
     enabled_integration_packages: Mapped[list[str]] = mapped_column(JSON, default=list)
+    egress_extra_allowlist: Mapped[list[str]] = mapped_column(JSON, default=list)
     tui_skin_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     logo_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     favicon_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
