@@ -531,6 +531,20 @@ const manualContent: Record<"en" | "es", ManualContent> = {
         ],
       },
       {
+        id: "operator-skills-ssh",
+        eyebrow: "hq-operator",
+        title: "Compartir skills y acceso SSH acotado",
+        summary:
+          "El agente HQ Operator puede copiar skills entre agentes y alcanzar servidores SSH autorizados, siempre con autorización explícita, validación de contenido y auditoría.",
+        bullets: [
+          "COMPARTIR SKILLS: el operador lista las skills de cualquier agente (hq_control_list_agent_skills) y copia una de un agente a otro (hq_control_transfer_skill). La copia es un snapshot validado: solo archivos de texto con extensiones permitidas, sin binarios ni symlinks, máximo 512KB por archivo y 5MB por skill. Si el agente destino ya tiene una skill con ese nombre se exige overwrite=true; cada transferencia queda registrada en Auditoría (hq_control.skill.transferred). El aislamiento se preserva: el operador nunca escribe directamente en el workspace de otro agente, la copia pasa por el control plane.",
+          "ACCESO SSH ACOTADO: en Settings → SSH Destinations un administrador autoriza destinos explícitos (host + puerto + agente autorizado + puerto de escucha 20000-29999). El sistema levanta un relay TCP dedicado que SOLO el agente autorizado ve desde sus tareas como ssh-relay:<puerto>. Ningún otro agente puede resolverlo ni conectarse, y no se abre el egress ni puertos globales.",
+          "USO: el agente autorizado simplemente hace ssh usuario@ssh-relay -p <listen_port> dentro de una tarea. El destino solo acepta la conexión si está activo; el relay solo marca hacia el (host, puerto) autorizado.",
+          "REVOCACIÓN: desactiva (active=false) o borra el destino en Settings → SSH Destinations. El relay se reconcilia en el próximo ciclo (≤60s) y el acceso desaparece para el agente. Toda alta, baja o edición queda en Auditoría (ssh_destination.created/updated/deleted).",
+          "AMBAS CAPACIDADES son exclusivas del control plane: solo agentes del sistema con scope administrador pueden ejecutar transferencias de skills, y los destinos SSH los define un administrador humano — el operador puede listarlos (hq_control_list_ssh_destinations) pero no crearlos ni revocarlos por sí mismo.",
+        ],
+      },
+      {
         id: "tips",
         eyebrow: "Buenas practicas",
         title: "Consejos de uso y soporte",
@@ -1048,6 +1062,20 @@ const manualContent: Record<"en" | "es", ManualContent> = {
           "DELEGATION: agents can always use subagents (delegate_task bypasses tool rules), but the master agent's policy FOLLOWS execution inside the subagent, and nested chains preserve the root master. Inherited blocks are reported as \"inherited from master agent\" so the administrator knows where the restriction comes from.",
           "ENROLLED DEVICES — fail mode: if the device loses connectivity to HermesHQ, the guard decides per the fail-mode chosen at enrollment: fail-open (keeps working unvalidated), fail-closed (blocks every tool), or fail-grace:N seconds (allows during a grace window, then blocks). Revoking a device cuts access immediately regardless of fail-mode.",
           "PRACTICAL RECOMMENDATION: use toolsets for the agent's NATURE (a support agent doesn't need to even see a terminal) and policies for role-based GOVERNANCE (who can do what, auditable, identical across surfaces). Any agent that will be enrolled on devices should carry at least one policy — the role templates are the starting point.",
+        ],
+      },
+      {
+        id: "operator-skills-ssh",
+        eyebrow: "hq-operator",
+        title: "Sharing skills and scoped SSH access",
+        summary:
+          "The HQ Operator agent can copy skills between agents and reach authorized SSH servers, always with explicit authorization, content validation and auditing.",
+        bullets: [
+          "SHARING SKILLS: the operator lists any agent's skills (hq_control_list_agent_skills) and copies one from agent to agent (hq_control_transfer_skill). The copy is a validated snapshot: text files with allowed extensions only, no binaries or symlinks, max 512KB per file and 5MB per skill. If the target agent already has a skill with that name, overwrite=true is required; every transfer is recorded in Audit (hq_control.skill.transferred). Isolation is preserved: the operator never writes directly into another agent's workspace — copies go through the control plane.",
+          "SCOPED SSH ACCESS: in Settings → SSH Destinations an admin authorizes explicit destinations (host + port + authorized agent + listen port 20000-29999). The system runs a dedicated TCP relay that ONLY the authorized agent can see from its tasks as ssh-relay:<port>. No other agent can resolve or reach it, and neither the egress nor any global port is opened.",
+          "USAGE: the authorized agent simply runs ssh user@ssh-relay -p <listen_port> inside a task. The destination only accepts connections while active; the relay only dials the authorized (host, port).",
+          "REVOCATION: deactivate (active=false) or delete the destination in Settings → SSH Destinations. The relay reconciles within the next cycle (≤60s) and the agent's access disappears. Every create, update and delete lands in Audit (ssh_destination.created/updated/deleted).",
+          "BOTH CAPABILITIES are control-plane exclusive: only system agents with admin scope can execute skill transfers, and SSH destinations are defined by a human admin — the operator can list them (hq_control_list_ssh_destinations) but cannot create or revoke them on its own.",
         ],
       },
       {

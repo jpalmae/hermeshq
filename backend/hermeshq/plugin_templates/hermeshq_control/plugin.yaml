@@ -48,3 +48,6 @@ provides_tools:
   - hq_control_list_devices
   - hq_control_enroll_device
   - hq_control_revoke_device
+  - hq_control_list_agent_skills
+  - hq_control_transfer_skill
+  - hq_control_list_ssh_destinations
