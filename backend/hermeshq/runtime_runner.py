@@ -126,7 +126,7 @@ def _isolated_environment(request: RuntimeEnvironmentRequest) -> dict[str, str]:
     if proxy_url:
         env["HTTP_PROXY"] = proxy_url
         env["HTTPS_PROXY"] = proxy_url
-        env["NO_PROXY"] = "backend,localhost,127.0.0.1"
+        env["NO_PROXY"] = "backend,runtime-egress,localhost,127.0.0.1"
     return env
 
 
@@ -391,6 +391,80 @@ async def _cleanup_stale_executions() -> None:
         await _teardown_execution_network(network)
 
 
+async def _reconcile_gateway_networks() -> None:
+    backend_container = _required_resource_name("RUNTIME_BACKEND_CONTAINER", "hermeshq-backend")
+    egress_container = _required_resource_name("RUNTIME_EGRESS_CONTAINER", "hermeshq-runtime-egress")
+    network_names = [
+        name
+        for name in (
+            await _docker_output(
+                "network",
+                "ls",
+                "--format",
+                "{{.Name}}",
+                "--filter",
+                "label=hermeshq.runtime-owner=hermeshq-runtime-runner",
+            )
+        ).splitlines()
+        if name.startswith("hq-gw-net-")
+    ]
+    for network_name in network_names:
+        for container, alias in (
+            (backend_container, "backend"),
+            (egress_container, "runtime-egress"),
+        ):
+            with contextlib.suppress(RuntimeError, TimeoutError):
+                await _docker_output("network", "connect", "--alias", alias, network_name, container)
+    if _egress_allowlist_domains:
+        with contextlib.suppress(RuntimeError, TimeoutError):
+            egress_id = await _docker_output("inspect", "--format", "{{.Id}}", egress_container)
+            if egress_id != _egress_allowlist_applied_to:
+                await _apply_egress_allowlist(egress_container)
+
+
+async def _reconcile_gateway_networks_loop() -> None:
+    interval = _positive_float("RUNTIME_GATEWAY_RECONCILE_SECONDS", 30, 3600)
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await _reconcile_gateway_networks()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            continue
+
+
+_egress_domain_re = re.compile(
+    r"^\.?[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$"
+)
+_egress_allowlist_domains: list[str] = []
+_egress_allowlist_applied_to: str = ""
+
+
+class EgressAllowlistRequest(BaseModel):
+    domains: list[str] = Field(default_factory=list)
+
+    @field_validator("domains")
+    @classmethod
+    def validate_domains(cls, value: list[str]) -> list[str]:
+        if len(value) > 256:
+            raise ValueError("Too many domains")
+        if sum(len(item) for item in value) > 16 * 1024:
+            raise ValueError("Allowlist is too large")
+        for item in value:
+            if not _egress_domain_re.fullmatch(item):
+                raise ValueError("Invalid domain entry")
+        return value
+
+
+async def _apply_egress_allowlist(egress_container: str) -> None:
+    global _egress_allowlist_applied_to
+    quoted = " ".join(f"'{item}'" for item in _egress_allowlist_domains)
+    script = f"printf '%s\\n' {quoted} > /tmp/allowed_domains && kill -HUP \"$(cat /tmp/squid.pid)\""
+    await _docker_output("exec", egress_container, "sh", "-c", script)
+    _egress_allowlist_applied_to = await _docker_output("inspect", "--format", "{{.Id}}", egress_container)
+
+
 def _redact_runtime_error(error: str, request: RuntimeEnvironmentRequest) -> str:
     redacted = error
     for value in request.environment.values():
@@ -574,7 +648,13 @@ async def _gateway_container_status(agent_id: UUID) -> dict[str, bool | int]:
 @contextlib.asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await _cleanup_stale_executions()
-    yield
+    reconcile_task = asyncio.create_task(_reconcile_gateway_networks_loop())
+    try:
+        yield
+    finally:
+        reconcile_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await reconcile_task
 
 
 app = FastAPI(
@@ -661,3 +741,17 @@ async def stop_gateway(
     _authorize(x_runtime_runner_token)
     await _stop_gateway_container(agent_id)
     return {"status": "stopped"}
+
+
+@app.post("/v1/egress/allowlist")
+async def set_egress_allowlist(
+    request: EgressAllowlistRequest,
+    x_runtime_runner_token: Annotated[str | None, Header()] = None,
+) -> dict[str, int]:
+    _authorize(x_runtime_runner_token)
+    global _egress_allowlist_domains
+    egress_container = _required_resource_name("RUNTIME_EGRESS_CONTAINER", "hermeshq-runtime-egress")
+    _egress_allowlist_domains = list(request.domains)
+    if _egress_allowlist_domains:
+        await _apply_egress_allowlist(egress_container)
+    return {"count": len(_egress_allowlist_domains)}

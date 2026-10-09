@@ -58,6 +58,7 @@ services:
       RUNTIME_ISOLATION_MODE: required
       RUNTIME_RUNNER_URL: http://runtime-runner:8080
       RUNTIME_RUNNER_TOKEN: ${RUNTIME_RUNNER_TOKEN:?RUNTIME_RUNNER_TOKEN must be set in .env}
+      RUNTIME_EGRESS_ALLOWLIST: ${RUNTIME_EGRESS_ALLOWLIST:-.api.openai.com,.api.anthropic.com,.openrouter.ai,.integrate.api.nvidia.com,.puget.sixmanager.io,.inference-api.nousresearch.com,.api.kimi.com,.api.moonshot.ai,.api.z.ai,.generativelanguage.googleapis.com,.chatgpt.com,.api.telegram.org,bedrock-runtime.us-east-1.amazonaws.com}
       AUTH_MODE: ${AUTH_MODE:-local}
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
       OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-}

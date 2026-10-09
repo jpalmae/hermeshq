@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     runtime_isolation_mode: Literal["required", "subprocess"] = "subprocess"
     runtime_runner_url: str = "http://runtime-runner:8080"
     runtime_runner_token: str = ""
+    runtime_egress_allowlist: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
