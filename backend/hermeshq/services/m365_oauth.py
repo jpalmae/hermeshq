@@ -41,7 +41,9 @@ class M365ConfigError(RuntimeError):
 
 
 class M365TokenError(RuntimeError):
-    pass
+    def __init__(self, message: str, error_code: str = "") -> None:
+        super().__init__(message)
+        self.error_code = error_code
 
 
 def _get_msal():
@@ -119,12 +121,22 @@ async def complete_device_flow(
         token_cache=cache,
     )
 
+    # exit_condition=lambda f: True makes MSAL check Microsoft's token endpoint
+    # exactly once and return immediately instead of blocking this executor
+    # thread in its own internal poll loop for the flow's full lifetime
+    # (up to `expires_in`, ~15 min). The frontend already polls this endpoint
+    # on an interval, so MSAL's own polling would otherwise pile up one
+    # blocked thread per poll, exhausting the executor's thread pool.
     loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(None, lambda: app.acquire_token_by_device_flow(flow))
+    result = await loop.run_in_executor(
+        None,
+        lambda: app.acquire_token_by_device_flow(flow, exit_condition=lambda _flow: True),
+    )
 
     if "access_token" not in result:
-        error = result.get("error_description") or result.get("error") or "Error desconocido"
-        raise M365TokenError(f"Autenticación fallida: {error}")
+        error_code = result.get("error") or ""
+        error_desc = result.get("error_description") or "Error desconocido"
+        raise M365TokenError(f"Autenticación fallida: {error_desc}", error_code=error_code)
 
     claims = result.get("id_token_claims") or {}
     account_email = str(claims.get("preferred_username") or "").strip()
