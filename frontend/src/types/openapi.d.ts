@@ -2827,19 +2827,19 @@ export interface paths {
             cookie?: never;
         };
         /** Desktop Http Proxy */
-        get: operations["desktop_http_proxy_desktop__agent_id___path__patch"];
+        get: operations["desktop_http_proxy"];
         /** Desktop Http Proxy */
-        put: operations["desktop_http_proxy_desktop__agent_id___path__patch"];
+        put: operations["desktop_http_proxy"];
         /** Desktop Http Proxy */
-        post: operations["desktop_http_proxy_desktop__agent_id___path__patch"];
+        post: operations["desktop_http_proxy"];
         /** Desktop Http Proxy */
-        delete: operations["desktop_http_proxy_desktop__agent_id___path__patch"];
+        delete: operations["desktop_http_proxy"];
         /** Desktop Http Proxy */
-        options: operations["desktop_http_proxy_desktop__agent_id___path__patch"];
+        options: operations["desktop_http_proxy"];
         /** Desktop Http Proxy */
-        head: operations["desktop_http_proxy_desktop__agent_id___path__patch"];
+        head: operations["desktop_http_proxy"];
         /** Desktop Http Proxy */
-        patch: operations["desktop_http_proxy_desktop__agent_id___path__patch"];
+        patch: operations["desktop_http_proxy"];
         trace?: never;
     };
     "/health": {
@@ -13198,7 +13198,7 @@ export interface operations {
             };
         };
     };
-    desktop_http_proxy_desktop__agent_id___path__patch: {
+    desktop_http_proxy: {
         parameters: {
             query?: never;
             header?: never;
@@ -13230,7 +13230,7 @@ export interface operations {
             };
         };
     };
-    desktop_http_proxy_desktop__agent_id___path__patch: {
+    desktop_http_proxy: {
         parameters: {
             query?: never;
             header?: never;
@@ -13262,7 +13262,7 @@ export interface operations {
             };
         };
     };
-    desktop_http_proxy_desktop__agent_id___path__patch: {
+    desktop_http_proxy: {
         parameters: {
             query?: never;
             header?: never;
@@ -13294,7 +13294,7 @@ export interface operations {
             };
         };
     };
-    desktop_http_proxy_desktop__agent_id___path__patch: {
+    desktop_http_proxy: {
         parameters: {
             query?: never;
             header?: never;
@@ -13326,7 +13326,7 @@ export interface operations {
             };
         };
     };
-    desktop_http_proxy_desktop__agent_id___path__patch: {
+    desktop_http_proxy: {
         parameters: {
             query?: never;
             header?: never;
@@ -13358,7 +13358,7 @@ export interface operations {
             };
         };
     };
-    desktop_http_proxy_desktop__agent_id___path__patch: {
+    desktop_http_proxy: {
         parameters: {
             query?: never;
             header?: never;
@@ -13390,7 +13390,7 @@ export interface operations {
             };
         };
     };
-    desktop_http_proxy_desktop__agent_id___path__patch: {
+    desktop_http_proxy: {
         parameters: {
             query?: never;
             header?: never;
