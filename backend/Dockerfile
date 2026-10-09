@@ -1,7 +1,7 @@
 # ============================================================
 # Stage 1 – builder: compile everything heavy
 # ============================================================
-FROM golang:1.27.2-bookworm AS docker-cli
+FROM mirror.gcr.io/library/golang:1.27.2-bookworm AS docker-cli
 
 ARG DOCKER_CLI_VERSION=29.6.2
 ARG DOCKER_CLI_COMMIT=dfc4efb1e2ab8c06d70d2a1366ad448d2f917e90
@@ -23,7 +23,7 @@ RUN VERSION="${DOCKER_CLI_VERSION}" \
     && /docker --version \
     && go version -m /docker | grep -F 'go1.27.2'
 
-FROM python:3.11-slim AS builder
+FROM mirror.gcr.io/library/python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -78,7 +78,7 @@ RUN cd /app/pi-runtime && npm ci --omit=dev --no-audit --no-fund
 # ============================================================
 # Stage 2 – runtime: slim image, non-root user
 # ============================================================
-FROM python:3.11-slim
+FROM mirror.gcr.io/library/python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
