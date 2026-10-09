@@ -6,7 +6,6 @@ import pytest
 
 from hermeshq.core.security import create_device_token, decode_device_token_claims
 from hermeshq.services.enrollment import (
-    EnrollmentError,
     EnrollmentService,
     hash_enroll_token,
     parse_fail_mode,
