@@ -55,7 +55,7 @@ class WorkspaceManager:
         for entry in pi_root.iterdir():
             if not entry.is_dir() or not entry.name.startswith("agent-"):
                 continue
-            agent_id = entry.name[len("agent-"):]
+            agent_id = entry.name[len("agent-") :]
             if agent_id in live_agent_ids:
                 continue
             shutil.rmtree(entry, ignore_errors=True)

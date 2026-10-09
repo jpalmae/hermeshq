@@ -372,9 +372,7 @@ async def _teardown_execution_network(network_name: str) -> None:
         with contextlib.suppress(RuntimeError, TimeoutError):
             await _docker_output("network", "disconnect", "--force", network_name, container)
     with contextlib.suppress(RuntimeError, TimeoutError, json.JSONDecodeError):
-        members = json.loads(
-            await _docker_output("inspect", "--format", "{{json .Containers}}", network_name)
-        )
+        members = json.loads(await _docker_output("inspect", "--format", "{{json .Containers}}", network_name))
         for member in members.values():
             name = str(member.get("Name", ""))
             if name.startswith("hq-ssh-relay-"):
@@ -536,9 +534,7 @@ async def _apply_ssh_relay(request: SshRelayRequest) -> str:
     spec_hash = hashlib.sha256(spec.encode()).hexdigest()
     existing_spec = ""
     with contextlib.suppress(RuntimeError, TimeoutError, json.JSONDecodeError):
-        labels = json.loads(
-            await _docker_output("inspect", "--format", "{{json .Config.Labels}}", container_name)
-        )
+        labels = json.loads(await _docker_output("inspect", "--format", "{{json .Config.Labels}}", container_name))
         existing_spec = str(labels.get("hermeshq.ssh-relay-spec", ""))
     if not request.forwards:
         await _remove_container(container_name)
