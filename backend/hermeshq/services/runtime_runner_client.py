@@ -107,6 +107,20 @@ class RuntimeRunnerClient:
                 f"Isolated runtime runner rejected the egress allowlist ({response.status_code})"
             )
 
+    async def push_ssh_relay(self, agent_id: str, forwards: list[dict]) -> None:
+        try:
+            response = await self._client.post(
+                "/v1/ssh-relay",
+                json={"agent_id": agent_id, "forwards": forwards},
+                headers={"X-Runtime-Runner-Token": self._token},
+            )
+        except httpx.HTTPError as exc:
+            raise RuntimeExecutionError("Isolated runtime runner is unavailable") from exc
+        if response.status_code != 200:
+            raise RuntimeExecutionError(
+                f"Isolated runtime runner rejected the ssh relay state ({response.status_code})"
+            )
+
     async def start_gateway(
         self,
         *,

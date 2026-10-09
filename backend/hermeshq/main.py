@@ -64,6 +64,7 @@ from hermeshq.routers.public_chat import management_router as public_chat_manage
 from hermeshq.routers.public_chat import public_router as public_chat_router
 from hermeshq.routers.public_chat_test_page import router as public_chat_test_router
 from hermeshq.routers.public_chat_widget import router as public_chat_widget_router
+from hermeshq.routers.ssh_destinations import router as ssh_destinations_router
 from hermeshq.schemas.common import HealthResponse
 from hermeshq.services.agent_identity import derive_agent_identity
 from hermeshq.services.agent_supervisor import AgentSupervisor
@@ -410,11 +411,16 @@ async def lifespan(app: FastAPI):
 
     async def _periodic_cleanup() -> None:
         from hermeshq.routers.mcp_server import _analytics, _rate_limiter
+        from hermeshq.services.ssh_relay import reconcile_ssh_relays
 
         while True:
             await asyncio.sleep(60)
             _rate_limiter.cleanup()
             _analytics.evict_stale()
+            if app.state.runtime_runner_client is not None:
+                with contextlib.suppress(Exception):
+                    async with AsyncSessionLocal() as session:
+                        await reconcile_ssh_relays(app, session)
 
     app.state._cleanup_task = asyncio.create_task(_periodic_cleanup())
 
@@ -479,6 +485,7 @@ app.include_router(dashboard.router, prefix=settings.api_prefix)
 app.include_router(comms.router, prefix=settings.api_prefix)
 app.include_router(internal_agents.router, prefix=settings.api_prefix)
 app.include_router(internal_control.router, prefix=settings.api_prefix)
+app.include_router(ssh_destinations_router, prefix=settings.api_prefix)
 app.include_router(secrets.router, prefix=settings.api_prefix)
 app.include_router(settings_router.router, prefix=settings.api_prefix)
 app.include_router(backup.router, prefix=settings.api_prefix)

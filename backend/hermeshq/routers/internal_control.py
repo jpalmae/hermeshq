@@ -1376,3 +1376,121 @@ async def control_revoke_device(
         details={"device_id": device_id, "agent_id": revoked.agent_id},
     )
     return {"device_id": revoked.id, "status": revoked.status, "name": revoked.name}
+
+
+@router.get("/agents/{agent_id}/skills", include_in_schema=False)
+async def control_list_agent_skills(
+    agent_id: str,
+    request: Request,
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> list[dict]:
+    manager = getattr(request.app.state, "installation_manager", None)
+    if manager is None:
+        raise HTTPException(status_code=503, detail="Installation manager unavailable")
+    agent = await db.get(Agent, agent_id)
+    if not agent or agent.is_archived:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    skills = await manager.list_installed_skills(agent)
+    await _log_control_action(
+        db,
+        _,
+        event_type="hq_control.agent.skills_listed",
+        message=f"list skills of agent '{agent.name}'",
+        details={"agent_id": agent_id, "count": len(skills)},
+        target_agent_id=agent_id,
+    )
+    return skills
+
+
+class ControlSkillTransferRequest(BaseModel):
+    source_agent_id: str
+    target_agent_id: str
+    skill_path: str
+    target_name: str | None = None
+    overwrite: bool = False
+
+
+@router.post("/skills/transfer", include_in_schema=False)
+async def control_transfer_skill(
+    payload: ControlSkillTransferRequest,
+    request: Request,
+    current_agent: Agent = Depends(_require_admin_scope),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from hermeshq.services.skill_transfer import SkillTransferError, SkillTransferService
+
+    manager = getattr(request.app.state, "installation_manager", None)
+    if manager is None:
+        raise HTTPException(status_code=503, detail="Installation manager unavailable")
+    source_agent = await db.get(Agent, payload.source_agent_id)
+    target_agent = await db.get(Agent, payload.target_agent_id)
+    if not source_agent or source_agent.is_archived:
+        raise HTTPException(status_code=404, detail="Source agent not found")
+    if not target_agent or target_agent.is_archived:
+        raise HTTPException(status_code=404, detail="Target agent not found")
+    service = SkillTransferService(manager)
+    try:
+        result = await service.transfer(
+            source_agent=source_agent,
+            target_agent=target_agent,
+            skill_path=payload.skill_path,
+            target_name=payload.target_name,
+            overwrite=payload.overwrite,
+        )
+    except SkillTransferError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    await db.commit()
+    await _log_control_action(
+        db,
+        current_agent,
+        event_type="hq_control.skill.transferred",
+        message=f"transfer skill '{result.name}' from '{source_agent.name}' to '{target_agent.name}'",
+        details={
+            "source_agent_id": source_agent.id,
+            "target_agent_id": target_agent.id,
+            "skill": result.name,
+            "files": result.files,
+            "bytes": result.bytes,
+        },
+        target_agent_id=target_agent.id,
+    )
+    return {
+        "name": result.name,
+        "description": result.description,
+        "target_path": result.target_path,
+        "files": result.files,
+        "bytes": result.bytes,
+    }
+
+
+@router.get("/ssh/destinations", include_in_schema=False)
+async def control_list_ssh_destinations(
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> list[dict]:
+    from hermeshq.models.ssh_destination import SshDestination
+
+    result = await db.execute(
+        select(SshDestination).where(SshDestination.active.is_(True)).order_by(SshDestination.created_at.asc())
+    )
+    destinations = result.scalars().all()
+    await _log_control_action(
+        db,
+        _,
+        event_type="hq_control.ssh.destinations_listed",
+        message="list ssh destinations",
+        details={"count": len(destinations)},
+    )
+    return [
+        {
+            "id": d.id,
+            "name": d.name,
+            "host": d.host,
+            "port": d.port,
+            "allowed_agent_id": d.allowed_agent_id,
+            "listen_port": d.listen_port,
+            "notes": d.notes,
+        }
+        for d in destinations
+    ]

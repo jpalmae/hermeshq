@@ -25,6 +25,7 @@ from hermeshq.models.public_chat import (
 )
 from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.secret import Secret
+from hermeshq.models.ssh_destination import SshDestination
 from hermeshq.models.task import Task
 from hermeshq.models.template import AgentTemplate
 from hermeshq.models.terminal_session import TerminalSession
@@ -58,6 +59,7 @@ __all__ = [
     "PublicChatTranscript",
     "ScheduledTask",
     "Secret",
+    "SshDestination",
     "Task",
     "TerminalSession",
     "User",

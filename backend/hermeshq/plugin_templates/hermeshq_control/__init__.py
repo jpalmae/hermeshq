@@ -872,6 +872,58 @@ def register(ctx):
             ),
             "emoji": "🚫",
         },
+        {
+            "name": "hq_control_list_agent_skills",
+            "description": "List installed skills of any agent (name, description, path, managed flag). Use before transferring a skill between agents.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string"},
+                },
+                "required": ["agent_id"],
+            },
+            "handler": _payload_handler(
+                "GET",
+                lambda args: f"/control/agents/{args.get('agent_id')}/skills",
+                required=["agent_id"],
+            ),
+            "emoji": "🗂️",
+        },
+        {
+            "name": "hq_control_transfer_skill",
+            "description": "Copy a skill from one agent to another (validated: text files only, size-capped, path-safe). Collision requires overwrite=true. Returns the copied skill summary.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_agent_id": {"type": "string"},
+                    "target_agent_id": {"type": "string"},
+                    "skill_path": {"type": "string"},
+                    "target_name": {"type": "string"},
+                    "overwrite": {"type": "boolean"},
+                },
+                "required": ["source_agent_id", "target_agent_id", "skill_path"],
+            },
+            "handler": _payload_handler(
+                "POST",
+                lambda args: "/control/skills/transfer",
+                required=["source_agent_id", "target_agent_id", "skill_path"],
+                payload_builder=lambda args: {
+                    "source_agent_id": args.get("source_agent_id"),
+                    "target_agent_id": args.get("target_agent_id"),
+                    "skill_path": args.get("skill_path"),
+                    "target_name": args.get("target_name"),
+                    "overwrite": bool(args.get("overwrite")),
+                },
+            ),
+            "emoji": "📤",
+        },
+        {
+            "name": "hq_control_list_ssh_destinations",
+            "description": "List active SSH destinations (host, port, listen_port, allowed agent). Authorized agents reach them from tasks as ssh-relay:<listen_port>.",
+            "parameters": {"type": "object", "properties": {}},
+            "handler": _payload_handler("GET", lambda args: "/control/ssh/destinations"),
+            "emoji": "🔐",
+        },
     ]
 
     for spec in specs:
