@@ -1,16 +1,16 @@
 """Widen ssh_destinations id/agent/user columns to fit UUID strings
 
-Revision ID: i3j4k5l6m7n8
+Revision ID: aa11bb22cc33
 Revises: h1i2j3k4l5m6
 Create Date: 2026-10-09
 """
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
-revision: str = "i3j4k5l6m7n8"
+revision: str = "aa11bb22cc33"
 down_revision: str | Sequence[str] | None = "h1i2j3k4l5m6"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
