@@ -69,6 +69,7 @@ from hermeshq.services.agent_identity import derive_agent_identity
 from hermeshq.services.agent_supervisor import AgentSupervisor
 from hermeshq.services.comms_router import CommsRouter
 from hermeshq.services.desktop_gateway import DesktopGatewayService
+from hermeshq.services.egress_allowlist import push_allowlist_to_runner
 from hermeshq.services.enrollment import EnrollmentService
 from hermeshq.services.enterprise_gateway_manager import EnterpriseGatewayManager
 from hermeshq.services.gateway_supervisor import GatewaySupervisor
@@ -387,6 +388,14 @@ async def lifespan(app: FastAPI):
     await app.state.scheduler.start()
     app.state.gateway_bootstrap_task = asyncio.create_task(app.state.gateway_supervisor.bootstrap_gateways())
     app.state.enterprise_bootstrap_task = asyncio.create_task(app.state.enterprise_gateways.bootstrap())
+    if app.state.runtime_runner_client is not None:
+
+        async def _push_egress_allowlist() -> None:
+            with contextlib.suppress(Exception):
+                async with AsyncSessionLocal() as session:
+                    await push_allowlist_to_runner(app.state.runtime_runner_client, session)
+
+        app.state.egress_allowlist_task = asyncio.create_task(_push_egress_allowlist())
 
     app.state.public_chat_service = PublicChatService(
         session_factory=AsyncSessionLocal,
