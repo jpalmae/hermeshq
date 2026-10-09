@@ -207,6 +207,10 @@ async def bootstrap_defaults(secret_vault: SecretVault | None = None) -> None:
             agent.slug = candidate_slug
             normalized_provider = normalize_runtime_provider(agent.provider)
             if normalized_provider != agent.provider:
+                if not (agent.base_url or "").strip():
+                    definition = await session.get(ProviderDefinition, agent.provider)
+                    if definition is not None and definition.base_url:
+                        agent.base_url = definition.base_url.strip()
                 agent.provider = normalized_provider
             agent.runtime_profile = normalize_runtime_profile_slug(agent.runtime_profile)
             if secret_vault and agent.auxiliary_models:
