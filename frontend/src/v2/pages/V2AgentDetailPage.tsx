@@ -188,8 +188,6 @@ export function V2AgentDetailPage() {
   const name = agent.friendly_name || agent.name;
   const isRunning = agent.status === "running";
 
-  const isPi = agent.runtime_type === "pi";
-
   const TABS: Array<{ id: DetailTab; label: string }> = [
     { id: "conversation", label: t("v2.conversation") },
     { id: "config", label: t("v2.config") },

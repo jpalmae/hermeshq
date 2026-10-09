@@ -766,15 +766,23 @@ def register(ctx):
                 "PUT",
                 lambda args: f"/control/permission-policies/{args.get('policy_id')}",
                 required=["policy_id"],
-                payload_builder=lambda args: {key: value for key, value in dict(args or {}).items() if key != "policy_id"},
+                payload_builder=lambda args: {
+                    key: value for key, value in dict(args or {}).items() if key != "policy_id"
+                },
             ),
             "emoji": "✏️",
         },
         {
             "name": "hq_control_delete_policy",
             "description": "Delete a permission policy by id. System policies cannot be deleted.",
-            "parameters": {"type": "object", "properties": {"policy_id": {"type": "string"}}, "required": ["policy_id"]},
-            "handler": _delete_handler(lambda args: f"/control/permission-policies/{args.get('policy_id')}", required=["policy_id"]),
+            "parameters": {
+                "type": "object",
+                "properties": {"policy_id": {"type": "string"}},
+                "required": ["policy_id"],
+            },
+            "handler": _delete_handler(
+                lambda args: f"/control/permission-policies/{args.get('policy_id')}", required=["policy_id"]
+            ),
             "emoji": "🗑️",
         },
         {
@@ -827,7 +835,9 @@ def register(ctx):
             },
             "handler": _payload_handler(
                 "GET",
-                lambda args: "/control/enrollment/devices" + (("?agent_id=" + args["agent_id"]) if args.get("agent_id") else ""),
+                lambda args: (
+                    "/control/enrollment/devices" + (("?agent_id=" + args["agent_id"]) if args.get("agent_id") else "")
+                ),
             ),
             "emoji": "💻",
         },
