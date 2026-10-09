@@ -1,29 +1,35 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from hermeshq.core.security import verify_agent_service_token
+from hermeshq.core.security import decode_device_token_claims, verify_agent_service_token
 from hermeshq.database import get_db_session
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
+from hermeshq.models.enrolled_device import EnrolledDevice
 from hermeshq.models.provider import ProviderDefinition
 from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.secret import Secret
+from hermeshq.models.task import Task
 from hermeshq.models.user import User
-from hermeshq.routers import agents as agents_router
+from hermeshq.routers import agents_crud as agents_router
+from hermeshq.routers import agents_runtime as agents_runtime_router
+from hermeshq.routers import agents_shared as agents_shared_router
 from hermeshq.routers import integration_factory as integration_factory_router
 from hermeshq.routers import integration_packages as integration_packages_router
 from hermeshq.routers import providers as providers_router
 from hermeshq.routers import scheduled_tasks as scheduled_tasks_router
 from hermeshq.routers import secrets as secrets_router
 from hermeshq.routers import users as users_router
+from hermeshq.routers.agents_shared import _serialize_agent as _agents_serialize_agent
 from hermeshq.schemas.agent import AgentCreate, AgentRead, AgentUpdate
 from hermeshq.schemas.integration_factory import (
     IntegrationDraftCreate,
@@ -93,6 +99,17 @@ async def _load_internal_system_agent(
     agent = await db.get(Agent, service_agent_id)
     if not agent or agent.is_archived:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown agent")
+    device_claims = decode_device_token_claims(service_agent_token)
+    if device_claims:
+        device = await db.get(EnrolledDevice, device_claims.get("did"))
+        if (
+            not device
+            or device.status != "active"
+            or device.agent_id != service_agent_id
+            or device_claims.get("token_version") != device.token_version
+        ):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid device credentials")
+        return agent
     if not verify_agent_service_token(service_agent_token, service_agent_id, agent.service_token_version or 1):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid agent credentials")
     return agent
@@ -190,7 +207,7 @@ async def control_update_agent(
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
     admin_user = await _load_admin_proxy(db)
-    updated = await agents_router.update_agent(agent_id, payload, request, admin_user, db)
+    updated = await agents_router.update_agent(agent_id, payload, request, BackgroundTasks(), admin_user, db)
     await _log_control_action(
         db,
         current_agent,
@@ -222,7 +239,7 @@ async def control_archive_agent(
     await db.commit()
     result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id))
     agent = result.scalar_one()
-    serialized = agents_router._serialize_agent(request, agent)
+    serialized = _agents_serialize_agent(request, agent)
     await _log_control_action(
         db,
         current_agent,
@@ -244,11 +261,11 @@ async def control_agent_runtime(
 ) -> AgentRead:
     admin_user = await _load_admin_proxy(db)
     if action == "start":
-        result = await agents_router.start_agent(agent_id, request, admin_user, db)
+        result = await agents_runtime_router.start_agent(agent_id, request, admin_user, db)
     elif action == "stop":
-        result = await agents_router.stop_agent(agent_id, request, admin_user, db)
+        result = await agents_runtime_router.stop_agent(agent_id, request, admin_user, db)
     elif action == "restart":
-        result = await agents_router.restart_agent(agent_id, request, admin_user, db)
+        result = await agents_runtime_router.restart_agent(agent_id, request, admin_user, db)
     else:
         raise HTTPException(status_code=400, detail="Unsupported runtime action")
     await _log_control_action(
@@ -679,7 +696,7 @@ async def control_publish_integration_draft(
         details={
             "draft_id": published.draft.id,
             "draft_slug": published.draft.slug,
-            "integration_slug": published.integration.get("slug"),
+            "integration_slug": published.integration.slug,
         },
     )
     return published
@@ -697,7 +714,7 @@ async def control_configure_agent_integration(
     agent = await db.get(Agent, agent_id)
     if not agent or agent.is_archived:
         raise HTTPException(status_code=404, detail="Agent not found")
-    enabled_slugs = await agents_router._load_enabled_integration_slugs(db)
+    enabled_slugs = await agents_shared_router._load_enabled_integration_slugs(db)
     integration = get_managed_integration(integration_slug, enabled_slugs)
     if not integration:
         raise HTTPException(status_code=404, detail="Integration is not installed in this instance")
@@ -717,12 +734,12 @@ async def control_configure_agent_integration(
 
     agent.integration_configs = configs
     agent.skills = skills
-    agents_router._sync_agent_integration_toolsets(agent, enabled_slugs)
+    agents_shared_router._sync_agent_integration_toolsets(agent, enabled_slugs)
     await db.commit()
     await request.app.state.installation_manager.sync_agent_installation(agent)
     result = await db.execute(select(Agent).options(selectinload(Agent.node)).where(Agent.id == agent_id))
     updated = result.scalar_one()
-    serialized = agents_router._serialize_agent(request, updated)
+    serialized = _agents_serialize_agent(request, updated)
     await _log_control_action(
         db,
         current_agent,
@@ -891,9 +908,16 @@ async def evaluate_pi_permission(
     request: Request,
     payload: PermissionTestRequest,
     current_agent: Agent = Depends(_load_internal_system_agent),
+    db: AsyncSession = Depends(get_db_session),
+    master_agent_id: str | None = Header(default=None, alias="X-HermesHQ-Master-Agent-ID"),
 ) -> PermissionTestResult:
     enforcer = request.app.state.permission_enforcer
-    decision = await enforcer.evaluate(current_agent, payload.tool, payload.input)
+    master_agent = None
+    if master_agent_id and master_agent_id != current_agent.id:
+        master_agent = await db.get(Agent, master_agent_id)
+        if master_agent and master_agent.is_archived:
+            master_agent = None
+    decision = await enforcer.evaluate(current_agent, payload.tool, payload.input, master_agent=master_agent)
     decision = enforcer.apply_runtime_approval(decision, current_agent.approval_mode)
     return PermissionTestResult(
         allowed=decision.allowed,
@@ -901,6 +925,109 @@ async def evaluate_pi_permission(
         policy_name=decision.policy_name,
         requires_approval=decision.requires_approval,
     )
+
+
+# ─── Enrolled-device telemetry ─────────────────────────────────────────────
+
+
+class TelemetryTurnRequest(BaseModel):
+    session_id: str | None = None
+    turn_id: str | None = None
+    user_message: str = ""
+    assistant_response: str | None = None
+    model: str | None = None
+    platform: str | None = "desktop"
+    tools: list[dict] = Field(default_factory=list)
+
+
+class TelemetrySessionRequest(BaseModel):
+    event: str = "start"
+    session_id: str | None = None
+    model: str | None = None
+
+
+def _telemetry_task_id(agent_id: str, turn_id: str | None) -> str:
+    seed = f"{agent_id}:{turn_id}" if turn_id else f"{agent_id}:{uuid.uuid4()}"
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"hermeshq:telemetry:{seed}"))
+
+
+@router.post("/telemetry/turn", include_in_schema=False)
+async def telemetry_turn(
+    request: Request,
+    payload: TelemetryTurnRequest,
+    current_agent: Agent = Depends(_load_internal_system_agent),
+    db: AsyncSession = Depends(get_db_session),
+    service_agent_token: str | None = Header(default=None, alias="X-HermesHQ-Agent-Token"),
+):
+    from datetime import UTC, datetime
+
+    device_claims = decode_device_token_claims(service_agent_token or "")
+    device_id = (device_claims or {}).get("did")
+    task_id = _telemetry_task_id(current_agent.id, payload.turn_id)
+    existing = await db.get(Task, task_id)
+    if existing:
+        return {"task_id": task_id, "deduplicated": True}
+
+    now = datetime.now(UTC)
+    prompt = payload.user_message or "(empty turn)"
+    task = Task(
+        id=task_id,
+        agent_id=current_agent.id,
+        title=f"Desktop: {prompt[:80]}",
+        prompt=prompt,
+        status="completed",
+        response=payload.assistant_response,
+        tool_calls=payload.tools,
+        queued_at=now,
+        started_at=now,
+        completed_at=now,
+        metadata_json={
+            "source": "desktop",
+            "platform": payload.platform or "desktop",
+            "conversation": True,
+            "thread_id": f"desktop_{device_id or 'unknown'}",
+            "device_id": device_id,
+            "hermes_session_id": payload.session_id,
+            "turn_id": payload.turn_id,
+            "model": payload.model,
+        },
+    )
+    db.add(task)
+    await db.flush()
+    current_agent.last_activity = now
+    activity = ActivityLog(
+        agent_id=current_agent.id,
+        task_id=task_id,
+        node_id=current_agent.node_id,
+        event_type="task.completed",
+        severity="info",
+        message=f"Desktop turn completed ({len(payload.tools)} tool calls)",
+    )
+    db.add(activity)
+    await db.commit()
+    return {"task_id": task_id}
+
+
+@router.post("/telemetry/session", include_in_schema=False)
+async def telemetry_session(
+    request: Request,
+    payload: TelemetrySessionRequest,
+    current_agent: Agent = Depends(_load_internal_system_agent),
+    db: AsyncSession = Depends(get_db_session),
+    service_agent_token: str | None = Header(default=None, alias="X-HermesHQ-Agent-Token"),
+):
+    device_claims = decode_device_token_claims(service_agent_token or "")
+    device_id = (device_claims or {}).get("did")
+    activity = ActivityLog(
+        agent_id=current_agent.id,
+        node_id=current_agent.node_id,
+        event_type="desktop.session.start" if payload.event == "start" else "desktop.session.event",
+        severity="info",
+        message=f"Desktop session {payload.session_id or ''} started (model {payload.model or 'n/a'})",
+    )
+    db.add(activity)
+    await db.commit()
+    return {"ok": True, "device_id": device_id}
 
 
 @router.post("/approval", response_model=ApprovalResponse, include_in_schema=False)
@@ -974,7 +1101,7 @@ async def control_run_integration_action(
     if not decision.allowed:
         raise HTTPException(status_code=403, detail=decision.reason or "Integration action denied by policy")
 
-    enabled_slugs = await agents_router._load_enabled_integration_slugs(db)
+    enabled_slugs = await agents_shared_router._load_enabled_integration_slugs(db)
     from hermeshq.services.managed_capabilities import get_managed_integration
 
     integration = get_managed_integration(integration_slug, enabled_slugs)
@@ -1018,7 +1145,9 @@ async def control_list_policies(
 ) -> list:
     from hermeshq.models.permission_policy import PermissionPolicy
 
-    result = await db.execute(select(PermissionPolicy).order_by(PermissionPolicy.is_system.desc(), PermissionPolicy.name.asc()))
+    result = await db.execute(
+        select(PermissionPolicy).order_by(PermissionPolicy.is_system.desc(), PermissionPolicy.name.asc())
+    )
     return list(result.scalars().all())
 
 
@@ -1040,7 +1169,8 @@ async def control_create_policy(
         path_rules=payload.get("path_rules") or {"allow_paths": ["/workspace/**"], "deny_paths": []},
         command_rules=payload.get("command_rules") or {"allow": [], "deny": []},
         network_rules=payload.get("network_rules") or {"deny_all": False},
-        approval_rules=payload.get("approval_rules") or {"require_approval_for": [], "auto_approve_threshold": "medium"},
+        approval_rules=payload.get("approval_rules")
+        or {"require_approval_for": [], "auto_approve_threshold": "medium"},
     )
     db.add(policy)
     await db.commit()
@@ -1061,7 +1191,15 @@ async def control_update_policy(
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
     payload = await request.json()
-    for field in ("name", "description", "tool_rules", "path_rules", "command_rules", "network_rules", "approval_rules"):
+    for field in (
+        "name",
+        "description",
+        "tool_rules",
+        "path_rules",
+        "command_rules",
+        "network_rules",
+        "approval_rules",
+    ):
         if field in payload:
             setattr(policy, field, payload[field])
     await db.commit()
@@ -1100,7 +1238,9 @@ async def control_test_permission(
     target = await db.get(Agent, agent_id)
     if not target:
         raise HTTPException(status_code=404, detail="Agent not found")
-    enforcer = PermissionEnforcer(request.app.state.supervisor.session_factory if hasattr(request.app.state, "supervisor") else None)
+    enforcer = PermissionEnforcer(
+        request.app.state.supervisor.session_factory if hasattr(request.app.state, "supervisor") else None
+    )
     # Use the target agent's session if needed
     try:
         allowed, reason, requires_approval = await enforcer.evaluate(
@@ -1109,3 +1249,248 @@ async def control_test_permission(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"allowed": allowed, "reason": reason, "requires_approval": requires_approval}
+
+
+# ─── Enrolled-device management (control agent) ────────────────────────────
+
+
+class ControlEnrollRequest(BaseModel):
+    agent_id: str
+    device_name: str = Field(min_length=1, max_length=128)
+    guard_fail_mode: str = "fail-open"
+
+
+@router.get("/enrollment/devices", include_in_schema=False)
+async def control_list_devices(
+    request: Request,
+    agent_id: str | None = None,
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> list[dict]:
+    service = getattr(request.app.state, "enrollment_service", None)
+    if service is None:
+        raise HTTPException(status_code=503, detail="Enrollment service unavailable")
+    admin_user = await _load_admin_proxy(db)
+    if agent_id:
+        from hermeshq.core.security import ensure_agent_access
+
+        await ensure_agent_access(db, admin_user, agent_id)
+    devices = await service.list_devices(agent_id)
+    await _log_control_action(
+        db,
+        _,
+        event_type="hq_control.devices.listed",
+        message="list enrolled devices",
+        details={"agent_id": agent_id or "all", "count": len(devices)},
+    )
+    return [
+        {
+            "id": d.id,
+            "agent_id": d.agent_id,
+            "name": d.name,
+            "status": d.status,
+            "guard_fail_mode": d.guard_fail_mode,
+            "last_heartbeat": d.last_heartbeat.isoformat() if d.last_heartbeat else None,
+            "last_sync_at": d.last_sync_at.isoformat() if d.last_sync_at else None,
+            "hermes_version": d.hermes_version,
+            "revoked_at": d.revoked_at.isoformat() if d.revoked_at else None,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+        }
+        for d in devices
+    ]
+
+
+@router.post("/enrollment/devices", include_in_schema=False)
+async def control_enroll_device(
+    payload: ControlEnrollRequest,
+    request: Request,
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from hermeshq.services.enrollment import EnrollmentError
+
+    service = getattr(request.app.state, "enrollment_service", None)
+    if service is None:
+        raise HTTPException(status_code=503, detail="Enrollment service unavailable")
+    admin_user = await _load_admin_proxy(db)
+    from hermeshq.core.security import ensure_agent_access
+
+    await ensure_agent_access(db, admin_user, payload.agent_id)
+    try:
+        device, enroll_token = await service.create_enrollment(
+            payload.agent_id,
+            admin_user.id,
+            payload.device_name,
+            guard_fail_mode=payload.guard_fail_mode,
+        )
+    except EnrollmentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _log_control_action(
+        db,
+        _,
+        event_type="hq_control.device.enrolled",
+        message=f"enroll device '{payload.device_name}' for agent {payload.agent_id}",
+        details={"device_id": device.id, "agent_id": payload.agent_id, "fail_mode": payload.guard_fail_mode},
+    )
+    return {
+        "device_id": device.id,
+        "agent_id": device.agent_id,
+        "name": device.name,
+        "status": device.status,
+        "guard_fail_mode": device.guard_fail_mode,
+        "enroll_token": enroll_token,
+        "activate_command": (
+            f"python enroll_device.py activate <server-url> --device-id {device.id} --token {enroll_token}"
+        ),
+    }
+
+
+@router.delete("/enrollment/devices/{device_id}", include_in_schema=False)
+async def control_revoke_device(
+    device_id: str,
+    request: Request,
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from hermeshq.services.enrollment import EnrollmentError
+
+    service = getattr(request.app.state, "enrollment_service", None)
+    if service is None:
+        raise HTTPException(status_code=503, detail="Enrollment service unavailable")
+    device = await service.get_device(device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    admin_user = await _load_admin_proxy(db)
+    from hermeshq.core.security import ensure_agent_access
+
+    await ensure_agent_access(db, admin_user, device.agent_id)
+    try:
+        revoked = await service.revoke_device(device_id)
+    except EnrollmentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _log_control_action(
+        db,
+        _,
+        event_type="hq_control.device.revoked",
+        message=f"revoke device '{revoked.name}' ({device_id})",
+        details={"device_id": device_id, "agent_id": revoked.agent_id},
+    )
+    return {"device_id": revoked.id, "status": revoked.status, "name": revoked.name}
+
+
+@router.get("/agents/{agent_id}/skills", include_in_schema=False)
+async def control_list_agent_skills(
+    agent_id: str,
+    request: Request,
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> list[dict]:
+    manager = getattr(request.app.state, "installation_manager", None)
+    if manager is None:
+        raise HTTPException(status_code=503, detail="Installation manager unavailable")
+    agent = await db.get(Agent, agent_id)
+    if not agent or agent.is_archived:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    skills = await manager.list_installed_skills(agent)
+    await _log_control_action(
+        db,
+        _,
+        event_type="hq_control.agent.skills_listed",
+        message=f"list skills of agent '{agent.name}'",
+        details={"agent_id": agent_id, "count": len(skills)},
+        target_agent_id=agent_id,
+    )
+    return skills
+
+
+class ControlSkillTransferRequest(BaseModel):
+    source_agent_id: str
+    target_agent_id: str
+    skill_path: str
+    target_name: str | None = None
+    overwrite: bool = False
+
+
+@router.post("/skills/transfer", include_in_schema=False)
+async def control_transfer_skill(
+    payload: ControlSkillTransferRequest,
+    request: Request,
+    current_agent: Agent = Depends(_require_admin_scope),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from hermeshq.services.skill_transfer import SkillTransferError, SkillTransferService
+
+    manager = getattr(request.app.state, "installation_manager", None)
+    if manager is None:
+        raise HTTPException(status_code=503, detail="Installation manager unavailable")
+    source_agent = await db.get(Agent, payload.source_agent_id)
+    target_agent = await db.get(Agent, payload.target_agent_id)
+    if not source_agent or source_agent.is_archived:
+        raise HTTPException(status_code=404, detail="Source agent not found")
+    if not target_agent or target_agent.is_archived:
+        raise HTTPException(status_code=404, detail="Target agent not found")
+    service = SkillTransferService(manager)
+    try:
+        result = await service.transfer(
+            source_agent=source_agent,
+            target_agent=target_agent,
+            skill_path=payload.skill_path,
+            target_name=payload.target_name,
+            overwrite=payload.overwrite,
+        )
+    except SkillTransferError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    await db.commit()
+    await _log_control_action(
+        db,
+        current_agent,
+        event_type="hq_control.skill.transferred",
+        message=f"transfer skill '{result.name}' from '{source_agent.name}' to '{target_agent.name}'",
+        details={
+            "source_agent_id": source_agent.id,
+            "target_agent_id": target_agent.id,
+            "skill": result.name,
+            "files": result.files,
+            "bytes": result.bytes,
+        },
+        target_agent_id=target_agent.id,
+    )
+    return {
+        "name": result.name,
+        "description": result.description,
+        "target_path": result.target_path,
+        "files": result.files,
+        "bytes": result.bytes,
+    }
+
+
+@router.get("/ssh/destinations", include_in_schema=False)
+async def control_list_ssh_destinations(
+    _: Agent = Depends(_get_control_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> list[dict]:
+    from hermeshq.models.ssh_destination import SshDestination
+
+    result = await db.execute(
+        select(SshDestination).where(SshDestination.active.is_(True)).order_by(SshDestination.created_at.asc())
+    )
+    destinations = result.scalars().all()
+    await _log_control_action(
+        db,
+        _,
+        event_type="hq_control.ssh.destinations_listed",
+        message="list ssh destinations",
+        details={"count": len(destinations)},
+    )
+    return [
+        {
+            "id": d.id,
+            "name": d.name,
+            "host": d.host,
+            "port": d.port,
+            "allowed_agent_id": d.allowed_agent_id,
+            "listen_port": d.listen_port,
+            "notes": d.notes,
+        }
+        for d in destinations
+    ]

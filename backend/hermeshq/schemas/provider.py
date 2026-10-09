@@ -36,5 +36,6 @@ class ProviderRead(ORMModel):
     sort_order: int
     api_key_ref: str | None = None
     models_refreshed_at: datetime | None = None
+    egress_notice: str | None = None
     created_at: datetime
     updated_at: datetime
