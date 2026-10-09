@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -207,7 +207,7 @@ async def control_update_agent(
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
     admin_user = await _load_admin_proxy(db)
-    updated = await agents_router.update_agent(agent_id, payload, request, admin_user, db)
+    updated = await agents_router.update_agent(agent_id, payload, request, BackgroundTasks(), admin_user, db)
     await _log_control_action(
         db,
         current_agent,
@@ -696,7 +696,7 @@ async def control_publish_integration_draft(
         details={
             "draft_id": published.draft.id,
             "draft_slug": published.draft.slug,
-            "integration_slug": published.integration.get("slug"),
+            "integration_slug": published.integration.slug,
         },
     )
     return published

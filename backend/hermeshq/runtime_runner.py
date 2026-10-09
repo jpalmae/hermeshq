@@ -126,7 +126,7 @@ def _isolated_environment(request: RuntimeEnvironmentRequest) -> dict[str, str]:
     if proxy_url:
         env["HTTP_PROXY"] = proxy_url
         env["HTTPS_PROXY"] = proxy_url
-        env["NO_PROXY"] = "backend,localhost,127.0.0.1"
+        env["NO_PROXY"] = "backend,runtime-egress,localhost,127.0.0.1"
     return env
 
 
