@@ -388,7 +388,8 @@ class HermesInstallationManager:
         )
         desired_names = {plugin["template_dir"] for plugin in desired_plugins}
         known_names = {
-            plugin["template_dir"] for plugin in list_managed_plugins([], include_system_plugins=True, include_desktop_guard=True)
+            plugin["template_dir"]
+            for plugin in list_managed_plugins([], include_system_plugins=True, include_desktop_guard=True)
         }
         known_names.update(
             package["plugin_slug"] for package in list_available_integration_packages([]) if package.get("plugin_slug")
@@ -1049,7 +1050,6 @@ class HermesInstallationManager:
         managed: dict[str, str] = {}
         runtime_provider = normalize_runtime_provider(agent.provider)
         effective_base_url = await self._effective_provider_base_url(agent)
-
 
         managed["HERMESHQ_AGENT_ID"] = agent.id
         managed["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id, agent.service_token_version or 1)

@@ -66,4 +66,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DELETE FROM permission_policies WHERE id IN ('sys-role-office', 'sys-role-technical', 'sys-role-security')")
+    op.execute(
+        "DELETE FROM permission_policies WHERE id IN ('sys-role-office', 'sys-role-technical', 'sys-role-security')"
+    )
