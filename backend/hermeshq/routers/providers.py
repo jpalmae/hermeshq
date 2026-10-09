@@ -11,6 +11,7 @@ from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.provider import ProviderDefinition
 from hermeshq.models.user import User
 from hermeshq.schemas.provider import ProviderRead, ProviderUpdate
+from hermeshq.services.egress_allowlist import ensure_domain_allowed, push_allowlist_to_runner
 from hermeshq.services.provider_models import refresh_provider_models
 from hermeshq.services.secret_vault import build_vault_from_settings
 
@@ -33,6 +34,7 @@ async def list_providers(
 async def update_provider(
     provider_slug: str,
     payload: ProviderUpdate,
+    request: Request,
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> ProviderRead:
@@ -43,7 +45,28 @@ async def update_provider(
         setattr(item, field, value)
     await db.commit()
     await db.refresh(item)
-    return ProviderRead.model_validate(item)
+    notice: str | None = None
+    if item.base_url and item.supports_custom_base_url:
+        added, host = await ensure_domain_allowed(db, item.base_url)
+        if host:
+            client = getattr(request.app.state, "runtime_runner_client", None)
+            if client is not None:
+                try:
+                    await push_allowlist_to_runner(client, db)
+                except Exception:
+                    logger.warning("Could not push egress allowlist to runtime runner for %s", host)
+                    notice = (
+                        f"El dominio {host} quedó guardado y se permitirá automáticamente, "
+                        "pero el runtime runner no está accesible ahora — se sincronizará al reiniciar."
+                    )
+            if added and notice is None:
+                notice = (
+                    f"Dominio {host} agregado automáticamente a la allowlist de runtime-egress — "
+                    "los agentes ya pueden conectarse (efectivo al instante, sin reinicios)."
+                )
+    read = ProviderRead.model_validate(item)
+    read.egress_notice = notice
+    return read
 
 
 @router.post("/{provider_slug}/refresh-models")

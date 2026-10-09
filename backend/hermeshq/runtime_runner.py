@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import hmac
 import json
 import os
@@ -126,7 +127,7 @@ def _isolated_environment(request: RuntimeEnvironmentRequest) -> dict[str, str]:
     if proxy_url:
         env["HTTP_PROXY"] = proxy_url
         env["HTTPS_PROXY"] = proxy_url
-        env["NO_PROXY"] = "backend,localhost,127.0.0.1"
+        env["NO_PROXY"] = "backend,runtime-egress,localhost,127.0.0.1"
     return env
 
 
@@ -370,6 +371,15 @@ async def _teardown_execution_network(network_name: str) -> None:
         container = _required_resource_name(env_key, default)
         with contextlib.suppress(RuntimeError, TimeoutError):
             await _docker_output("network", "disconnect", "--force", network_name, container)
+    with contextlib.suppress(RuntimeError, TimeoutError, json.JSONDecodeError):
+        members = json.loads(
+            await _docker_output("inspect", "--format", "{{json .Containers}}", network_name)
+        )
+        for member in members.values():
+            name = str(member.get("Name", ""))
+            if name.startswith("hq-ssh-relay-"):
+                with contextlib.suppress(RuntimeError, TimeoutError):
+                    await _docker_output("network", "disconnect", "--force", network_name, name)
     with contextlib.suppress(RuntimeError, TimeoutError):
         await _docker_output("network", "rm", network_name)
 
@@ -389,6 +399,220 @@ async def _cleanup_stale_executions() -> None:
     ]
     for network in networks:
         await _teardown_execution_network(network)
+
+
+async def _reconcile_gateway_networks() -> None:
+    backend_container = _required_resource_name("RUNTIME_BACKEND_CONTAINER", "hermeshq-backend")
+    egress_container = _required_resource_name("RUNTIME_EGRESS_CONTAINER", "hermeshq-runtime-egress")
+    network_names = [
+        name
+        for name in (
+            await _docker_output(
+                "network",
+                "ls",
+                "--format",
+                "{{.Name}}",
+                "--filter",
+                "label=hermeshq.runtime-owner=hermeshq-runtime-runner",
+            )
+        ).splitlines()
+        if name.startswith("hq-gw-net-")
+    ]
+    for network_name in network_names:
+        for container, alias in (
+            (backend_container, "backend"),
+            (egress_container, "runtime-egress"),
+        ):
+            with contextlib.suppress(RuntimeError, TimeoutError):
+                await _docker_output("network", "connect", "--alias", alias, network_name, container)
+    if _egress_allowlist_domains:
+        with contextlib.suppress(RuntimeError, TimeoutError):
+            egress_id = await _docker_output("inspect", "--format", "{{.Id}}", egress_container)
+            if egress_id != _egress_allowlist_applied_to:
+                await _apply_egress_allowlist(egress_container)
+
+
+async def _reconcile_gateway_networks_loop() -> None:
+    interval = _positive_float("RUNTIME_GATEWAY_RECONCILE_SECONDS", 30, 3600)
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await _reconcile_gateway_networks()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            continue
+
+
+_egress_domain_re = re.compile(
+    r"^\.?[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$"
+)
+_egress_allowlist_domains: list[str] = []
+_egress_allowlist_applied_to: str = ""
+
+
+class EgressAllowlistRequest(BaseModel):
+    domains: list[str] = Field(default_factory=list)
+
+    @field_validator("domains")
+    @classmethod
+    def validate_domains(cls, value: list[str]) -> list[str]:
+        if len(value) > 256:
+            raise ValueError("Too many domains")
+        if sum(len(item) for item in value) > 16 * 1024:
+            raise ValueError("Allowlist is too large")
+        for item in value:
+            if not _egress_domain_re.fullmatch(item):
+                raise ValueError("Invalid domain entry")
+        return value
+
+
+_SSH_RELAY_SCRIPT = (
+    "import asyncio,json,os\n"
+    "FWD=json.loads(os.environ['SSH_RELAY_FORWARDS'])\n"
+    "async def pipe(r,w):\n"
+    "    try:\n"
+    "        while True:\n"
+    "            b=await r.read(65536)\n"
+    "            if not b:break\n"
+    "            w.write(b);await w.drain()\n"
+    "    except Exception:pass\n"
+    "    finally:\n"
+    "        try:w.close()\n"
+    "        except Exception:pass\n"
+    "async def handle(cr,cw,rh,rp):\n"
+    "    try:\n"
+    "        ur,uw=await asyncio.open_connection(rh,rp)\n"
+    "    except Exception:\n"
+    "        cw.close();return\n"
+    "    await asyncio.gather(pipe(cr,uw),pipe(ur,cw))\n"
+    "async def main():\n"
+    "    servers=[]\n"
+    "    for f in FWD:\n"
+    "        async def cb(cr,cw,f=f):\n"
+    "            await handle(cr,cw,f['host'],f['port'])\n"
+    "        servers.append(await asyncio.start_server(cb,'0.0.0.0',f['listen']))\n"
+    "    await asyncio.gather(*(s.serve_forever() for s in servers))\n"
+    "asyncio.run(main())\n"
+)
+
+
+class SshRelayForward(BaseModel):
+    listen: int = Field(ge=1, le=65535)
+    host: str = Field(min_length=1, max_length=255)
+    port: int = Field(ge=1, le=65535)
+
+    @field_validator("host")
+    @classmethod
+    def validate_host(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned or any(char.isspace() for char in cleaned):
+            raise ValueError("Invalid relay host")
+        return cleaned
+
+
+class SshRelayRequest(BaseModel):
+    agent_id: UUID
+    forwards: list[SshRelayForward] = Field(default_factory=list)
+
+    @field_validator("forwards")
+    @classmethod
+    def validate_forwards(cls, value: list[SshRelayForward]) -> list[SshRelayForward]:
+        if len(value) > 16:
+            raise ValueError("Too many forwards")
+        listen_ports = [item.listen for item in value]
+        if len(listen_ports) != len(set(listen_ports)):
+            raise ValueError("Duplicate listen ports")
+        return value
+
+
+def _ssh_relay_names(agent_id: UUID) -> tuple[str, str]:
+    return f"hq-ssh-relay-{agent_id.hex}", f"hq-ssh-net-{agent_id.hex}"
+
+
+async def _apply_ssh_relay(request: SshRelayRequest) -> str:
+    container_name, network_name = _ssh_relay_names(request.agent_id)
+    spec = json.dumps([item.model_dump() for item in request.forwards], sort_keys=True)
+    spec_hash = hashlib.sha256(spec.encode()).hexdigest()
+    existing_spec = ""
+    with contextlib.suppress(RuntimeError, TimeoutError, json.JSONDecodeError):
+        labels = json.loads(
+            await _docker_output("inspect", "--format", "{{json .Config.Labels}}", container_name)
+        )
+        existing_spec = str(labels.get("hermeshq.ssh-relay-spec", ""))
+    if not request.forwards:
+        await _remove_container(container_name)
+        with contextlib.suppress(RuntimeError, TimeoutError):
+            await _docker_output("network", "rm", network_name)
+        return "removed"
+    if existing_spec == spec_hash:
+        return "unchanged"
+    await _remove_container(container_name)
+    with contextlib.suppress(RuntimeError, TimeoutError):
+        await _docker_output("network", "rm", network_name)
+    await _docker_output(
+        "network",
+        "create",
+        "--label",
+        "hermeshq.runtime-owner=hermeshq-runtime-runner",
+        "--label",
+        "hermeshq.ssh-relay=true",
+        network_name,
+    )
+    runtime_image = os.environ.get("RUNTIME_IMAGE", "hermeshq-runtime:local")
+    await _docker_output(
+        "run",
+        "--detach",
+        "--init",
+        "--name",
+        container_name,
+        "--hostname",
+        "ssh-relay",
+        "--label",
+        "hermeshq.runtime-owner=hermeshq-runtime-runner",
+        "--label",
+        "hermeshq.ssh-relay=true",
+        "--label",
+        f"hermeshq.ssh-relay-spec={spec_hash}",
+        "--user",
+        "1000:1000",
+        "--read-only",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges:true",
+        "--pids-limit",
+        "64",
+        "--memory",
+        "128m",
+        "--cpus",
+        "0.25",
+        "--network",
+        network_name,
+        "--log-driver",
+        "none",
+        "--env",
+        f"SSH_RELAY_FORWARDS={spec}",
+        runtime_image,
+        "/opt/venv/bin/python",
+        "-c",
+        _SSH_RELAY_SCRIPT,
+    )
+    return "applied"
+
+
+async def _ensure_ssh_relay_attached(agent_id: UUID, network_name: str) -> None:
+    container_name, _ = _ssh_relay_names(agent_id)
+    with contextlib.suppress(RuntimeError, TimeoutError):
+        await _docker_output("network", "connect", "--alias", "ssh-relay", network_name, container_name)
+
+
+async def _apply_egress_allowlist(egress_container: str) -> None:
+    global _egress_allowlist_applied_to
+    quoted = " ".join(f"'{item}'" for item in _egress_allowlist_domains)
+    script = f"printf '%s\\n' {quoted} > /tmp/allowed_domains && kill -HUP \"$(cat /tmp/squid.pid)\""
+    await _docker_output("exec", egress_container, "sh", "-c", script)
+    _egress_allowlist_applied_to = await _docker_output("inspect", "--format", "{{.Id}}", egress_container)
 
 
 def _redact_runtime_error(error: str, request: RuntimeEnvironmentRequest) -> str:
@@ -437,6 +661,7 @@ async def _execute_container(request: ExecutionRequest) -> AsyncIterator[bytes]:
 
         workspace_volume = await _resolve_workspace_volume()
         execution_network = await _prepare_execution_network(request.execution_id)
+        await _ensure_ssh_relay_attached(request.agent_id, execution_network)
         command, container_name = build_container_command(
             request,
             env_path,
@@ -536,6 +761,7 @@ async def _start_gateway_container(request: GatewayRequest) -> dict[str, str | i
     try:
         workspace_volume = await _resolve_workspace_volume()
         await _prepare_private_network(network_name)
+        await _ensure_ssh_relay_attached(request.agent_id, network_name)
         env_path = _write_environment_file(request)
         command, container_name = build_gateway_command(
             request,
@@ -574,7 +800,13 @@ async def _gateway_container_status(agent_id: UUID) -> dict[str, bool | int]:
 @contextlib.asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await _cleanup_stale_executions()
-    yield
+    reconcile_task = asyncio.create_task(_reconcile_gateway_networks_loop())
+    try:
+        yield
+    finally:
+        reconcile_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await reconcile_task
 
 
 app = FastAPI(
@@ -661,3 +893,30 @@ async def stop_gateway(
     _authorize(x_runtime_runner_token)
     await _stop_gateway_container(agent_id)
     return {"status": "stopped"}
+
+
+@app.post("/v1/egress/allowlist")
+async def set_egress_allowlist(
+    request: EgressAllowlistRequest,
+    x_runtime_runner_token: Annotated[str | None, Header()] = None,
+) -> dict[str, int]:
+    _authorize(x_runtime_runner_token)
+    global _egress_allowlist_domains
+    egress_container = _required_resource_name("RUNTIME_EGRESS_CONTAINER", "hermeshq-runtime-egress")
+    _egress_allowlist_domains = list(request.domains)
+    if _egress_allowlist_domains:
+        await _apply_egress_allowlist(egress_container)
+    return {"count": len(_egress_allowlist_domains)}
+
+
+@app.post("/v1/ssh-relay")
+async def set_ssh_relay(
+    request: SshRelayRequest,
+    x_runtime_runner_token: Annotated[str | None, Header()] = None,
+) -> dict[str, str]:
+    _authorize(x_runtime_runner_token)
+    try:
+        state = await _apply_ssh_relay(request)
+        return {"status": state}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="SSH relay setup failed") from exc

@@ -111,6 +111,7 @@ class HermesInstallationManager:
         # Resolve effective model: when use_provider_default=True, use the provider's
         # current default_model from DB instead of the snapshot taken at creation time.
         effective_model = await self._resolve_effective_model(agent)
+        effective_base_url = await self._effective_provider_base_url(agent)
         self._write_config(
             agent,
             hermes_home,
@@ -120,6 +121,7 @@ class HermesInstallationManager:
             runtime_selection,
             resolved_aux_api_keys,
             effective_model,
+            effective_base_url,
         )
         self._write_soul(agent, hermes_home, app_name)
         await self._sync_auth_store(agent, hermes_home)
@@ -131,7 +133,7 @@ class HermesInstallationManager:
         hermes_home = self.build_hermes_home(agent.workspace_path)
         profile = get_runtime_profile(agent.runtime_profile)
         runtime_provider = normalize_runtime_provider(agent.provider)
-        effective_base_url = self._effective_provider_base_url(agent)
+        effective_base_url = await self._effective_provider_base_url(agent)
         # Providers with auth_type "aws_sdk" (currently: bedrock) authenticate via
         # the standard AWS credential chain (env vars or an EC2 instance role)
         # instead of a per-agent secret ref — see
@@ -382,9 +384,12 @@ class HermesInstallationManager:
         desired_plugins = list_managed_plugins(
             enabled_integration_slugs,
             include_system_plugins=bool(agent.is_system_agent),
+            include_desktop_guard=True,
         )
         desired_names = {plugin["template_dir"] for plugin in desired_plugins}
-        known_names = {plugin["template_dir"] for plugin in list_managed_plugins([], include_system_plugins=True)}
+        known_names = {
+            plugin["template_dir"] for plugin in list_managed_plugins([], include_system_plugins=True, include_desktop_guard=True)
+        }
         known_names.update(
             package["plugin_slug"] for package in list_available_integration_packages([]) if package.get("plugin_slug")
         )
@@ -428,6 +433,7 @@ class HermesInstallationManager:
         runtime_selection: HermesRuntimeSelection,
         resolved_aux_api_keys: dict[str, str] | None = None,
         effective_model: str | None = None,
+        effective_base_url: str | None = None,
     ) -> None:
         profile = get_runtime_profile(agent.runtime_profile)
         telegram_channel = next((item for item in messaging_channels if item.platform == "telegram"), None)
@@ -435,7 +441,8 @@ class HermesInstallationManager:
         teams_channel = next((item for item in messaging_channels if item.platform == "microsoft_teams"), None)
         sixagentic_channel = next((item for item in messaging_channels if item.platform == "sixagentic"), None)
         model_provider = self._model_provider_for_agent(agent)
-        effective_base_url = self._effective_provider_base_url(agent)
+        if effective_base_url is None:
+            effective_base_url = (agent.base_url or "").strip()
         config = {
             "model": {
                 "default": effective_model or agent.model,
@@ -520,6 +527,7 @@ class HermesInstallationManager:
                     "name": teams_channel.home_chat_name or "Home",
                 }
             platforms["teams"] = teams_platform
+            config.setdefault("display", {}).setdefault("platforms", {})["teams"] = {"streaming": True}
         if sixagentic_channel and self._channel_runtime_enabled(sixagentic_channel):
             platforms = config.setdefault("platforms", {})
             platforms["sixagentic"] = {
@@ -587,6 +595,8 @@ class HermesInstallationManager:
             installed_plugin_dirs = {p.name for p in plugins_root.iterdir() if p.is_dir()}
             # enabled_toolsets contains slugs like "hermeshq_ms365_mail"
             plugins_to_enable = [slug for slug in (agent.enabled_toolsets or []) if slug in installed_plugin_dirs]
+            if "hermeshq_guard" in installed_plugin_dirs:
+                plugins_to_enable.append("hermeshq_guard")
             if plugins_to_enable:
                 config["plugins"] = {"enabled": plugins_to_enable}
         config_path = hermes_home / "config.yaml"
@@ -1038,7 +1048,12 @@ class HermesInstallationManager:
     ) -> dict[str, str]:
         managed: dict[str, str] = {}
         runtime_provider = normalize_runtime_provider(agent.provider)
-        effective_base_url = self._effective_provider_base_url(agent)
+        effective_base_url = await self._effective_provider_base_url(agent)
+
+
+        managed["HERMESHQ_AGENT_ID"] = agent.id
+        managed["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id, agent.service_token_version or 1)
+        managed["HERMESHQ_GUARD_FAIL_MODE"] = "fail-open"
 
         api_key = await self._resolve_api_key(agent.api_key_ref)
         if api_key:
@@ -1131,6 +1146,10 @@ class HermesInstallationManager:
         # Keys managed by the integration system — these get stripped and rewritten
         managed_keys: set[str] = {
             "OPENAI_BASE_URL",
+            "HERMESHQ_AGENT_ID",
+            "HERMESHQ_AGENT_TOKEN",
+            "HERMESHQ_INTERNAL_API_URL",
+            "HERMESHQ_GUARD_FAIL_MODE",
             "HERMESHQ_SHAREPOINT_SITE_URL",
             "TELEGRAM_BOT_TOKEN",
             "TELEGRAM_ALLOWED_USERS",
@@ -1289,7 +1308,7 @@ class HermesInstallationManager:
         api_key = await self._resolve_api_key(agent.api_key_ref)
         entries: list[dict] = []
         if api_key:
-            base_url = self._effective_provider_base_url(agent)
+            base_url = await self._effective_provider_base_url(agent)
             for priority, env_name in enumerate(self._provider_env_names(runtime_provider)):
                 entries.append(
                     {
@@ -1324,8 +1343,13 @@ class HermesInstallationManager:
             return self._CUSTOM_OPENAI_PROVIDER_KEY
         return normalize_runtime_provider(agent.provider) or ""
 
-    def _effective_provider_base_url(self, agent: Agent) -> str:
+    async def _effective_provider_base_url(self, agent: Agent) -> str:
         base_url = (agent.base_url or "").strip()
+        if not base_url and agent.provider and self.session_factory is not None:
+            async with self.session_factory() as session:
+                definition = await session.get(ProviderDefinition, agent.provider)
+            if definition is not None and definition.base_url:
+                base_url = definition.base_url.strip()
         if self._uses_custom_openai_provider(agent):
             return self._normalize_openai_compatible_base_url(base_url)
         return base_url
@@ -1358,6 +1382,7 @@ class HermesInstallationManager:
             "bedrock": [],
             "nous": ["NOUS_API_KEY"],
             "nous-api": ["OPENAI_API_KEY"],
+            "nvidia": ["NVIDIA_API_KEY"],
             "zai": ["ZAI_API_KEY", "GLM_API_KEY", "Z_AI_API_KEY"],
             "openrouter": ["OPENROUTER_API_KEY"],
             "anthropic": ["ANTHROPIC_API_KEY"],
@@ -1386,6 +1411,7 @@ class HermesInstallationManager:
         fallback = {
             "bedrock": "BEDROCK_BASE_URL",
             "nous": "NOUS_BASE_URL",
+            "nvidia": "NVIDIA_BASE_URL",
             "zai": "GLM_BASE_URL",
             "openrouter": "OPENROUTER_BASE_URL",
             "openai": "OPENAI_BASE_URL",

@@ -7,6 +7,7 @@ PROVIDER_RUNTIME_ALIASES: dict[str, str] = {
     "openai-api": "openai-codex",
     "openai-compatible": "openai-codex",
     "gemini-api": "openai-codex",
+    "puget": "openai-codex",
     "anthropic-api": "anthropic",
     "aws-bedrock": "bedrock",
 }
@@ -63,6 +64,25 @@ BUILTIN_PROVIDERS: list[dict] = [
         "supports_custom_base_url": True,
         "enabled": True,
         "sort_order": 12,
+    },
+    {
+        "slug": "puget",
+        "name": "Puget",
+        "runtime_provider": "openai-codex",
+        "auth_type": "api_key",
+        "base_url": "https://puget.sixmanager.io/v1",
+        "default_model": "qwen3.8-27b",
+        "available_models": [
+            "qwen3.8-27b",
+            "qwen3.6-35b-a3b",
+        ],
+        "description": "Puget inference endpoint — self-hosted OpenAI-compatible Qwen models.",
+        "docs_url": None,
+        "secret_placeholder": "Puget API key (sk-puget-...)",
+        "supports_secret_ref": True,
+        "supports_custom_base_url": True,
+        "enabled": True,
+        "sort_order": 13,
     },
     {
         "slug": "nous-api",

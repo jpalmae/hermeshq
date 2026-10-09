@@ -19,6 +19,7 @@ export function ProvidersTab() {
   const refreshModels = useRefreshProviderModels();
   const { data: secrets } = useSecrets(Boolean(currentUser));
   const [refreshStatus, setRefreshStatus] = useState<Record<string, { ok: boolean; msg: string } | null>>({});
+  const [egressNotice, setEgressNotice] = useState<Record<string, string | null>>({});
 
   const [providerDrafts, setProviderDrafts] = useState<Record<string, {
     name: string;
@@ -65,6 +66,10 @@ export function ProvidersTab() {
         enabled: draft.enabled,
         api_key_ref: draft.api_key_ref || null,
       },
+    }).then((saved) => {
+      setEgressNotice((prev) => ({ ...prev, [providerSlug]: saved?.egress_notice ?? null }));
+    }).catch(() => {
+      setEgressNotice((prev) => ({ ...prev, [providerSlug]: null }));
     });
   }
 
@@ -255,6 +260,14 @@ export function ProvidersTab() {
                 <button type="button" className="panel-button-primary w-full" onClick={() => void saveProvider(provider.slug)}>
                   {t("providers.saveProvider")}
                 </button>
+                {egressNotice[provider.slug] ? (
+                  <p
+                    className="rounded border px-3 py-2 text-xs"
+                    style={{ borderColor: "var(--warning, #d97706)", color: "var(--warning, #b45309)" }}
+                  >
+                    ⚿ {egressNotice[provider.slug]}
+                  </p>
+                ) : null}
               </div>
             </article>
           );
