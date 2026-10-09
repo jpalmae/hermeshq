@@ -43,6 +43,7 @@ USER_EDITABLE_FIELDS = {
     "pi_config",
     "permission_policy_id",
     "permission_policy_ids",
+    "desktop_access_enabled",
 }
 
 MAX_BULK_AGENT_TARGETS = 25
@@ -261,11 +262,18 @@ async def _validate_supervisor(
 
 async def _resolve_runtime_defaults(db: AsyncSession, payload: AgentCreate) -> dict:
     app_settings = await db.get(AppSettings, "default")
+    base_url = payload.base_url or (app_settings.default_base_url if app_settings else None)
+    if not base_url and payload.provider:
+        from hermeshq.models.provider import ProviderDefinition
+
+        definition = await db.get(ProviderDefinition, payload.provider)
+        if definition is not None and definition.base_url:
+            base_url = definition.base_url
     return {
         "model": payload.model or (app_settings.default_model if app_settings else None) or "anthropic/claude-sonnet-4",
         "provider": payload.provider or (app_settings.default_provider if app_settings else None) or "openrouter",
         "api_key_ref": payload.api_key_ref or (app_settings.default_api_key_ref if app_settings else None),
-        "base_url": payload.base_url or (app_settings.default_base_url if app_settings else None),
+        "base_url": base_url,
         "hermes_version": getattr(app_settings, "default_hermes_version", None) if app_settings else None,
     }
 

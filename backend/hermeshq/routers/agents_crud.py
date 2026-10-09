@@ -134,6 +134,7 @@ async def create_agent(
         pi_config=payload.pi_config,
         permission_policy_id=payload.permission_policy_id,
         permission_policy_ids=list(payload.permission_policy_ids or []),
+        desktop_access_enabled=payload.desktop_access_enabled,
         workspace_path="pending",
         auxiliary_models=encrypt_auxiliary_models(
             payload.auxiliary_models,
