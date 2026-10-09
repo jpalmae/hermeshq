@@ -75,6 +75,9 @@ def hq_delegate_task_tool(args, **_kwargs):
     task_id = _kwargs.get("task_id")
     if isinstance(task_id, str) and task_id.strip():
         metadata.setdefault("parent_task_id", task_id.strip())
+    policy_master = os.environ.get("HERMESHQ_POLICY_MASTER", "").strip()
+    if policy_master:
+        metadata.setdefault("policy_master_agent_id", policy_master)
     session_platform = os.environ.get("HERMES_SESSION_PLATFORM", "").strip().lower()
     session_chat_id = os.environ.get("HERMES_SESSION_CHAT_ID", "").strip()
     session_thread_id = os.environ.get("HERMES_SESSION_THREAD_ID", "").strip()

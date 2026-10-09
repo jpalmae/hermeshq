@@ -291,6 +291,7 @@ export interface ProviderDefinition {
     sort_order: number;
     api_key_ref: string | null;
     models_refreshed_at: string | null;
+    egress_notice: string | null;
     created_at: string;
   updated_at: string;
 }
