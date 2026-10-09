@@ -5,5 +5,8 @@
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^1.1.0",
     "undici": "^8.11.2"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.11"
   }
 }
