@@ -4,6 +4,7 @@ from hermeshq.models.agent_assignment import AgentAssignment
 from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.audit_log import AuditLog
 from hermeshq.models.base import Base
+from hermeshq.models.cloud import CloudBinding, CloudPlatform, CloudTenant
 from hermeshq.models.conversation_thread import ConversationThread
 from hermeshq.models.enrolled_device import EnrolledDevice
 from hermeshq.models.hermes_version import HermesVersion
@@ -41,6 +42,9 @@ __all__ = [
     "AppSettings",
     "AuditLog",
     "Base",
+    "CloudBinding",
+    "CloudPlatform",
+    "CloudTenant",
     "ConversationThread",
     "EnrolledDevice",
     "HermesVersion",

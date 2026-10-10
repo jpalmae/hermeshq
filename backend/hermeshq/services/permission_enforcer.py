@@ -145,6 +145,14 @@ class PermissionEnforcer:
         master_agent: Agent | None = None,
     ) -> PermissionDecision:
         if _is_delegation_tool(tool_name):
+            policy = await self.get_policy(agent)
+            rules = (policy.tool_rules or {}) if policy is not None else {}
+            if isinstance(rules, dict) and rules.get("deny_delegation") is True:
+                return PermissionDecision(
+                    False,
+                    f"Delegation is disabled by policy '{policy.name}'",
+                    policy_name=policy.name,
+                )
             return PermissionDecision(True)
         policy = await self.get_policy(agent)
         decision = self.evaluate_policy(agent, policy, tool_name, tool_input)
@@ -339,6 +347,9 @@ class PermissionEnforcer:
         network_rules = policy.network_rules or {}
         if "deny_all" in network_rules and not isinstance(network_rules["deny_all"], bool):
             return "network_rules.deny_all must be a boolean"
+        tool_rules = policy.tool_rules or {}
+        if "deny_delegation" in tool_rules and not isinstance(tool_rules["deny_delegation"], bool):
+            return "tool_rules.deny_delegation must be a boolean"
         return None
 
     @staticmethod

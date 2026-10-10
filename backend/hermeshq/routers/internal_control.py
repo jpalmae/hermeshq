@@ -31,6 +31,7 @@ from hermeshq.routers import secrets as secrets_router
 from hermeshq.routers import users as users_router
 from hermeshq.routers.agents_shared import _serialize_agent as _agents_serialize_agent
 from hermeshq.schemas.agent import AgentCreate, AgentRead, AgentUpdate
+from hermeshq.schemas.cloud import CloudRequestIn
 from hermeshq.schemas.integration_factory import (
     IntegrationDraftCreate,
     IntegrationDraftFileContentRead,
@@ -1494,3 +1495,48 @@ async def control_list_ssh_destinations(
         }
         for d in destinations
     ]
+
+
+@router.post("/cloud/request", include_in_schema=False)
+async def control_cloud_request(
+    payload: CloudRequestIn,
+    request: Request,
+    current_agent: Agent = Depends(_load_internal_system_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from hermeshq.services.cloud.broker import CloudBrokerError
+
+    broker = getattr(request.app.state, "cloud_broker", None)
+    if broker is None:
+        raise HTTPException(status_code=503, detail="Cloud broker unavailable")
+    try:
+        result = await broker.handle(db, current_agent, payload.action, payload.params)
+    except CloudBrokerError as exc:
+        await _log_control_action(
+            db,
+            current_agent,
+            event_type="hq_control.cloud.denied",
+            message=f"cloud action '{payload.action}' denied: {exc}",
+            details={"action": payload.action, "reason": str(exc)},
+        )
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    await _log_control_action(
+        db,
+        current_agent,
+        event_type="hq_control.cloud.request",
+        message=f"cloud action '{payload.action}' on '{result['tenant']['name']}'",
+        details={"action": payload.action, "tenant": result["tenant"]["name"]},
+    )
+    return result
+
+
+@router.get("/cloud/health", include_in_schema=False)
+async def control_cloud_health(
+    request: Request,
+    current_agent: Agent = Depends(_load_internal_system_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> list[dict]:
+    broker = getattr(request.app.state, "cloud_broker", None)
+    if broker is None:
+        raise HTTPException(status_code=503, detail="Cloud broker unavailable")
+    return await broker.health(db, current_agent)

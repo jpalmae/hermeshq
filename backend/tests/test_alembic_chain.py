@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 INITIAL_MIGRATION = BACKEND_DIR / "hermeshq/alembic/versions/d39fa7cf25af_initial_schema_from_models.py"
-HEAD_REVISION = "aa11bb22cc33"
+HEAD_REVISION = "bb22cc33dd44"
 LEGACY_HEAD_REVISION = "q1r2s3t4u5v6"
 
 

@@ -60,6 +60,7 @@ from hermeshq.routers import (
     webhooks,
 )
 from hermeshq.routers import settings as settings_router
+from hermeshq.routers.cloud import router as cloud_router
 from hermeshq.routers.public_chat import management_router as public_chat_management_router
 from hermeshq.routers.public_chat import public_router as public_chat_router
 from hermeshq.routers.public_chat_test_page import router as public_chat_test_router
@@ -307,6 +308,9 @@ async def lifespan(app: FastAPI):
     app.state.enrollment_service = EnrollmentService(
         AsyncSessionLocal, app.state.permission_enforcer, app.state.secret_vault
     )
+    from hermeshq.services.cloud.broker import CloudBrokerService
+
+    app.state.cloud_broker = CloudBrokerService(app.state.secret_vault, AsyncSessionLocal)
     # Expose individual gateway maps for webhook routing
     app.state.session_factory = AsyncSessionLocal
     app.state.google_chat_gateways = app.state.enterprise_gateways.google_chat_gateways
@@ -486,6 +490,7 @@ app.include_router(comms.router, prefix=settings.api_prefix)
 app.include_router(internal_agents.router, prefix=settings.api_prefix)
 app.include_router(internal_control.router, prefix=settings.api_prefix)
 app.include_router(ssh_destinations_router, prefix=settings.api_prefix)
+app.include_router(cloud_router, prefix=settings.api_prefix)
 app.include_router(secrets.router, prefix=settings.api_prefix)
 app.include_router(settings_router.router, prefix=settings.api_prefix)
 app.include_router(backup.router, prefix=settings.api_prefix)

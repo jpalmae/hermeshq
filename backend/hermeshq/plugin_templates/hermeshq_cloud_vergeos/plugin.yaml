@@ -1,0 +1,19 @@
+name: hermeshq_cloud_vergeos
+version: 1.0.0
+description: VergeOS cloud tenant tools (broker-mediated, tenant-scoped)
+toolset: hermeshq_cloud_vergeos
+provides_tools:
+  - vergeos_list_vms
+  - vergeos_get_vm
+  - vergeos_list_networks
+  - vergeos_usage
+  - vergeos_list_snapshots
+  - vergeos_events
+  - vergeos_vm_power
+  - vergeos_snapshot_create
+  - vergeos_snapshot_restore
+  - vergeos_vm_create
+  - vergeos_vm_resize
+  - vergeos_report_inventory
+  - vergeos_report_usage
+  - vergeos_report_snapshots

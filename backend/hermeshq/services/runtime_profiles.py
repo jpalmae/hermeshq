@@ -71,6 +71,41 @@ BUILTIN_RUNTIME_PROFILES: list[dict] = [
         },
     },
     {
+        "slug": "cloud-tenant",
+        "name": "Cloud Tenant",
+        "description": (
+            "Minimal profile for customer agents that manage their own cloud tenant. "
+            "No terminal, browser, or file-write tools: only safe conversation plus the "
+            "cloud tenant integration packages and messaging."
+        ),
+        "typical_roles": [
+            "Cloud tenant operator",
+            "Customer self-service agent",
+        ],
+        "tooling_summary": (
+            "Locked-down runtime for tenant-scoped cloud agents. Conversation, cloud "
+            "tools and messaging only — delegation disabled via seeded policies."
+        ),
+        "container_intent": "Same hardened runtime, minimal toolset.",
+        "defaults": {
+            "enabled_toolsets": [
+                "safe",
+                "skills",
+                "memory",
+                "session_search",
+                "todo",
+                "clarify",
+                "messaging",
+                "vision",
+                "hermeshq_cloud_vergeos",
+            ],
+            "disabled_toolsets": [],
+            "max_iterations": 60,
+            "auto_approve_cmds": False,
+            "command_allowlist": [],
+        },
+    },
+    {
         "slug": "security",
         "name": "Security",
         "description": (
