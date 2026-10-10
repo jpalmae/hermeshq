@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from hermeshq.schemas.common import ORMModel
 
@@ -45,9 +45,15 @@ class CloudTenantCreate(BaseModel):
     platform_id: str
     tenant_ref: str = Field(min_length=1, max_length=255)
     display_name: str = Field(min_length=1, max_length=128)
-    credential_ref: str = Field(min_length=1, max_length=128)
+    credential_ref: str | None = Field(default=None, max_length=128)
     cache_ttl_seconds: int = Field(default=30, ge=5, le=600)
     api_key: str | None = Field(default=None, min_length=8, max_length=512)
+
+    @model_validator(mode="after")
+    def validate_credentials(self) -> "CloudTenantCreate":
+        if not self.credential_ref and not self.api_key:
+            raise ValueError("credential_ref or api_key is required")
+        return self
 
 
 class CloudTenantUpdate(BaseModel):
