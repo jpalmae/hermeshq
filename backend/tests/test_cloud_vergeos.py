@@ -122,7 +122,6 @@ def _binding_row(agent_id: str, role: str, tenant_id: str = "t1"):
     platform = SimpleNamespace(
         id="p1", kind="vergeos", name="Verge Prod", api_url="https://verge.example", insecure_tls=False
     )
-    binding = SimpleNamespace(tenant_id=tenant_id, agent_id=agent_id, cloud_role=role)
     return SimpleNamespace(tenant=tenant, platform=platform, role=role)
 
 
