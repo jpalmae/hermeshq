@@ -36,6 +36,12 @@ CORE_MANAGED_PLUGIN_CATALOG: list[dict] = [
         "standard_compatible": True,
     },
     {
+        "slug": "hermeshq_cloud_vergeos",
+        "template_dir": "hermeshq_cloud_vergeos",
+        "toolset": "hermeshq_cloud_vergeos",
+        "standard_compatible": False,
+    },
+    {
         "slug": "hermeshq_guard",
         "template_dir": "hermeshq_guard",
         "toolset": "hermeshq_guard",
