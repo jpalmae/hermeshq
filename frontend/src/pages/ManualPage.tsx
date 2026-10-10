@@ -531,6 +531,32 @@ const manualContent: Record<"en" | "es", ManualContent> = {
         ],
       },
       {
+        id: "cloud-tenants",
+        eyebrow: "Nube",
+        title: "Cloud multi-tenant (VergeOS)",
+        summary:
+          "Los agentes de cliente administran su propio tenant VergeOS a través del broker: credenciales cifradas por tenant, roles cloud y reportes — sin que la API key salga nunca del servidor.",
+        bullets: [
+          "CÓMO FUNCIONA: en Settings → Cloud registras la plataforma VergeOS (URL), cada tenant con su API key (se guarda cifrada) y el binding agente↔tenant con rol (viewer, operator o admin). Las herramientas vergeos_* del agente llaman al broker de HermesHQ, que resuelve el tenant POR IDENTIDAD DEL AGENTE — el agente no elige tenant ni ve la key.",
+          "ROLES: Viewer consulta (listar VMs, uso, eventos, reportes). Operator enciende/apaga y gestiona snapshots. Admin además crea y redimensiona VMs. Las policies de rol son allowlist estrictas: todo lo no listado se bloquea, la delegación está deshabilitada y la red cerrada — el agente cloud no puede hacer nada fuera de su nube.",
+          "REPORTES: vergeos_report_inventory, vergeos_report_usage y vergeos_report_snapshots generan informes del tenant en markdown con CSV descargable.",
+          "PERFIL RECOMENDADO: crea los agentes de cliente con el perfil de runtime Cloud Tenant (sin terminal ni browser). Asíigna además la policy de rol cloud correspondiente. La API key del tenant define el máximo permiso dentro del tenant; el broker y las policies definen lo que el agente puede pedir.",
+        ],
+      },
+      {
+        id: "cloud-tenants",
+        eyebrow: "Cloud",
+        title: "Multi-tenant cloud (VergeOS)",
+        summary:
+          "Customer agents manage their own VergeOS tenant through the broker: per-tenant encrypted credentials, cloud roles and reports — the API key never leaves the server.",
+        bullets: [
+          "HOW IT WORKS: in Settings → Cloud you register the VergeOS platform (URL), each tenant with its API key (stored encrypted) and the agent↔tenant binding with a role (viewer, operator or admin). The agent's vergeos_* tools call the HermesHQ broker, which resolves the tenant BY AGENT IDENTITY — the agent neither picks the tenant nor sees the key.",
+          "ROLES: Viewer reads (list VMs, usage, events, reports). Operator powers VMs and manages snapshots. Admin additionally creates and resizes VMs. Role policies are strict allowlists: anything not listed is blocked, delegation is disabled and the network closed — the cloud agent cannot do anything outside its cloud.",
+          "REPORTS: vergeos_report_inventory, vergeos_report_usage and vergeos_report_snapshots generate tenant reports in markdown with downloadable CSV.",
+          "RECOMMENDED PROFILE: create customer agents with the Cloud Tenant runtime profile (no terminal, no browser). Also assign the matching cloud role policy. The tenant API key defines the maximum permission inside the tenant; the broker and policies define what the agent may request.",
+        ],
+      },
+      {
         id: "operator-skills-ssh",
         eyebrow: "hq-operator",
         title: "Compartir skills y acceso SSH acotado",

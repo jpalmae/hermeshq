@@ -13,6 +13,7 @@ import nav from "./nav";
 import nodes from "./nodes";
 import providers from "./providers";
 import schedules from "./schedules";
+import cloud from "./cloud";
 import settings from "./settings";
 import shell from "./shell";
 import tasks from "./tasks";
@@ -35,6 +36,7 @@ const en: Record<string, string> = {
   ...nodes,
   ...providers,
   ...schedules,
+  ...cloud,
   ...settings,
   ...shell,
   ...tasks,

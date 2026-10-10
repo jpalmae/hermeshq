@@ -56,15 +56,16 @@ const AuthenticationTab = lazy(() => import("../components/settings/Authenticati
 const EmailTab = lazy(() => import("../components/settings/EmailTab").then((m) => ({ default: m.EmailTab })));
 const ResourcesTab = lazy(() => import("../components/settings/ResourcesTab"));
 const M365Tab = lazy(() => import("../components/settings/M365Tab").then((m) => ({ default: m.default })));
+const CloudTab = lazy(() => import("../components/settings/CloudTab"));
 const PublicChatKeysTab = lazy(() => import("../components/settings/PublicChatKeysTab").then((m) => ({ default: m.default })));
 
-type SettingsTab = "general" | "runtime" | "providers" | "integrations" | "factory" | "externalAccess" | "hermesVersions" | "secrets" | "templates" | "authentication" | "email" | "resources" | "m365" | "publicChatKeys";
+type SettingsTab = "general" | "runtime" | "providers" | "integrations" | "factory" | "externalAccess" | "hermesVersions" | "secrets" | "templates" | "authentication" | "email" | "resources" | "m365" | "publicChatKeys" | "cloud";
 
 const SETTINGS_TAB_STORAGE_KEY = "hermeshq.settings.activeTab";
 
 const ALL_TABS: SettingsTab[] = [
   "general", "runtime", "providers", "integrations",
-  "factory", "externalAccess", "hermesVersions", "secrets", "templates", "authentication", "email", "resources", "m365", "publicChatKeys",
+  "factory", "externalAccess", "hermesVersions", "secrets", "templates", "authentication", "email", "resources", "m365", "publicChatKeys", "cloud",
 ];
 
 function LoadingFallback() {
@@ -142,6 +143,7 @@ export function SettingsPage() {
     { id: "resources", label: t("settings.tabResources"), copy: t("settings.tabResourcesCopy") },
     { id: "m365", label: t("settings.tabM365"), copy: t("settings.tabM365Copy") },
     { id: "publicChatKeys", label: "Public Chat", copy: "Create embeddable chat widget API keys for anonymous website visitors." },
+    { id: "cloud", label: "Cloud", copy: "VergeOS platforms, tenant credentials and agent bindings." },
   ];
 
   const activeTabMeta = settingsTabs.find((tab) => tab.id === activeTab) ?? settingsTabs[0];
@@ -260,6 +262,9 @@ export function SettingsPage() {
           )}
           {activeTab === "m365" && isAdmin && (
             <M365Tab />
+          )}
+          {activeTab === "cloud" && isAdmin && (
+            <CloudTab />
           )}
           {activeTab === "publicChatKeys" && isAdmin && (
             <PublicChatKeysTab
