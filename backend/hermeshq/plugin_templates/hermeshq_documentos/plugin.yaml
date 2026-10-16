@@ -1,0 +1,10 @@
+name: hermeshq_documentos
+version: "1.0.0"
+description: Data tools without code (extract, query, export and compare Excel/CSV and HTML) and a validated skill factory
+author: HermesHQ
+provides_tools:
+  - hq_datos_extraer
+  - hq_datos_consultar
+  - hq_datos_exportar
+  - hq_comparar
+  - hq_skill_crear

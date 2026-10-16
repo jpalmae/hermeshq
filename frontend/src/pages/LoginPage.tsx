@@ -1,3 +1,4 @@
+import axios from "axios";
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
@@ -5,6 +6,22 @@ import { resolveAssetUrl, usePublicBranding } from "../api/settings";
 import { buildOidcLoginUrl, login, useAuthProviders } from "../api/auth";
 import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../stores/sessionStore";
+
+// Only a 401 means the credentials were rejected; everything else is reported
+// as what it is so an outage or rate limit isn't mistaken for a wrong password.
+function loginErrorMessage(error: unknown, t: (key: string, vars?: Record<string, string | number>) => string): string {
+  if (!axios.isAxiosError(error)) return t("login.unexpectedError");
+  const response = error.response;
+  if (!response) {
+    return error.code === "ECONNABORTED" ? t("login.timeout") : t("login.serverUnreachable");
+  }
+  if (response.status === 401) return t("login.invalidCredentials");
+  if (response.status === 429) return t("login.tooManyAttempts");
+  const detail = (response.data as { detail?: unknown } | undefined)?.detail;
+  if (response.status === 503 && typeof detail === "string") return detail;
+  if (response.status >= 500) return t("login.serverError", { status: response.status });
+  return t("login.unexpectedError");
+}
 
 function AuthProviderIcon({ provider }: { provider: string }) {
   const normalized = provider.toLowerCase();
@@ -138,8 +155,8 @@ export function LoginPage() {
       setSession(data.access_token!, null);
       const from = (location.state as { from?: string } | null)?.from;
       navigate(from && from !== "/login" ? from : "/");
-    } catch {
-      setError(t("login.invalidCredentials"));
+    } catch (err) {
+      setError(loginErrorMessage(err, t));
     } finally {
       setLoading(false);
     }

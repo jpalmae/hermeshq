@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
+from pathlib import Path
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 TOOLSET = "hermeshq_ms365_teams"
+
+# Graph's simple PUT .../content upload only supports files up to 4 MiB;
+# larger files need a chunked upload session, which we don't implement here.
+_MAX_SIMPLE_UPLOAD_BYTES = 4 * 1024 * 1024
+_UPLOAD_FOLDER = "HermesHQ Uploads"
 
 
 def _resolve_session_user_id() -> str | None:
@@ -93,8 +101,12 @@ def _get_m365_token(user_id: str) -> tuple[str | None, str]:
         return None, str(exc)
 
 
+def _encode_url(url: str) -> str:
+    return urllib.parse.quote(url, safe="%:/?#[]@!$&'()*+,;=~")
+
+
 def _graph(method: str, path: str, access_token: str, payload: dict | None = None) -> dict:
-    url = (path if path.startswith("https://") else f"{GRAPH_BASE}{path}").replace(" ", "%20")
+    url = _encode_url(path if path.startswith("https://") else f"{GRAPH_BASE}{path}")
     data = json.dumps(payload).encode("utf-8") if payload else None
     req = urllib.request.Request(
         url,
@@ -127,6 +139,55 @@ def _graph(method: str, path: str, access_token: str, payload: dict | None = Non
         if retry_after:
             result["retry_after"] = retry_after
         return result
+
+
+def _upload_file_to_onedrive(access_token: str, file_path: str) -> tuple[dict | None, str]:
+    """Upload a local file to the user's OneDrive and return the created driveItem.
+
+    Used to turn a MEDIA:-style local path into something that can actually be
+    attached to a Teams chat message (Graph has no "attach raw bytes to a chat
+    message" endpoint — a chat attachment is a *reference* to a driveItem).
+    Returns (driveItem, "") on success, or (None, friendly_error) on failure.
+    """
+    path = Path(file_path)
+    if not path.is_file():
+        return None, f"Archivo no encontrado: {file_path}"
+
+    size = path.stat().st_size
+    if size > _MAX_SIMPLE_UPLOAD_BYTES:
+        return None, (
+            f"El archivo pesa {size / (1024 * 1024):.1f} MB; el límite para adjuntar "
+            f"en Teams es {_MAX_SIMPLE_UPLOAD_BYTES / (1024 * 1024):.0f} MB."
+        )
+
+    # A fresh uuid prefix avoids clashing with a previous upload of the same
+    # filename sitting in the folder (OneDrive would otherwise auto-rename it,
+    # e.g. "hola (1).pdf", which is confusing in the chat).
+    dest_name = f"{uuid.uuid4().hex[:8]}_{path.name}"
+    encoded_folder = urllib.parse.quote(_UPLOAD_FOLDER)
+    encoded_name = urllib.parse.quote(dest_name)
+    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+
+    url = f"{GRAPH_BASE}/me/drive/root:/{encoded_folder}/{encoded_name}:/content"
+    req = urllib.request.Request(
+        url,
+        data=path.read_bytes(),
+        method="PUT",
+        headers={"Authorization": f"Bearer {access_token}", "Content-Type": content_type},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            drive_item = json.loads(resp.read().decode("utf-8"))
+            return drive_item, ""
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        try:
+            msg = json.loads(body).get("error", {}).get("message", body)
+        except (json.JSONDecodeError, ValueError):
+            msg = body
+        return None, f"No se pudo subir el archivo a OneDrive: {msg}"
+    except Exception as exc:  # noqa: BLE001  # HTTP request catch-all
+        return None, f"No se pudo subir el archivo a OneDrive: {exc}"
 
 
 def _auth_error(detail: str) -> str:
@@ -218,9 +279,36 @@ def _send_chat_message_tool(args: dict, **_kwargs) -> str:
         return _auth_error(err)
     chat_id = str(args.get("chat_id") or "").strip()
     message = str(args.get("message") or "").strip()
-    if not chat_id or not message:
-        return json.dumps({"success": False, "error": "Se requieren chat_id y message."})
-    payload = {"body": {"contentType": "text", "content": message}}
+    file_path = str(args.get("file_path") or "").strip()
+    if not chat_id or (not message and not file_path):
+        return json.dumps({"success": False, "error": "Se requiere chat_id y al menos message o file_path."})
+
+    attachments = []
+    if file_path:
+        drive_item, upload_err = _upload_file_to_onedrive(token, file_path)
+        if not drive_item:
+            return json.dumps({"success": False, "error": upload_err})
+        attachment_id = drive_item.get("id", "")
+        attachments.append(
+            {
+                "id": attachment_id,
+                "contentType": "reference",
+                "contentUrl": drive_item.get("webUrl", ""),
+                "name": drive_item.get("name", Path(file_path).name),
+            }
+        )
+        # Teams requires an <attachment> tag inside an HTML body to actually
+        # render the reference as a file card; a plain-text body with an
+        # `attachments` array alone is silently ignored by the client.
+        body_html = (
+            f'{message}<attachment id="{attachment_id}"></attachment>'
+            if message
+            else f'<attachment id="{attachment_id}"></attachment>'
+        )
+        payload = {"body": {"contentType": "html", "content": body_html}, "attachments": attachments}
+    else:
+        payload = {"body": {"contentType": "text", "content": message}}
+
     result = _graph("POST", f"/me/chats/{chat_id}/messages", token, payload)
     if "error" in result:
         return json.dumps({"success": False, "error": result["error"]})
@@ -284,17 +372,35 @@ def register(ctx):
         toolset=TOOLSET,
         schema={
             "name": "teams_send_chat_message",
-            "description": "Envía un mensaje de texto a un chat de Microsoft Teams.",
+            "description": (
+                "Envía un mensaje a un chat de Microsoft Teams, opcionalmente con un "
+                "archivo adjunto real (PDF, imagen, etc.). Para adjuntar un archivo que "
+                "generaste, pasa su ruta local en file_path — el archivo se sube a "
+                "OneDrive y se adjunta como tarjeta de archivo real en el chat. "
+                "NO escribas una línea 'MEDIA:/ruta/archivo.ext' dentro de message: esa "
+                "convención no aplica a Teams y el texto se enviaría tal cual, sin "
+                "adjuntar nada."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "chat_id": {"type": "string", "description": "ID del chat de Teams"},
-                    "message": {"type": "string", "description": "Texto del mensaje a enviar"},
+                    "message": {
+                        "type": "string",
+                        "description": "Texto del mensaje. Opcional si se envía file_path.",
+                    },
+                    "file_path": {
+                        "type": "string",
+                        "description": (
+                            "Ruta local del archivo a adjuntar (máx 4 MB). Se sube a OneDrive "
+                            "y se entrega como adjunto real, no como texto."
+                        ),
+                    },
                 },
-                "required": ["chat_id", "message"],
+                "required": ["chat_id"],
             },
         },
         handler=_send_chat_message_tool,
-        description="Enviar mensaje en chat Teams",
+        description="Enviar mensaje (y opcionalmente un archivo) en chat Teams",
         emoji="📤",
     )
