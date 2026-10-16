@@ -220,6 +220,7 @@ class HermesVersionManager:
         self.settings = get_settings()
         self.root = (self.settings.workspaces_root / "_hermes_versions").resolve()
         self._upstream_cache: tuple[float, list[HermesUpstreamVersionRead]] | None = None
+        self._bundled_version_cache: str | None = None
 
     def ensure_root(self) -> Path:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -373,6 +374,14 @@ class HermesVersionManager:
         return process.returncode, stdout.decode("utf-8", errors="replace").strip()
 
     async def detect_bundled_version(self) -> str | None:
+        if self._bundled_version_cache:
+            return self._bundled_version_cache
+        detected = await self._detect_bundled_version_uncached()
+        if detected:
+            self._bundled_version_cache = detected
+        return detected
+
+    async def _detect_bundled_version_uncached(self) -> str | None:
         hermes_bin = shutil.which("hermes")
         if hermes_bin:
             code, output = await self._run_capture(hermes_bin, "--version")

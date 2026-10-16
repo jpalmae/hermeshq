@@ -150,6 +150,12 @@ export const toolProgressModeOptions = [
   { value: "off", labelKey: "agent.toolProgressModeOff" },
 ];
 
+export const thinkingModeOptions = [
+  { value: "inherit", labelKey: "agent.interactionModeInherit" },
+  { value: "on", labelKey: "agent.thinkingModeOn" },
+  { value: "off", labelKey: "agent.thinkingModeOff" },
+];
+
 export const gatewayNotificationsModeOptions = [
   { value: "inherit", labelKey: "agent.interactionModeInherit" },
   { value: "all", labelKey: "agent.gatewayNotificationsModeAll" },
