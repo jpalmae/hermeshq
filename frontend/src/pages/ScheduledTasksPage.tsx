@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { useAgents } from "../api/agents";
 import {
+  useApproveScheduledTask,
   useCreateScheduledTask,
   useDeleteScheduledTask,
   useRunScheduledTaskNow,
@@ -11,6 +12,7 @@ import {
 } from "../api/scheduledTasks";
 import { describeCron, isValidCron } from "../lib/cron";
 import { useI18n } from "../lib/i18n";
+import { useSessionStore } from "../stores/sessionStore";
 import type { ScheduledTask } from "../types/api";
 
 function agentLabel(agent: { friendly_name: string | null; name: string }) {
@@ -32,6 +34,8 @@ export function ScheduledTasksPage() {
   const deleteScheduledTask = useDeleteScheduledTask();
   const updateScheduledTask = useUpdateScheduledTask();
   const runNow = useRunScheduledTaskNow();
+  const approveScheduledTask = useApproveScheduledTask();
+  const currentUser = useSessionStore((state) => state.user);
   const [searchParams] = useSearchParams();
 
   const requestedAgentId = searchParams.get("agentId") ?? "";
@@ -116,6 +120,34 @@ export function ScheduledTasksPage() {
     }
   }
 
+  async function onToggleNotify(schedule: ScheduledTask) {
+    try {
+      await updateScheduledTask.mutateAsync({ id: schedule.id, notify_public_chat: !schedule.notify_public_chat });
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Update failed");
+    }
+  }
+
+  async function onApprove(schedule: ScheduledTask) {
+    const zone = schedule.timezone === "UTC" ? "UTC" : t("schedules.chileTime");
+    const confirmed = window.confirm(
+      t("schedules.approveConfirm", {
+        name: schedule.name,
+        cron: schedule.cron_expression,
+        zone,
+        prompt: schedule.prompt,
+      }),
+    );
+    if (!confirmed) {
+      return;
+    }
+    try {
+      await approveScheduledTask.mutateAsync(schedule);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Approval failed");
+    }
+  }
+
   async function onRunNow(scheduleId: string) {
     try {
       await runNow.mutateAsync(scheduleId);
@@ -190,6 +222,7 @@ export function ScheduledTasksPage() {
           <label className="panel-field">
             <span className="panel-label">{t("schedules.cron")}</span>
             <input value={cronExpression} onChange={(event) => setCronExpression(event.target.value)} />
+            <span className="mt-1 block text-xs text-[var(--text-disabled)]">{t("schedules.chileTime")}</span>
             {cronPreview ? (
               <span className="mt-1 block text-xs text-[var(--success)]">{cronPreview}</span>
             ) : cronExpression.trim() ? (
@@ -267,8 +300,17 @@ export function ScheduledTasksPage() {
                       <div>
                         <p className="panel-label">{schedule.cron_expression}</p>
                         <p className="mt-1 text-xs text-[var(--success)]">{describeCron(schedule.cron_expression, locale as "en" | "es")}</p>
+                        <p className="mt-1 text-xs text-[var(--text-disabled)]">
+                          {schedule.timezone === "UTC" ? "UTC" : t("schedules.chileTime")}
+                        </p>
                         <p className="mt-2 text-xl text-[var(--text-display)]">{schedule.name}</p>
-                        <p className="mt-2 text-sm text-[var(--text-secondary)]">{schedule.prompt}</p>
+                        {schedule.approval_status === "pending" ? (
+                          <p className="mt-2 text-xs uppercase tracking-[0.1em] text-[var(--danger)]">
+                            {t("schedules.pendingApproval")}
+                            {schedule.created_by_agent_id ? ` · ${t("schedules.requestedByAgent")}` : ""}
+                          </p>
+                        ) : null}
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--text-secondary)]">{schedule.prompt}</p>
                       </div>
                       <div>
                         <p className="panel-label">{t("tasks.agent")}</p>
@@ -284,19 +326,43 @@ export function ScheduledTasksPage() {
                       </div>
                     </div>
                     <div className="grid min-w-[14rem] gap-2 content-start">
+                      {schedule.approval_status === "pending" ? (
+                        currentUser?.id === schedule.owner_user_id ? (
+                          <button
+                            type="button"
+                            className="panel-button-primary w-full"
+                            onClick={() => void onApprove(schedule)}
+                            disabled={approveScheduledTask.isPending && approveScheduledTask.variables?.id === schedule.id}
+                          >
+                            {t("schedules.approve")}
+                          </button>
+                        ) : (
+                          <p className="text-xs text-[var(--text-disabled)]">{t("schedules.awaitingOwner")}</p>
+                        )
+                      ) : (
+                        <button
+                          type="button"
+                          className={`panel-button-secondary w-full ${schedule.enabled ? "border-[var(--success)] text-[var(--success)]" : "text-[var(--text-disabled)]"}`}
+                          onClick={() => void onToggleEnabled(schedule)}
+                          disabled={updateScheduledTask.isPending}
+                        >
+                          {schedule.enabled ? t("schedules.disable") : t("schedules.enable")}
+                        </button>
+                      )}
                       <button
                         type="button"
-                        className={`panel-button-secondary w-full ${schedule.enabled ? "border-[var(--success)] text-[var(--success)]" : "text-[var(--text-disabled)]"}`}
-                        onClick={() => void onToggleEnabled(schedule)}
+                        title={t("schedules.notifyHint")}
+                        className={`panel-button-secondary w-full ${schedule.notify_public_chat ? "border-[var(--success)] text-[var(--success)]" : "text-[var(--text-disabled)]"}`}
+                        onClick={() => void onToggleNotify(schedule)}
                         disabled={updateScheduledTask.isPending}
                       >
-                        {schedule.enabled ? t("schedules.disable") : t("schedules.enable")}
+                        {schedule.notify_public_chat ? t("schedules.notifyOn") : t("schedules.notifyOff")}
                       </button>
                       <button
                         type="button"
                         className="panel-button-secondary w-full"
                         onClick={() => void onRunNow(schedule.id)}
-                        disabled={runNow.isPending && runNow.variables === schedule.id}
+                        disabled={schedule.approval_status === "pending" || (runNow.isPending && runNow.variables === schedule.id)}
                       >
                         {runNow.isPending && runNow.variables === schedule.id ? t("common.loading") : t("schedules.runNow")}
                       </button>

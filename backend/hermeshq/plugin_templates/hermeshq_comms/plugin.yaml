@@ -1,4 +1,4 @@
-name: hermeshq-comms
+name: hermeshq_comms
 version: "1.0.0"
 description: HermesHQ internal inter-agent communication tools
 author: HermesHQ

@@ -118,6 +118,7 @@ export interface Agent {
   hermes_version: string | null;
   approval_mode: string | null;
   tool_progress_mode: string | null;
+  thinking_mode?: string | null;
   gateway_notifications_mode: string | null;
   model: string;
   use_provider_default: boolean;
@@ -496,6 +497,11 @@ export interface ScheduledTask {
   cron_expression: string;
   prompt: string;
   enabled: boolean;
+  timezone: string;
+  owner_user_id: string | null;
+  approval_status: "approved" | "pending";
+  created_by_agent_id: string | null;
+  notify_public_chat: boolean;
   last_run: string | null;
   next_run: string | null;
   created_at: string;
@@ -613,6 +619,8 @@ export interface PublicChatApiKey {
   widget_theme: string;
   widget_accent: string;
   widget_position: string;
+  bound_user_id: string | null;
+  trust_sender_id: boolean;
   created_at: string;
 }
 

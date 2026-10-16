@@ -18,18 +18,28 @@ if TYPE_CHECKING:
 # Deben coincidir exactamente con los permisos concedidos en el registro de Azure AD
 AVAILABLE_SCOPES: dict[str, str] = {
     "User.Read": "Perfil del usuario",
+    "User.ReadBasic.All": "Buscar personas en el directorio de la empresa",
     # Mail
     "Mail.Read": "Leer correos",
     "Mail.Send": "Enviar correos",
+    "Mail.ReadWrite": "Leer y escribir correos (adjuntos grandes)",
+    "Mail.Send.Shared": "Enviar correos desde buzones compartidos",
+    "Contacts.ReadWrite": "Leer y escribir contactos",
     # Calendar
     "Calendars.Read": "Leer calendario",
     "Calendars.ReadWrite": "Leer y escribir calendario",
     # Files / SharePoint / OneDrive (delegated)
     "Files.Read.All": "Leer archivos SharePoint y OneDrive",
+    "Files.ReadWrite": "Guardar archivos en el OneDrive del propio usuario",
+    "Files.ReadWrite.All": "Leer y escribir archivos SharePoint y OneDrive",
+    "Sites.ReadWrite.All": "Leer y escribir sitios de SharePoint",
     # Teams / Chat
     "Chat.Read": "Leer chats de Teams",
     "Chat.ReadWrite": "Leer y escribir chats de Teams",
+    "Chat.Create": "Crear chats de Teams",
     "Team.ReadBasic.All": "Leer equipos de Teams",
+    "Group.Read.All": "Leer grupos y equipos",
+    "GroupMember.Read.All": "Leer miembros de grupos y equipos",
 }
 
 # User.Read siempre requerido para identificar al usuario

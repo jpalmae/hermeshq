@@ -20,6 +20,15 @@ const ns: Record<string, string> = {
   "schedules.runNow": "Ejecutar ahora",
   "schedules.empty": "[VACÍO] no hay tareas recurrentes configuradas para este alcance",
   "schedules.invalidCron": "Expresión cron inválida. Se esperan 5 campos separados por espacios (ej. */15 * * * *)",
+  "schedules.approve": "Aprobar y activar",
+  "schedules.pendingApproval": "Pendiente de aprobación",
+  "schedules.awaitingOwner": "Espera la aprobación de quien la solicitó",
+  "schedules.requestedByAgent": "Solicitada por el agente",
+  "schedules.chileTime": "Hora de Chile (America/Santiago)",
+  "schedules.approveConfirm": "Vas a aprobar esta tarea recurrente:\n\nNombre: {name}\nCuándo: {cron} ({zone})\n\nPrompt:\n{prompt}\n\nSe ejecutará automáticamente con TU identidad y tus permisos (incluido tu correo M365). Aprueba solo si el prompt es exactamente lo que quieres.",
+  "schedules.notifyOn": "Avisar en el chat: Sí",
+  "schedules.notifyOff": "Avisar en el chat: No",
+  "schedules.notifyHint": "Envía el resultado al chat (Teams) del usuario dueño",
 };
 
 export default ns;

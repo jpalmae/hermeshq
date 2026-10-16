@@ -1,7 +1,7 @@
 slug: sharepoint
 name: SharePoint
 description: Managed SharePoint integration for document and site workflows. Uses delegated permissions — each user must connect their own Microsoft 365 account from their profile.
-version: "0.2.0"
+version: "0.4.0"
 standard_compatible: true
 supported_profiles:
   - standard

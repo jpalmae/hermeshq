@@ -233,7 +233,10 @@ def register(ctx):
             "description": (
                 "Generate a professional PDF document from HTML content. "
                 "Supports headings, paragraphs, tables, lists, images, blockquotes, and custom CSS styling. "
-                "The PDF is saved to the agent's output directory and can be attached to messages."
+                "The PDF is saved to the agent's output directory and can be attached to messages. "
+                "ALWAYS use this tool for PDFs instead of writing reportlab/weasyprint/fpdf scripts with execute_code: "
+                "a multi-page report renders in under a second, so only the HTML body is needed (title and default "
+                "styling are added for you)."
             ),
             "parameters": {
                 "type": "object",

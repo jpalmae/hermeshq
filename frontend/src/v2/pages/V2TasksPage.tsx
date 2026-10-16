@@ -37,7 +37,7 @@ export function V2TasksPage() {
   useEffect(() => {
     const latest = events[0];
     if (!latest) return;
-    if (latest.type?.startsWith("task.")) {
+    if (latest.type?.startsWith("task.") && latest.type !== "task.progress") {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
     }
   }, [events, queryClient]);

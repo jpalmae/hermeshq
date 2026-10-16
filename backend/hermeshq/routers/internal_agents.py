@@ -1,18 +1,36 @@
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hermeshq.core.security import verify_agent_service_token
+from hermeshq.core.security import can_access_agent, verify_agent_service_token
 from hermeshq.database import get_db_session
+from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
+from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.task import Task
+from hermeshq.models.user import User
 from hermeshq.routers.agents_shared import _load_agent_map
 from hermeshq.schemas.internal_agent import InternalDelegateRead, InternalDirectRead, InternalRosterRead
 from hermeshq.schemas.message import MessageCreate
 from hermeshq.services.agent_hierarchy import delegate_route, route_label, validate_delegate_hierarchy
+from hermeshq.services.cron_schedule import (
+    APPROVAL_CODE_TTL,
+    DEFAULT_TIMEZONE,
+    MAX_AGENT_NAME_CHARS,
+    MAX_AGENT_PROMPT_CHARS,
+    MAX_AGENT_SCHEDULES,
+    CronScheduleError,
+    compute_next_run,
+    generate_approval_code,
+    message_contains_code,
+    resolve_timezone,
+    validate_agent_expression,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/internal/agents/self", tags=["internal-agents"], include_in_schema=False)
@@ -195,3 +213,221 @@ async def delegate_task(
         "delegate_route": route,
         "delegate_reason": route_label(route),
     }
+
+
+class InternalScheduleCreate(BaseModel):
+    name: str
+    cron_expression: str
+    prompt: str
+    requested_for_user_id: str | None = None
+    task_id: str | None = None
+
+
+def _local_time(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.astimezone(resolve_timezone(DEFAULT_TIMEZONE)).strftime("%Y-%m-%d %H:%M %Z")
+
+
+def _schedule_view(item: ScheduledTask) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "name": item.name,
+        "cron_expression": item.cron_expression,
+        "timezone": item.timezone,
+        "prompt": item.prompt,
+        "approval_status": item.approval_status,
+        "enabled": item.enabled,
+        "created_by_agent": item.created_by_agent_id is not None,
+        "next_run_local": _local_time(item.next_run),
+        "last_run_local": _local_time(item.last_run),
+    }
+
+
+@router.get("/schedules")
+async def list_own_schedules(
+    agent: Agent = Depends(_get_internal_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    result = await db.execute(
+        select(ScheduledTask).where(ScheduledTask.agent_id == agent.id).order_by(ScheduledTask.created_at.asc())
+    )
+    return {"success": True, "schedules": [_schedule_view(item) for item in result.scalars().all()]}
+
+
+@router.post("/schedules", status_code=status.HTTP_201_CREATED)
+async def create_own_schedule(
+    payload: InternalScheduleCreate,
+    agent: Agent = Depends(_get_internal_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    user_id = (payload.requested_for_user_id or "").strip()
+    if not user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Schedules can only be requested from a conversation with an identified user",
+        )
+    user = await db.get(User, user_id)
+    if not user or not user.is_active or not await can_access_agent(db, user, agent.id):
+        raise HTTPException(status_code=403, detail="The requesting user cannot schedule tasks for this agent")
+
+    name = payload.name.strip()
+    prompt = payload.prompt.strip()
+    cron_expression = " ".join(payload.cron_expression.split())
+    if not name or not prompt:
+        raise HTTPException(status_code=400, detail="'name' and 'prompt' are required")
+    if len(name) > MAX_AGENT_NAME_CHARS:
+        raise HTTPException(status_code=400, detail=f"'name' must be at most {MAX_AGENT_NAME_CHARS} characters")
+    if len(prompt) > MAX_AGENT_PROMPT_CHARS:
+        raise HTTPException(status_code=400, detail=f"'prompt' must be at most {MAX_AGENT_PROMPT_CHARS} characters")
+    try:
+        first_run = validate_agent_expression(cron_expression, DEFAULT_TIMEZONE)
+    except CronScheduleError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    await db.execute(select(Agent.id).where(Agent.id == agent.id).with_for_update())
+    existing_result = await db.execute(select(ScheduledTask).where(ScheduledTask.agent_id == agent.id))
+    existing = list(existing_result.scalars().all())
+    own_count = sum(1 for item in existing if item.created_by_agent_id == agent.id)
+    if own_count >= MAX_AGENT_SCHEDULES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Limit of {MAX_AGENT_SCHEDULES} agent-created schedules reached; delete one first",
+        )
+    for item in existing:
+        if item.name.strip().lower() == name.lower() or (
+            item.cron_expression == cron_expression and item.prompt.strip() == prompt
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=f"A similar schedule already exists (id {item.id}, status {item.approval_status})",
+            )
+
+    origin_task = await db.get(Task, payload.task_id.strip()) if payload.task_id else None
+    from_public_chat = bool(
+        origin_task
+        and origin_task.agent_id == agent.id
+        and (origin_task.metadata_json or {}).get("source") == "public_chat"
+    )
+    item = ScheduledTask(
+        agent_id=agent.id,
+        name=name,
+        cron_expression=cron_expression,
+        prompt=prompt,
+        enabled=False,
+        timezone=DEFAULT_TIMEZONE,
+        owner_user_id=user.id,
+        approval_status="pending",
+        approval_code=generate_approval_code(),
+        created_by_agent_id=agent.id,
+        notify_public_chat=from_public_chat,
+        next_run=None,
+    )
+    db.add(item)
+    await db.flush()
+    db.add(
+        ActivityLog(
+            agent_id=agent.id,
+            event_type="schedule.pending_approval",
+            message=name,
+            details={"schedule_id": item.id, "requested_for_user_id": user.id, "cron_expression": cron_expression},
+        )
+    )
+    await db.commit()
+    return {
+        "success": True,
+        "schedule_id": item.id,
+        "approval_status": "pending",
+        "approval_code": item.approval_code,
+        "timezone": DEFAULT_TIMEZONE,
+        "first_run_if_approved_now": _local_time(first_run),
+        "message": (
+            "Schedule created but NOT active. Show the user the name, the schedule in Chile time and the exact "
+            f"prompt, then tell them to reply exactly 'aprobar {item.approval_code}' in this same chat. After "
+            "that reply, call hq_schedule_approve. The user can also approve it in HermesHQ > Scheduled Tasks. "
+            "Results of scheduled runs always appear in HermesHQ web (Tasks and the agent conversation panel). "
+            "They are also queued for delivery to this chat when the chat bridge supports notifications, so do "
+            "not promise it will arrive here."
+        ),
+    }
+
+
+class InternalScheduleApprove(BaseModel):
+    task_id: str | None = None
+
+
+@router.post("/schedules/{schedule_id}/approve")
+async def approve_own_schedule(
+    schedule_id: str,
+    payload: InternalScheduleApprove,
+    agent: Agent = Depends(_get_internal_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    task = await db.get(Task, (payload.task_id or "").strip()) if payload.task_id else None
+    if not task or task.agent_id != agent.id or task.status != "running":
+        raise HTTPException(status_code=403, detail="Approval must happen inside a live conversation with the user")
+    task_metadata = task.metadata_json or {}
+    if task_metadata.get("scheduled"):
+        raise HTTPException(status_code=403, detail="Schedules cannot be approved from a scheduled run")
+    user_id = str(task_metadata.get("thread_user_id") or "").strip()
+    item = await db.get(ScheduledTask, schedule_id)
+    if not item or item.agent_id != agent.id or item.created_by_agent_id != agent.id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    if item.approval_status != "pending":
+        raise HTTPException(status_code=409, detail="Schedule is not pending approval")
+    if not user_id or item.owner_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Only the user who requested this schedule can approve it")
+    created_at = item.created_at if item.created_at.tzinfo else item.created_at.replace(tzinfo=UTC)
+    if datetime.now(UTC) - created_at > APPROVAL_CODE_TTL:
+        raise HTTPException(status_code=410, detail="The approval code expired; request the schedule again")
+    if not message_contains_code(task.prompt, item.approval_code):
+        raise HTTPException(
+            status_code=403,
+            detail="The user's latest message does not contain the approval code. Ask them to reply 'aprobar CODE'",
+        )
+    item.approval_status = "approved"
+    item.enabled = True
+    item.approval_code = None
+    item.next_run = compute_next_run(item.cron_expression, item.timezone)
+    db.add(
+        ActivityLog(
+            agent_id=agent.id,
+            task_id=task.id,
+            event_type="schedule.approved",
+            message=item.name,
+            details={"schedule_id": item.id, "approved_by": user_id, "channel": task_metadata.get("source")},
+        )
+    )
+    await db.commit()
+    return {
+        "success": True,
+        "schedule_id": item.id,
+        "approval_status": "approved",
+        "enabled": True,
+        "next_run_local": _local_time(item.next_run),
+        "timezone": item.timezone,
+    }
+
+
+@router.delete("/schedules/{schedule_id}")
+async def delete_own_schedule(
+    schedule_id: str,
+    agent: Agent = Depends(_get_internal_agent),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    item = await db.get(ScheduledTask, schedule_id)
+    if not item or item.agent_id != agent.id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    if item.created_by_agent_id != agent.id:
+        raise HTTPException(status_code=403, detail="Only schedules created by this agent can be deleted by it")
+    await db.delete(item)
+    db.add(
+        ActivityLog(
+            agent_id=agent.id,
+            event_type="schedule.deleted_by_agent",
+            message=item.name,
+            details={"schedule_id": schedule_id},
+        )
+    )
+    await db.commit()
+    return {"success": True, "deleted": schedule_id}

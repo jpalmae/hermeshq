@@ -74,6 +74,7 @@ const v2: Record<string, string> = {
   "v2.instanceDefault": "Default de la instancia",
   "v2.approvalMode": "Modo de aprobación",
   "v2.toolProgress": "Modo de tool progress",
+  "v2.thinkingMode": "Razonamiento del modelo",
   "v2.gatewayNotif": "Notificaciones de gateway",
   "v2.runtimeProfile": "Perfil de runtime",
   "v2.standard": "Estándar",
@@ -122,6 +123,11 @@ const v2: Record<string, string> = {
   "v2.whatShouldAgentDoEach": "¿Qué debe hacer el agente en cada ejecución?",
   "v2.activeSchedules": "Programaciones activas",
   "v2.active": "activa",
+  "v2.approve": "Aprobar y activar",
+  "v2.pendingApproval": "Pendiente de aprobación",
+  "v2.awaitingOwner": "Espera la aprobación de quien la solicitó",
+  "v2.requestedByAgent": "Solicitada por el agente",
+  "v2.chileTime": "Hora de Chile (America/Santiago)",
   "v2.paused": "pausada",
   "v2.runNow": "Ejecutar ahora",
   "v2.runningLoading": "Ejecutando…",
@@ -439,6 +445,10 @@ const v2: Record<string, string> = {
   "v2.addChainedPolicy": "+ Añadir política encadenada",
   "v2.chainHint": "Las políticas se combinan: los denies explícitos siempre ganan; los allows son la unión de todas las políticas encadenadas.",
   "v2.policiesUpdated": "Políticas actualizadas",
+  "v2.approveConfirm": "Vas a aprobar esta tarea recurrente:\n\nNombre: {name}\nCuándo: {cron} ({zone})\n\nPrompt:\n{prompt}\n\nSe ejecutará automáticamente con TU identidad y tus permisos (incluido tu correo M365). Aprueba solo si el prompt es exactamente lo que quieres.",
+  "v2.notifyOn": "Avisar en el chat: Sí",
+  "v2.notifyOff": "Avisar en el chat: No",
+  "v2.notifyHint": "Envía el resultado al chat (Teams) del usuario dueño",
 };
 
 export default v2;

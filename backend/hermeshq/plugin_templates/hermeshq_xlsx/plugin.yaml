@@ -1,0 +1,6 @@
+name: hermeshq_xlsx
+version: "1.0.0"
+description: Excel spreadsheet (.xlsx) generation tool for agents. Create workbooks with one or more sheets from headers and rows.
+author: HermesHQ
+provides_tools:
+  - hq_xlsx_generate
