@@ -8,13 +8,23 @@ STANDARD_ENABLED_TOOLSETS = [
     "file",
     "skills",
     "memory",
-    "session_search",
     "todo",
-    "clarify",
-    "cronjob",
     "messaging",
     "delegation",
     "vision",
+    # Lets agents install/run helper scripts (e.g. pypdf, python-docx) to work
+    # with documents, images, and other files beyond plain text — needed for
+    # agents assigned to teams that handle docs/images. Runs sandboxed per the
+    # hermes-agent runtime's own code_execution isolation (workspace-scoped,
+    # secret-scrubbed env). Added 2026-09-14.
+    "code_execution",
+    # image_gen removed from defaults 2026-09-16: no usable backend is
+    # configured anywhere in this deployment (no FAL_KEY, no Nous
+    # subscription; a self-hosted provider's key only has access to two text
+    # models). With the tool listed but non-functional, agents were
+    # fabricating fake "generated" images via code_execution + Pillow
+    # instead of reporting the failure — worse than not having the tool at
+    # all. Re-add once a real image-gen backend/key exists.
 ] + list_standard_compatible_toolsets()
 
 

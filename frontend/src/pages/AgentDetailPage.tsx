@@ -236,6 +236,7 @@ export function AgentDetailPage() {
         hermes_version: drafts.hermesVersionDraft === "bundled" ? null : drafts.hermesVersionDraft,
         approval_mode: drafts.approvalModeDraft,
         tool_progress_mode: drafts.toolProgressModeDraft,
+        thinking_mode: drafts.thinkingModeDraft,
         gateway_notifications_mode: drafts.gatewayNotificationsModeDraft,
         use_provider_default: drafts.useProviderDefaultDraft,
         ...(drafts.useProviderDefaultDraft ? {} : { model: drafts.customModelDraft }),

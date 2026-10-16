@@ -4,7 +4,7 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from hermeshq.services.agent_supervisor import AgentSupervisor, _ResizableLimiter, _StreamBuffer
+from hermeshq.services.agent_supervisor import HISTORY_USER_MARKER, AgentSupervisor, _ResizableLimiter, _StreamBuffer
 
 
 def _make_supervisor() -> AgentSupervisor:
@@ -107,6 +107,7 @@ class TestConversationHistory(unittest.IsolatedAsyncioTestCase):
             value.messages_json = []
             value.error_message = "internal stack trace" if status == "failed" else None
             value.metadata_json = {"conversation": True, "thread_id": thread_id}
+            value.queued_at = None
             return value
 
         completed = task("completed", "completed", "first", "answer")
@@ -123,7 +124,7 @@ class TestConversationHistory(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             history,
             [
-                {"role": "user", "content": "first"},
+                {"role": "user", "content": HISTORY_USER_MARKER + "first"},
                 {"role": "assistant", "content": "answer"},
             ],
         )

@@ -74,6 +74,7 @@ const v2: Record<string, string> = {
   "v2.instanceDefault": "Instance default",
   "v2.approvalMode": "Approval mode",
   "v2.toolProgress": "Tool progress mode",
+  "v2.thinkingMode": "Model reasoning",
   "v2.gatewayNotif": "Gateway notifications",
   "v2.runtimeProfile": "Runtime profile",
   "v2.standard": "Standard",
@@ -122,6 +123,11 @@ const v2: Record<string, string> = {
   "v2.whatShouldAgentDoEach": "What should the agent do on each run?",
   "v2.activeSchedules": "Active schedules",
   "v2.active": "active",
+  "v2.approve": "Approve and activate",
+  "v2.pendingApproval": "Pending approval",
+  "v2.awaitingOwner": "Waiting for the requesting user to approve",
+  "v2.requestedByAgent": "Requested by the agent",
+  "v2.chileTime": "Chile time (America/Santiago)",
   "v2.paused": "paused",
   "v2.runNow": "Run now",
   "v2.runningLoading": "Running…",
@@ -439,6 +445,10 @@ const v2: Record<string, string> = {
   "v2.addChainedPolicy": "+ Add chained policy",
   "v2.chainHint": "Policies are combined: explicit denies always win; allows are the union of all chained policies.",
   "v2.policiesUpdated": "Policies updated",
+  "v2.approveConfirm": "You are about to approve this recurring task:\n\nName: {name}\nWhen: {cron} ({zone})\n\nPrompt:\n{prompt}\n\nIt will run automatically with YOUR identity and permissions (including your M365 mailbox). Approve only if the prompt is exactly what you want.",
+  "v2.notifyOn": "Notify in chat: On",
+  "v2.notifyOff": "Notify in chat: Off",
+  "v2.notifyHint": "Sends the result to the owner's chat (Teams)",
 };
 
 export default v2;

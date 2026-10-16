@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import type { UseMutationResult } from "@tanstack/react-query";
+import { useUsers } from "../../api/users";
 import type { Agent, PublicChatApiKey, PublicChatApiKeyCreated } from "../../types/api";
 
 interface PublicChatKeysTabProps {
@@ -25,6 +26,9 @@ export default function PublicChatKeysTab({
   const [allowedDomains, setAllowedDomains] = useState("");
   const [requestsPerMonth, setRequestsPerMonth] = useState(1000);
   const [tokensPerMonth, setTokensPerMonth] = useState(100_000);
+  const [boundUserId, setBoundUserId] = useState("");
+  const [trustSenderId, setTrustSenderId] = useState(false);
+  const { data: users } = useUsers();
   const [lastCreatedKey, setLastCreatedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [snippetCopied, setSnippetCopied] = useState(false);
@@ -47,6 +51,19 @@ export default function PublicChatKeysTab({
   }>({ widget_title: "", widget_theme: "auto", widget_accent: "#6366f1", widget_position: "right" });
 
   const activeAgents = (agents ?? []).filter((a) => !a.is_archived);
+
+  const widgetCustomized =
+    widgetTitle.trim() !== "" || widgetTheme !== "auto" || widgetAccent !== "#6366f1" || widgetPosition !== "right";
+
+  function assignableUsers(forAgentId: string) {
+    return (users ?? []).filter((u) => u.is_active && u.assigned_agent_ids.includes(forAgentId));
+  }
+
+  function userDisplayName(id: string | null): string {
+    if (!id) return "—";
+    const user = (users ?? []).find((u) => u.id === id);
+    return user ? user.display_name || user.username : id;
+  }
 
   function buildSnippet(apiKeyPrefix: string, appearance: { widget_title: string | null; widget_theme: string; widget_accent: string; widget_position: string }, rawKey?: string): string {
     const key = rawKey || `${apiKeyPrefix}...`;
@@ -78,8 +95,12 @@ export default function PublicChatKeysTab({
       widget_theme: widgetTheme,
       widget_accent: widgetAccent,
       widget_position: widgetPosition,
+      bound_user_id: boundUserId || null,
+      trust_sender_id: trustSenderId,
     });
     setLastCreatedKey(result.raw_key);
+    setBoundUserId("");
+    setTrustSenderId(false);
     setCopied(false);
     setSnippetCopied(false);
     setLabel("");
@@ -155,7 +176,7 @@ export default function PublicChatKeysTab({
             </label>
             <label className="panel-field">
               <span className="panel-label">Agent</span>
-              <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className={selectClass}>
+              <select value={agentId} onChange={(e) => { setAgentId(e.target.value); setBoundUserId(""); }} className={selectClass}>
                 <option value="">Select an agent…</option>
                 {activeAgents.map((agent) => (
                   <option key={agent.id} value={agent.id}>
@@ -168,6 +189,40 @@ export default function PublicChatKeysTab({
               <span className="panel-label">Allowed domains</span>
               <input value={allowedDomains} onChange={(e) => setAllowedDomains(e.target.value)} placeholder="*, example.com, app.example.com" />
               <span className="mt-1 block text-xs text-[var(--text-secondary)]">Comma-separated. Use * to allow any domain.</span>
+            </label>
+            <label className="panel-field">
+              <span className="panel-label">Bound user (server-side only)</span>
+              <select
+                value={boundUserId}
+                onChange={(e) => setBoundUserId(e.target.value)}
+                className={selectClass}
+                disabled={!agentId || widgetCustomized || trustSenderId}
+              >
+                <option value="">Anonymous (no M365 access)</option>
+                {assignableUsers(agentId).map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.display_name || user.username}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-[var(--warning)]">
+                Anyone holding this key acts with this user&apos;s Microsoft 365 permissions. Use it only from a trusted server
+                (e.g. a Teams bridge), never in a browser widget.
+                {widgetCustomized ? " Disabled because widget appearance is customized." : ""}
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-[var(--text-secondary)]">
+              <input
+                type="checkbox"
+                checked={trustSenderId}
+                disabled={widgetCustomized || !!boundUserId}
+                onChange={(e) => setTrustSenderId(e.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                Trust sender ID from the server (per-user identity). The bridge sends the Teams user ID when it opens a session and
+                each person gets their own Microsoft 365 permissions. Only enable on a key used by a trusted server.
+              </span>
             </label>
             <div className="grid grid-cols-2 gap-4">
               <label className="panel-field">
@@ -275,10 +330,46 @@ export default function PublicChatKeysTab({
                 <p><strong>Domains:</strong> {key.allowed_domains.length ? key.allowed_domains.join(", ") : "any"}</p>
                 <p><strong>Requests/mo:</strong> {key.requests_per_month.toLocaleString()}</p>
                 <p><strong>Tokens/mo:</strong> {key.tokens_per_month.toLocaleString()}</p>
+                <p>
+                  <strong>Bound user:</strong>{" "}
+                  <select
+                    value={key.bound_user_id ?? ""}
+                    onChange={(e) =>
+                      updatePublicChatKey.mutate({ keyId: key.id, payload: { bound_user_id: e.target.value || null } })
+                    }
+                    className={selectClass}
+                    disabled={updatePublicChatKey.isPending}
+                  >
+                    <option value="">{key.bound_user_id ? `Anonymous (was ${userDisplayName(key.bound_user_id)})` : "Anonymous"}</option>
+                    {assignableUsers(key.agent_id).map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.display_name || user.username}
+                      </option>
+                    ))}
+                  </select>
+                </p>
+                <p>
+                  <strong>Trusted sender ID:</strong>{" "}
+                  <input
+                    type="checkbox"
+                    checked={key.trust_sender_id}
+                    disabled={updatePublicChatKey.isPending || !!key.bound_user_id}
+                    onChange={(e) =>
+                      updatePublicChatKey.mutate({ keyId: key.id, payload: { trust_sender_id: e.target.checked } })
+                    }
+                  />
+                </p>
                 <p><strong>Theme:</strong> {key.widget_theme}</p>
                 <p><strong>Color:</strong> <span className="inline-block h-3 w-3 rounded-full align-middle" style={{ background: key.widget_accent }} /> {key.widget_accent}</p>
                 <p><strong>Created:</strong> {new Date(key.created_at).toLocaleDateString()}</p>
               </div>
+
+              {updatePublicChatKey.isError ? (
+                <p className="mt-3 text-xs text-[var(--danger)]">
+                  {(updatePublicChatKey.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+                    updatePublicChatKey.error.message}
+                </p>
+              ) : null}
 
               {/* Actions */}
               <div className="mt-4 flex flex-wrap gap-3">
