@@ -938,6 +938,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/capability-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Capability Requests */
+        get: operations["list_capability_requests_api_capability_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/capability-requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Capability Request */
+        patch: operations["update_capability_request_api_capability_requests__request_id__patch"];
+        trace?: never;
+    };
     "/api/cloud/bindings": {
         parameters: {
             query?: never;
@@ -1369,6 +1403,23 @@ export interface paths {
         put?: never;
         /** Enroll Device */
         post: operations["enroll_device_api_enrollment_enroll_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/enrollment/llm/v1/chat/completions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Llm Proxy Chat */
+        post: operations["llm_proxy_chat_api_enrollment_llm_v1_chat_completions_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2104,6 +2155,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/public/chat/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Notifications */
+        get: operations["list_notifications_api_public_chat_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/chat/notifications/{notification_id}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge Notification */
+        post: operations["acknowledge_notification_api_public_chat_notifications__notification_id__ack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/public/chat/sessions": {
         parameters: {
             query?: never;
@@ -2115,6 +2200,33 @@ export interface paths {
         put?: never;
         /** Create Session */
         post: operations["create_session_api_public_chat_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/chat/sessions/{session_id}/attachments/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Attachment
+         * @description Serve a file the agent generated during this public chat session.
+         *
+         *     Auth accepts the session token via header (fetch/XHR clients) or query
+         *     param (the widget's own download links, since a plain anchor tag can't
+         *     send custom headers). Ownership is checked by requiring the file_id to
+         *     appear in a task's response_attachments *and* that task to belong to
+         *     this exact session_id — a stolen/guessed file_id from another session
+         *     won't resolve here.
+         */
+        get: operations["download_attachment_api_public_chat_sessions__session_id__attachments__file_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2271,6 +2383,23 @@ export interface paths {
         post?: never;
         /** Delete Scheduled Task */
         delete: operations["delete_scheduled_task_api_scheduled_tasks__scheduled_task_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scheduled-tasks/{scheduled_task_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Scheduled Task */
+        post: operations["approve_scheduled_task_api_scheduled_tasks__scheduled_task_id__approve_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3357,6 +3486,8 @@ export interface components {
              * @default []
              */
             team_tags: string[];
+            /** Thinking Mode */
+            thinking_mode?: string | null;
             /** Tool Progress Mode */
             tool_progress_mode?: string | null;
             /**
@@ -3507,6 +3638,8 @@ export interface components {
             system_scope: string | null;
             /** Team Tags */
             team_tags: string[];
+            /** Thinking Mode */
+            thinking_mode?: string | null;
             /** Tool Progress Mode */
             tool_progress_mode: string | null;
             /** Total Tasks */
@@ -3633,6 +3766,8 @@ export interface components {
             system_prompt?: string | null;
             /** Team Tags */
             team_tags?: string[] | null;
+            /** Thinking Mode */
+            thinking_mode?: string | null;
             /** Tool Progress Mode */
             tool_progress_mode?: string | null;
             /** Use Provider Default */
@@ -3655,6 +3790,8 @@ export interface components {
             agent_id: string;
             /** Allowed Domains */
             allowed_domains: string[];
+            /** Bound User Id */
+            bound_user_id?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -3672,6 +3809,11 @@ export interface components {
             requests_per_month: number;
             /** Tokens Per Month */
             tokens_per_month: number;
+            /**
+             * Trust Sender Id
+             * @default false
+             */
+            trust_sender_id: boolean;
             /** Widget Accent */
             widget_accent: string;
             /** Widget Position */
@@ -3995,6 +4137,59 @@ export interface components {
             /** Team Tag */
             team_tag: string;
         };
+        /** CapabilityRequestRead */
+        CapabilityRequestRead: {
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Name */
+            agent_name?: string | null;
+            /** Attempts */
+            attempts?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Example */
+            example?: string | null;
+            /**
+             * Files Json
+             * @default []
+             */
+            files_json: unknown[];
+            /** Id */
+            id: string;
+            /** Me Too Count */
+            me_too_count: number;
+            /** Requested By Name */
+            requested_by_name?: string | null;
+            /** Requested By User Id */
+            requested_by_user_id?: string | null;
+            /** Resolution */
+            resolution?: string | null;
+            /** Resolved At */
+            resolved_at?: string | null;
+            /** Status */
+            status: string;
+            /** Task Id */
+            task_id?: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** CapabilityRequestUpdate */
+        CapabilityRequestUpdate: {
+            /** Resolution */
+            resolution?: string | null;
+            /** Status */
+            status?: string | null;
+        };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
             /** Current Password */
@@ -4179,6 +4374,8 @@ export interface components {
             agent_id: string;
             /** Allowed Domains */
             allowed_domains?: string[];
+            /** Bound User Id */
+            bound_user_id?: string | null;
             /** Label */
             label: string;
             /**
@@ -4192,6 +4389,11 @@ export interface components {
              */
             tokens_per_month: number;
             /**
+             * Trust Sender Id
+             * @default false
+             */
+            trust_sender_id: boolean;
+            /**
              * Widget Accent
              * @default #6366f1
              */
@@ -4204,7 +4406,10 @@ export interface components {
             widget_title?: string | null;
         };
         /** CreateSessionRequest */
-        CreateSessionRequest: Record<string, never>;
+        CreateSessionRequest: {
+            /** Sender Id */
+            sender_id?: string | null;
+        };
         /** CreateSessionResponse */
         CreateSessionResponse: {
             /** Agent Name */
@@ -5406,6 +5611,26 @@ export interface components {
             /** Status */
             status?: string | null;
         };
+        /** NotificationRead */
+        NotificationRead: {
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Schedule Id */
+            schedule_id?: string | null;
+            /** Sender Id */
+            sender_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+            /** Title */
+            title: string;
+        };
         /** OidcProviderCreate */
         OidcProviderCreate: {
             /** Allowed Domains */
@@ -5876,6 +6101,13 @@ export interface components {
             /** Slug */
             slug: string;
         };
+        /** ScheduledTaskApprove */
+        ScheduledTaskApprove: {
+            /** Cron Expression */
+            cron_expression: string;
+            /** Prompt */
+            prompt: string;
+        };
         /** ScheduledTaskCreate */
         ScheduledTaskCreate: {
             /** Agent Id */
@@ -5889,18 +6121,32 @@ export interface components {
             enabled: boolean;
             /** Name */
             name: string;
+            /**
+             * Notify Public Chat
+             * @default false
+             */
+            notify_public_chat: boolean;
             /** Prompt */
             prompt: string;
+            /**
+             * Timezone
+             * @default America/Santiago
+             */
+            timezone: string;
         };
         /** ScheduledTaskRead */
         ScheduledTaskRead: {
             /** Agent Id */
             agent_id: string;
+            /** Approval Status */
+            approval_status: string;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+            /** Created By Agent Id */
+            created_by_agent_id: string | null;
             /** Cron Expression */
             cron_expression: string;
             /** Enabled */
@@ -5913,8 +6159,14 @@ export interface components {
             name: string;
             /** Next Run */
             next_run: string | null;
+            /** Notify Public Chat */
+            notify_public_chat: boolean;
+            /** Owner User Id */
+            owner_user_id: string | null;
             /** Prompt */
             prompt: string;
+            /** Timezone */
+            timezone: string;
             /**
              * Updated At
              * Format: date-time
@@ -5929,8 +6181,12 @@ export interface components {
             enabled?: boolean | null;
             /** Name */
             name?: string | null;
+            /** Notify Public Chat */
+            notify_public_chat?: boolean | null;
             /** Prompt */
             prompt?: string | null;
+            /** Timezone */
+            timezone?: string | null;
         };
         /** SecretCreate */
         SecretCreate: {
@@ -6329,6 +6585,8 @@ export interface components {
         UpdateApiKeyRequest: {
             /** Allowed Domains */
             allowed_domains?: string[] | null;
+            /** Bound User Id */
+            bound_user_id?: string | null;
             /** Is Active */
             is_active?: boolean | null;
             /** Label */
@@ -6337,6 +6595,8 @@ export interface components {
             requests_per_month?: number | null;
             /** Tokens Per Month */
             tokens_per_month?: number | null;
+            /** Trust Sender Id */
+            trust_sender_id?: boolean | null;
             /** Widget Accent */
             widget_accent?: string | null;
             widget_position?: components["schemas"]["WidgetPosition"] | null;
@@ -8554,6 +8814,76 @@ export interface operations {
             };
         };
     };
+    list_capability_requests_api_capability_requests_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CapabilityRequestRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_capability_request_api_capability_requests__request_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CapabilityRequestUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CapabilityRequestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_bindings_api_cloud_bindings_get: {
         parameters: {
             query?: {
@@ -9551,6 +9881,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeviceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    llm_proxy_chat_api_enrollment_llm_v1_chat_completions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-HermesHQ-Device-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -11599,6 +11960,72 @@ export interface operations {
             };
         };
     };
+    list_notifications_api_public_chat_notifications_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header: {
+                "X-Api-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    acknowledge_notification_api_public_chat_notifications__notification_id__ack_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Api-Key": string;
+            };
+            path: {
+                notification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_session_api_public_chat_sessions_post: {
         parameters: {
             query?: never;
@@ -11621,6 +12048,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreateSessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_attachment_api_public_chat_sessions__session_id__attachments__file_id__get: {
+        parameters: {
+            query?: {
+                /** @description Session token — fallback for plain <a href> links, which can't set headers */
+                token?: string | null;
+            };
+            header?: {
+                "X-Session-Token"?: string | null;
+            };
+            path: {
+                session_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -11979,6 +12443,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_scheduled_task_api_scheduled_tasks__scheduled_task_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scheduled_task_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduledTaskApprove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduledTaskRead"];
+                };
             };
             /** @description Validation Error */
             422: {

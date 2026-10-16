@@ -28,6 +28,7 @@ from hermeshq.routers import (
     audit,
     auth,
     backup,
+    capability_requests,
     comms,
     dashboard,
     desktop_gateway,
@@ -500,6 +501,7 @@ app.include_router(templates.router, prefix=settings.api_prefix)
 app.include_router(logs.router, prefix=settings.api_prefix)
 app.include_router(terminal_sessions.router, prefix=settings.api_prefix)
 app.include_router(scheduled_tasks.router, prefix=settings.api_prefix)
+app.include_router(capability_requests.router, prefix=settings.api_prefix)
 app.include_router(oidc_admin.router, prefix=settings.api_prefix)
 app.include_router(users.router, prefix=settings.api_prefix)
 app.include_router(permission_policies.router, prefix=settings.api_prefix)

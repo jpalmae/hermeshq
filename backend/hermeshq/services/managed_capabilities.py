@@ -24,6 +24,12 @@ CORE_MANAGED_PLUGIN_CATALOG: list[dict] = [
         "system_only": True,
     },
     {
+        "slug": "hermeshq_schedule",
+        "template_dir": "hermeshq_schedule",
+        "toolset": "hermeshq_schedule",
+        "standard_compatible": False,
+    },
+    {
         "slug": "hermeshq_pdf",
         "template_dir": "hermeshq_pdf",
         "toolset": "hermeshq_pdf",
@@ -47,6 +53,24 @@ CORE_MANAGED_PLUGIN_CATALOG: list[dict] = [
         "toolset": "hermeshq_guard",
         "standard_compatible": True,
         "desktop_guard": True,
+    },
+    {
+        "slug": "hermeshq_docx",
+        "template_dir": "hermeshq_docx",
+        "toolset": "hermeshq_docx",
+        "standard_compatible": True,
+    },
+    {
+        "slug": "hermeshq_pptx",
+        "template_dir": "hermeshq_pptx",
+        "toolset": "hermeshq_pptx",
+        "standard_compatible": True,
+    },
+    {
+        "slug": "hermeshq_xlsx",
+        "template_dir": "hermeshq_xlsx",
+        "toolset": "hermeshq_xlsx",
+        "standard_compatible": True,
     },
 ]
 

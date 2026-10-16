@@ -20,6 +20,15 @@ const ns: Record<string, string> = {
   "schedules.runNow": "Run now",
   "schedules.empty": "[EMPTY] no recurring tasks configured for this scope",
   "schedules.invalidCron": "Invalid cron expression. Expected 5 space-separated fields (e.g. */15 * * * *)",
+  "schedules.approve": "Approve and activate",
+  "schedules.pendingApproval": "Pending approval",
+  "schedules.awaitingOwner": "Waiting for the requesting user to approve",
+  "schedules.requestedByAgent": "Requested by the agent",
+  "schedules.chileTime": "Chile time (America/Santiago)",
+  "schedules.approveConfirm": "You are about to approve this recurring task:\n\nName: {name}\nWhen: {cron} ({zone})\n\nPrompt:\n{prompt}\n\nIt will run automatically with YOUR identity and permissions (including your M365 mailbox). Approve only if the prompt is exactly what you want.",
+  "schedules.notifyOn": "Notify in chat: On",
+  "schedules.notifyOff": "Notify in chat: Off",
+  "schedules.notifyHint": "Sends the result to the owner's chat (Teams)",
 };
 
 export default ns;

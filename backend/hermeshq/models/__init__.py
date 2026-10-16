@@ -4,6 +4,7 @@ from hermeshq.models.agent_assignment import AgentAssignment
 from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.audit_log import AuditLog
 from hermeshq.models.base import Base
+from hermeshq.models.capability_request import CapabilityRequest
 from hermeshq.models.cloud import CloudBinding, CloudPlatform, CloudTenant
 from hermeshq.models.conversation_thread import ConversationThread
 from hermeshq.models.enrolled_device import EnrolledDevice
@@ -21,6 +22,7 @@ from hermeshq.models.provider import ProviderDefinition
 from hermeshq.models.public_chat import (
     PublicChatApiKey,
     PublicChatMessage,
+    PublicChatNotification,
     PublicChatSession,
     PublicChatTranscript,
 )
@@ -42,6 +44,7 @@ __all__ = [
     "AppSettings",
     "AuditLog",
     "Base",
+    "CapabilityRequest",
     "CloudBinding",
     "CloudPlatform",
     "CloudTenant",
@@ -59,6 +62,7 @@ __all__ = [
     "ProviderDefinition",
     "PublicChatApiKey",
     "PublicChatMessage",
+    "PublicChatNotification",
     "PublicChatSession",
     "PublicChatTranscript",
     "ScheduledTask",

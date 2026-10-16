@@ -1,0 +1,10 @@
+name: hermeshq_schedule
+version: "1.0.0"
+description: Lets an agent request recurring scheduled tasks for itself (subject to user approval) and register capability requests for the administrator
+author: HermesHQ
+provides_tools:
+  - hq_solicitar_capacidad
+  - hq_schedule_request
+  - hq_schedule_approve
+  - hq_schedule_list
+  - hq_schedule_delete

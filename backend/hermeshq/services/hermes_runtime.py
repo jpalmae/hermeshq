@@ -112,6 +112,93 @@ class HermesRuntime(RuntimeBase):
 
         return max(60, int(get_settings().task_timeout_seconds))
 
+    @staticmethod
+    def _task_timeout_for(task: Task) -> int:
+        from hermeshq.config import get_settings
+
+        limit = HermesRuntime._task_timeout_seconds()
+        if str((task.metadata_json or {}).get("source") or "") == "public_chat":
+            public_limit = int(get_settings().public_chat_task_timeout_seconds)
+            if public_limit > 0:
+                return max(60, min(limit, public_limit))
+        return limit
+
+    @staticmethod
+    def _thinking_overrides(thinking_mode: str | None) -> dict:
+        if thinking_mode not in ("on", "off"):
+            return {}
+        return {"extra_body": {"chat_template_kwargs": {"enable_thinking": thinking_mode == "on"}}}
+
+    @staticmethod
+    def _merge_overrides(base: dict, extra: dict) -> dict:
+        merged = dict(base)
+        for key, value in extra.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = HermesRuntime._merge_overrides(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+
+    @staticmethod
+    def _effective_thinking_mode(agent: Agent, task: Task | None) -> str | None:
+        from hermeshq.config import get_settings
+
+        mode = getattr(agent, "thinking_mode", None)
+        metadata = (getattr(task, "metadata_json", None) or {}) if task is not None else {}
+        if metadata.get("scheduled") and get_settings().scheduled_tasks_thinking == "off":
+            return "off"
+        return mode
+
+    @staticmethod
+    def _build_request_overrides(agent: Agent, hermes_home: Path, task: Task | None = None) -> dict:
+        return HermesRuntime._merge_overrides(
+            HermesRuntime._thinking_overrides(HermesRuntime._effective_thinking_mode(agent, task)),
+            HermesRuntime._load_request_overrides(hermes_home),
+        )
+
+    @staticmethod
+    def _load_request_overrides(hermes_home: Path) -> dict:
+        path = hermes_home / "request_overrides.json"
+        if not path.is_file():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            logger.warning("Ignoring unreadable request overrides at %s", path)
+            return {}
+        if not isinstance(data, dict):
+            logger.warning("Ignoring request overrides at %s: expected a JSON object", path)
+            return {}
+        return data
+
+    @staticmethod
+    def _task_idle_timeout_seconds() -> int:
+        from hermeshq.config import get_settings
+
+        return max(0, int(get_settings().task_idle_timeout_seconds))
+
+    @staticmethod
+    async def _readline_or_stall(stdout: asyncio.StreamReader, idle_timeout: int | None) -> bytes:
+        try:
+            return await asyncio.wait_for(stdout.readline(), timeout=idle_timeout)
+        except TimeoutError as exc:
+            raise RuntimeExecutionError(
+                f"Hermes runtime produced no output for {idle_timeout}s and was stopped"
+            ) from exc
+
+    @staticmethod
+    def _model_timeout_env() -> dict[str, str]:
+        from hermeshq.config import get_settings
+
+        base = max(30, int(get_settings().model_call_timeout_seconds))
+        return {
+            "HERMES_API_TIMEOUT": str(base * 3),
+            "HERMES_STREAM_READ_TIMEOUT": str(base),
+            "HERMES_STREAM_STALE_TIMEOUT": str(base + base // 2),
+            "HERMES_API_CALL_STALE_TIMEOUT": str(base * 2),
+            "HERMES_STREAM_RETRIES": "1",
+        }
+
     async def execute(
         self,
         agent: Agent,
@@ -195,6 +282,30 @@ class HermesRuntime(RuntimeBase):
         runtime_provider = self.installation_manager._model_provider_for_agent(agent)
         effective_base_url = await self.installation_manager._effective_provider_base_url(agent)
         effective_model = await self._resolve_effective_model(agent, runtime_provider)
+        # ── File delivery instructions: apply to every task, every channel ──
+        # The MEDIA: parser below (which turns these lines into response
+        # attachments) runs unconditionally for all tasks. Without telling
+        # the model about it here, it has no way to know the convention and
+        # falls back to inventing something plausible-but-wrong (e.g. a
+        # ChatGPT-style `sandbox:` markdown link, which delivers as dead
+        # text instead of a real attachment). This was previously gated to
+        # mobile_app tasks only, so every other channel silently failed to
+        # deliver generated files. Fixed 2026-09-15.
+        runtime_system_prompt = (
+            runtime_system_prompt + "\n\n"
+            "When you generate a file (PDF, image, spreadsheet, etc.), save it "
+            "in your work/ or output/ directory — NOT in /tmp or other system "
+            "locations. After generating it, add a line at the END of your "
+            "response in the exact format: MEDIA:/path/to/your/file.ext — this "
+            "is required for the file to be delivered to the user as a real "
+            "attachment. Do NOT use any other link format (e.g. markdown links, "
+            "`sandbox:` URIs) to reference generated files — those are not "
+            "understood by this platform and will not deliver anything. "
+            "Do NOT mention the file path anywhere else in your response text; "
+            "the MEDIA: line is stripped automatically and the file is attached "
+            "for you."
+        )
+
         # ── Channel routing: suppress external channels for mobile_app tasks ──
         _task_meta = task.metadata_json or {}
         _reply_to = str(_task_meta.get("reply_to") or _task_meta.get("source") or "").strip().lower()
@@ -203,15 +314,7 @@ class HermesRuntime(RuntimeBase):
                 runtime_system_prompt + "\n\n" + "IMPORTANT: You are responding through the SixAgentic mobile app. "
                 "Always provide your response directly in the task response text. "
                 "Do NOT send responses through Telegram, WhatsApp, email, or any other "
-                "external channel. "
-                "When you generate files (PDFs, images, spreadsheets, etc.), save them "
-                "in your work/ directory — NOT in /tmp or other system locations. "
-                "After generating a file, add a line at the END of your response in the "
-                "exact format: MEDIA:/path/to/your/file.ext — this is required for the "
-                "file to be delivered to the user. "
-                "Do NOT mention file paths elsewhere in your response text. "
-                "Any files you generate will be automatically collected and attached "
-                "as response_attachments."
+                "external channel."
             )
 
         execution_workspace = (
@@ -238,10 +341,19 @@ class HermesRuntime(RuntimeBase):
             "metadata": task.metadata_json or {},
         }
 
+        host_hermes_home = self.installation_manager.build_hermes_home(agent.workspace_path)
+        request_overrides = self._build_request_overrides(agent, host_hermes_home, task)
+        if request_overrides:
+            payload["request_overrides"] = request_overrides
+
         if fallback_override:
             for key, value in fallback_override.items():
                 if value is not None:
                     payload[key] = value
+
+        task_timeout = self._task_timeout_for(task)
+        for env_key, env_value in self._model_timeout_env().items():
+            process_env.setdefault(env_key, env_value)
 
         process: asyncio.subprocess.Process | None = None
         if self.runtime_runner_client is None:
@@ -298,19 +410,18 @@ class HermesRuntime(RuntimeBase):
             except (BrokenPipeError, ConnectionResetError):
                 pass
             assert process.stdout is not None
+            idle_timeout = self._task_idle_timeout_seconds() or None
             while True:
-                line = await process.stdout.readline()
+                line = await self._readline_or_stall(process.stdout, idle_timeout)
                 if not line:
                     break
                 await handle_line(line.decode("utf-8", errors="replace").strip())
             return result
 
         try:
-            final_result = await asyncio.wait_for(_consume(), timeout=self._task_timeout_seconds())
+            final_result = await asyncio.wait_for(_consume(), timeout=task_timeout)
         except TimeoutError as exc:
-            raise RuntimeExecutionError(
-                f"Hermes runtime exceeded the task timeout of {self._task_timeout_seconds()}s"
-            ) from exc
+            raise RuntimeExecutionError(f"Hermes runtime exceeded the task timeout of {task_timeout}s") from exc
         finally:
             if process is not None and process.returncode is None:
                 process.kill()
@@ -319,14 +430,21 @@ class HermesRuntime(RuntimeBase):
                 except TimeoutError:
                     logger.warning("Task runner subprocess %s did not exit after kill", process.pid)
 
+        stderr_output = ""
+        return_code: int | None = None
         if process is not None:
-            stderr_output = ""
             if process.stderr is not None:
                 stderr_output = (await process.stderr.read()).decode("utf-8", errors="replace").strip()
             return_code = process.returncode if process.returncode is not None else await process.wait()
             if return_code != 0 and not final_result:
                 raise RuntimeExecutionError(stderr_output or "Hermes runtime process exited with an error")
         if not final_result:
+            logger.warning(
+                "Hermes runtime ended without a result payload (task=%s, returncode=%s, stderr=%s)",
+                task.id,
+                return_code,
+                stderr_output[-1500:] or "<empty>",
+            )
             raise RuntimeExecutionError("Hermes runtime returned no result payload")
 
         raw_response = str(final_result.get("final_response") or "").strip()
@@ -361,68 +479,77 @@ class HermesRuntime(RuntimeBase):
         # The agent may emit lines like "MEDIA:/path/to/file.pdf" to indicate
         # files it generated. We extract these, copy to uploads/, and strip
         # the references from the response text.
+        import json as _json
         import re as _re
         import shutil as _shutil
         import uuid as _uuid
         from pathlib import Path as _Path
 
-        media_attachments: list[dict] = []
-        media_pattern = _re.compile(r"(?im)^MEDIA:\s*(.+)$")
+        workspace_path = _Path(payload["cwd"])
+        uploads_dir = workspace_path / "uploads"
+        workspace_root = workspace_path.resolve()
+        isolated_root = _Path(execution_workspace)
+        _collected_by_source: dict[str, dict] = {}
 
-        media_matches = list(media_pattern.finditer(raw_response))
-        if media_matches:
-            uploads_dir = workspace_path / "uploads"
-            uploads_dir.mkdir(parents=True, exist_ok=True)
-            workspace_root = workspace_path.resolve()
-            isolated_root = _Path(execution_workspace)
-
-            for match in media_matches:
-                file_path_str = match.group(1).strip()
-                file_path = _Path(file_path_str)
-                if self.runtime_runner_client is not None and file_path.is_absolute():
-                    try:
-                        file_path = workspace_path / file_path.relative_to(isolated_root)
-                    except ValueError:
-                        logger.warning("MEDIA: path is outside the isolated workspace: %s", file_path_str)
-                        continue
-                if not file_path.exists():
-                    file_path = workspace_path / file_path_str
-                resolved_file = file_path.resolve()
-                if workspace_root not in [resolved_file, *resolved_file.parents]:
-                    logger.warning("MEDIA: path escapes the agent workspace: %s", file_path_str)
-                    continue
-                file_path = resolved_file
-                if not file_path.exists() or not file_path.is_file():
-                    logger.warning("MEDIA: file not found: %s", file_path_str)
-                    continue
-
-                ext = file_path.suffix.lower()
-                if ext not in _ALLOWED_MEDIA_EXTS:
-                    logger.warning("MEDIA: file extension not allowed: %s", ext)
-                    continue
-
-                file_id = str(_uuid.uuid4())
-                dest_filename = f"{file_id}{ext}"
-                dest_path = uploads_dir / dest_filename
+        def _collect_attachment(file_path_str: str, *, log_prefix: str) -> dict | None:
+            """Copy a generated file into uploads/ and build its attachment
+            record. Shared by the MEDIA: parser and the auto-attach fallback
+            below, keyed by resolved source path so the same file is never
+            attached twice even if the model both calls the tool *and*
+            writes a matching MEDIA: line for it.
+            """
+            file_path = _Path(file_path_str)
+            if self.runtime_runner_client is not None and file_path.is_absolute():
                 try:
-                    _shutil.copy2(file_path, dest_path)
-                except OSError as exc:
-                    logger.warning("MEDIA: failed to copy %s: %s", file_path, exc)
-                    continue
+                    file_path = workspace_path / file_path.relative_to(isolated_root)
+                except ValueError:
+                    logger.warning("%s: path is outside the isolated workspace: %s", log_prefix, file_path_str)
+                    return None
+            if not file_path.exists():
+                file_path = workspace_path / file_path_str
+            resolved_file = file_path.resolve()
+            if workspace_root not in [resolved_file, *resolved_file.parents]:
+                logger.warning("%s: path escapes the agent workspace: %s", log_prefix, file_path_str)
+                return None
+            file_path = resolved_file
+            if not file_path.exists() or not file_path.is_file():
+                logger.warning("%s: file not found: %s", log_prefix, file_path_str)
+                return None
+            resolved = str(file_path)
+            if resolved in _collected_by_source:
+                return _collected_by_source[resolved]
 
-                file_size = dest_path.stat().st_size
-                media_attachments.append(
-                    {
-                        "file_id": file_id,
-                        "filename": file_path.name,
-                        "media_type": _MEDIA_EXT_MIME_MAP.get(ext, "application/octet-stream"),
-                        "size": file_size,
-                        "caption": "",
-                        "source_path": str(file_path),
-                    }
-                )
-                logger.info("MEDIA: collected %s (%d bytes) as %s", file_path.name, file_size, file_id)
+            ext = file_path.suffix.lower()
+            if ext not in _ALLOWED_MEDIA_EXTS:
+                logger.warning("%s: file extension not allowed: %s", log_prefix, ext)
+                return None
 
+            uploads_dir.mkdir(parents=True, exist_ok=True)
+            file_id = str(_uuid.uuid4())
+            dest_path = uploads_dir / f"{file_id}{ext}"
+            try:
+                _shutil.copy2(file_path, dest_path)
+            except OSError as exc:
+                logger.warning("%s: failed to copy %s: %s", log_prefix, file_path, exc)
+                return None
+
+            attachment = {
+                "file_id": file_id,
+                "filename": file_path.name,
+                "media_type": _MEDIA_EXT_MIME_MAP.get(ext, "application/octet-stream"),
+                "size": dest_path.stat().st_size,
+                "caption": "",
+                "source_path": str(file_path),
+            }
+            _collected_by_source[resolved] = attachment
+            logger.info("%s: collected %s (%d bytes) as %s", log_prefix, file_path.name, attachment["size"], file_id)
+            return attachment
+
+        media_pattern = _re.compile(r"(?im)^MEDIA:\s*(.+)$")
+        media_matches = list(media_pattern.finditer(raw_response))
+        for match in media_matches:
+            _collect_attachment(match.group(1).strip(), log_prefix="MEDIA")
+        if media_matches:
             # Strip MEDIA: lines from the response text
             raw_response = media_pattern.sub("", raw_response).strip()
             # Also strip any remaining inline MEDIA: references
@@ -430,9 +557,72 @@ class HermesRuntime(RuntimeBase):
             # Clean up any double blank lines left behind
             raw_response = _re.sub(r"\n{3,}", "\n\n", raw_response)
 
+        # ── Repair fake link schemes the model invents instead of MEDIA: ──
+        # Despite the system prompt instruction, models occasionally emit a
+        # markdown link like [file.pdf](sandbox:/abs/path) — a convention
+        # from a different platform (ChatGPT Code Interpreter) that means
+        # nothing here and renders as a dead link. Once a model does this
+        # once in a conversation it tends to repeat the pattern in later
+        # turns of the same session even after the instruction is followed
+        # correctly elsewhere. Detect it, attach the real file the same way
+        # MEDIA: would, and strip the dead link from the text. Added 2026-09-15.
+        fake_link_pattern = _re.compile(r"\[([^\]]*)\]\((?:sandbox|file|attachment):(/[^)\s]+)\)")
+        fake_link_matches = list(fake_link_pattern.finditer(raw_response))
+        for match in fake_link_matches:
+            _collect_attachment(match.group(2).strip(), log_prefix="fake-link")
+        if fake_link_matches:
+            raw_response = fake_link_pattern.sub("", raw_response).strip()
+            raw_response = _re.sub(r"\n{3,}", "\n\n", raw_response)
+
+        # ── Auto-attach files from known file-generating tools ──
+        # Smaller models don't reliably remember to add a MEDIA: line even
+        # when told to (observed ~half the time in practice with e.g.
+        # qwen3.6-35b-a3b). For a narrow allowlist of tools whose successful
+        # result carries a `path` to a file they just created, attach it
+        # directly from the tool result — delivery then doesn't depend on
+        # the model repeating the path correctly. Added 2026-09-15.
+        _AUTO_ATTACH_TOOLS = {"hq_pdf_generate", "hq_docx_generate", "hq_pptx_generate", "hq_xlsx_generate"}
+        task_messages = final_result.get("messages") or []
+        _auto_attach_call_ids = {
+            tool_call.get("id")
+            for msg in task_messages
+            if msg.get("role") == "assistant"
+            for tool_call in (msg.get("tool_calls") or [])
+            if (tool_call.get("function") or {}).get("name") in _AUTO_ATTACH_TOOLS
+        }
+        if _auto_attach_call_ids:
+            for msg in task_messages:
+                if msg.get("role") != "tool" or msg.get("tool_call_id") not in _auto_attach_call_ids:
+                    continue
+                try:
+                    tool_result = _json.loads(msg.get("content") or "{}")
+                except (ValueError, TypeError):
+                    continue
+                result_path = tool_result.get("path") if isinstance(tool_result, dict) else None
+                if tool_result.get("success") and result_path:
+                    _collect_attachment(result_path, log_prefix="auto-attach")
+
+        # ── Leave one canonical marker per attachment in the visible text ──
+        # Regardless of which of the three mechanisms above found it (an
+        # explicit MEDIA: line, a repaired fake link, or auto-attach from a
+        # tool result the model never mentioned), every collected file gets
+        # exactly one normalized line appended: `MEDIA: uploads/<uuid>.ext`
+        # — a relative path under this task's own uploads/ dir, using the
+        # same file_id already used for the structured `attachments` field
+        # above. This is the plain-text convention consumers that only see
+        # response text (not the structured field) can regex against; agreed
+        # with the Teams bridge team 2026-09-16, format: `^MEDIA:\s*uploads/
+        # ([0-9a-f-]{36})(\.\w+)\s*$`. Added 2026-09-16.
+        if _collected_by_source:
+            markers = "\n".join(
+                f"MEDIA: uploads/{att['file_id']}{_Path(att['filename']).suffix.lower()}"
+                for att in _collected_by_source.values()
+            )
+            raw_response = f"{raw_response}\n\n{markers}" if raw_response else markers
+
         # Merge with any attachments the task runner already collected
         runner_attachments = list(final_result.get("response_attachments") or [])
-        all_attachments = runner_attachments + media_attachments
+        all_attachments = runner_attachments + list(_collected_by_source.values())
 
         return RuntimeExecutionResult(
             final_response=raw_response,
