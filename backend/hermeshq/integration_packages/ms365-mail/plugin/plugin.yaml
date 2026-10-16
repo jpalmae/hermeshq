@@ -5,5 +5,10 @@ author: HermesHQ
 provides_tools:
   - ms365_mail_list
   - ms365_mail_get
+  - ms365_mail_get_many
   - ms365_mail_send
+  - ms365_mail_forward
+  - ms365_mail_reply
+  - ms365_mail_attachments
   - ms365_mail_search
+  - ms365_inbox_estado

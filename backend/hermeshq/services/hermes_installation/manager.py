@@ -50,6 +50,17 @@ def _protect_file(path: Path) -> None:
         logger.warning("Could not set restrictive permissions on %s", path)
 
 
+def managed_skill_is_current(skill_dir: Path, files: dict) -> bool:
+    for rel_path, content in files.items():
+        target = skill_dir / rel_path
+        if not target.is_file():
+            return False
+        expected = content if isinstance(content, bytes) else content.encode("utf-8")
+        if target.read_bytes() != expected:
+            return False
+    return True
+
+
 class HermesInstallationError(RuntimeError):
     pass
 
@@ -424,6 +435,12 @@ class HermesInstallationManager:
             shutil.copy2(source_path, target_path)
             return Path(app_settings.tui_skin_filename).stem
 
+    @staticmethod
+    def _thinking_extra_body(agent: Agent) -> dict:
+        if getattr(agent, "thinking_mode", None) != "off":
+            return {}
+        return {"chat_template_kwargs": {"enable_thinking": False}}
+
     def _write_config(
         self,
         agent: Agent,
@@ -468,6 +485,9 @@ class HermesInstallationManager:
                 "external_dirs": [],
             },
         }
+        model_context_length = get_settings().model_context_length
+        if model_context_length > 0:
+            config["model"]["context_length"] = model_context_length
         if self._uses_custom_openai_provider(agent):
             config["providers"] = {
                 self._CUSTOM_OPENAI_PROVIDER_KEY: {
@@ -575,15 +595,32 @@ class HermesInstallationManager:
         # covers ALL providers so that gateway tools (e.g. vision_analyze)
         # can resolve credentials from config.yaml regardless of the main
         # provider (nous-api, openai-compatible, gemini-api, etc.).
+        #
+        # `model` must be set explicitly: without it, hermes-agent's
+        # auxiliary client falls back to a hardcoded "gpt-4o-mini", which
+        # most custom/self-hosted providers (e.g. a self-hosted gateway) do
+        # not serve, making vision/compression/web_extract fail with a 403
+        # for every agent that doesn't have a manual auxiliary_models
+        # override. Reusing the agent's own main model guarantees the same
+        # API key already has access to it.
         if effective_base_url and resolved_aux_api_keys is not None and resolved_aux_api_keys.get("__main__"):
             main_key = resolved_aux_api_keys["__main__"]
+            aux_model = effective_model or agent.model
             for task_name in ("vision", "compression", "web_extract"):
                 if task_name not in aux_section:
-                    aux_section[task_name] = {
+                    entry = {
                         "provider": "custom",
                         "base_url": effective_base_url,
                         "api_key": main_key,
                     }
+                    if aux_model:
+                        entry["model"] = aux_model
+                    aux_section[task_name] = entry
+        thinking_extra_body = self._thinking_extra_body(agent)
+        if thinking_extra_body:
+            for task_name in ("compression", "web_extract"):
+                if task_name in aux_section:
+                    aux_section[task_name].setdefault("extra_body", json.loads(json.dumps(thinking_extra_body)))
         if aux_section:
             config["auxiliary"] = aux_section
         # ── Plugins: enable plugins installed in HERMES_HOME/plugins/ ───────
@@ -702,6 +739,10 @@ class HermesInstallationManager:
 
         for identifier in desired_ids:
             cached = self._load_cached_skill(managed_root, identifier)
+            if cached and identifier.startswith("local/"):
+                local_bundle = fetch_local_skill_bundle(identifier, enabled_integration_slugs=enabled_integration_slugs)
+                if local_bundle and not managed_skill_is_current(managed_root / cached["name"], local_bundle["files"]):
+                    cached = None
             if cached:
                 desired_names.add(cached["name"])
                 installed.append(cached)
@@ -927,6 +968,19 @@ class HermesInstallationManager:
                 "If asked which skills are available, do not guess. Use `skills_list` to verify installed skills. "
                 "If none are installed, say that no agent-specific skills are currently installed."
             )
+        parts.append(
+            "\n".join(
+                [
+                    "If a request needs a real capability you do not have a working tool for (for example, true "
+                    "AI image generation, when no image tool is available or it has no working backend/model "
+                    "configured), say so directly instead of attempting it.",
+                    "Do not use `execute_code` (or any other tool) to fabricate a stand-in result — e.g. drawing "
+                    "a simple programmatic shape with Pillow/matplotlib and presenting it as if it were the real "
+                    "output — and do not describe a fabricated result as though a real generation happened. "
+                    "An honest 'I can't do this yet' is always preferable to a fake deliverable.",
+                ]
+            )
+        )
         enabled_integrations = self._describe_enabled_integrations(agent, enabled_integration_slugs or [])
         if enabled_integrations:
             lines = [

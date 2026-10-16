@@ -1,9 +1,14 @@
 name: hermeshq_sharepoint
-version: "1.1.0"
-description: SharePoint and OneDrive tools using delegated Microsoft 365 user permissions (Files.Read.All)
+version: "1.3.0"
+description: SharePoint and OneDrive tools using delegated Microsoft 365 user permissions (Files.Read.All; Files.ReadWrite para subir archivos al OneDrive propio)
 author: HermesHQ
 provides_tools:
   - sharepoint_list_drives
   - sharepoint_list_files
   - sharepoint_get_file
+  - sharepoint_read_file
+  - sharepoint_download_file
+  - sharepoint_download_folder
   - sharepoint_search
+  - sharepoint_share_file
+  - sharepoint_upload_file

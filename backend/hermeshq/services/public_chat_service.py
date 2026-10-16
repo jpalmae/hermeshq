@@ -12,6 +12,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hermeshq.models.agent import Agent
+from hermeshq.models.agent_assignment import AgentAssignment
 from hermeshq.models.base import utcnow
 from hermeshq.models.public_chat import (
     PublicChatApiKey,
@@ -20,13 +21,47 @@ from hermeshq.models.public_chat import (
     PublicChatTranscript,
 )
 from hermeshq.models.task import Task
+from hermeshq.models.user import User
+from hermeshq.services.cancel_intent import is_cancel_request
+from hermeshq.services.channel_user_resolver import resolve_channel_user
 from hermeshq.services.task_board import next_board_order, runtime_status_to_board_column
 
 logger = logging.getLogger(__name__)
 
 PUBLIC_CHAT_USER_ID = "__public_chat__"
+SENDER_PLATFORM = "microsoft_teams"
 MAX_ACTIVE_SESSIONS_PER_KEY = 50
 MAX_ASSISTANT_MESSAGE_LENGTH = 32_768
+
+
+class BindingError(ValueError):
+    pass
+
+
+def _has_widget_config(api_key: PublicChatApiKey) -> bool:
+    return bool(
+        api_key.widget_title
+        or api_key.widget_theme != "auto"
+        or api_key.widget_accent != "#6366f1"
+        or api_key.widget_position != "right"
+    )
+
+
+async def _binding_problem(db: AsyncSession, agent_id: str, user_id: str) -> str | None:
+    user = await db.get(User, user_id)
+    if not user:
+        return "Bound user not found"
+    if not user.is_active:
+        return "Bound user is inactive"
+    result = await db.execute(
+        select(AgentAssignment.id).where(
+            AgentAssignment.agent_id == agent_id,
+            AgentAssignment.user_id == user_id,
+        )
+    )
+    if result.first() is None:
+        return "Bound user is not assigned to this agent"
+    return None
 
 
 def _hash_key(raw_key: str) -> str:
@@ -83,6 +118,7 @@ class PublicChatService:
         self.rate_limiter = SimpleRateLimiter(max_requests=10, window_seconds=60)
         self.ip_rate_limiter = SimpleRateLimiter(max_requests=20, window_seconds=60)
         self.session_create_limiter = SimpleRateLimiter(max_requests=5, window_seconds=60)
+        self.notification_limiter = SimpleRateLimiter(max_requests=120, window_seconds=60)
         self._purge_task: asyncio.Task | None = None
 
     async def validate_api_key(self, raw_key: str, db: AsyncSession, *, origin: str | None = None) -> PublicChatApiKey:
@@ -106,6 +142,7 @@ class PublicChatService:
         db: AsyncSession,
         *,
         client_ip: str = "",
+        sender_id: str | None = None,
     ) -> dict:
         if client_ip and not self.session_create_limiter.check(client_ip):
             raise ValueError("Rate limit exceeded")
@@ -131,6 +168,7 @@ class PublicChatService:
             agent_id=agent_id,
             session_token=session_token_hash,
             ttl_minutes=10,
+            sender_id=(sender_id or "").strip() or None if api_key.trust_sender_id else None,
         )
         db.add(chat_session)
         await db.commit()
@@ -141,6 +179,38 @@ class PublicChatService:
             "session_token": raw_session_token,
             "agent_name": agent.friendly_name or agent.name,
         }
+
+    async def _resolve_identity(
+        self,
+        api_key: PublicChatApiKey | None,
+        session: PublicChatSession,
+        db: AsyncSession,
+    ) -> tuple[str, str | None]:
+        """Return (thread_user_id, denied_reason). Falls back to anonymous on any failure."""
+        if not api_key:
+            return PUBLIC_CHAT_USER_ID, None
+
+        candidate: str | None = None
+        denied: str | None = None
+        if api_key.bound_user_id:
+            candidate = api_key.bound_user_id
+        elif api_key.trust_sender_id and session.sender_id:
+            user = await resolve_channel_user(db, SENDER_PLATFORM, session.sender_id)
+            if user:
+                candidate = user.id
+            else:
+                denied = "Sender is not linked to any user"
+        else:
+            return PUBLIC_CHAT_USER_ID, None
+
+        if candidate:
+            denied = await _binding_problem(db, session.agent_id, candidate)
+            if denied is None and not api_key.is_active:
+                denied = "API key is inactive"
+        if denied or not candidate:
+            logger.warning("Public chat key %s degraded to anonymous: %s", api_key.id, denied)
+            return PUBLIC_CHAT_USER_ID, denied
+        return candidate, None
 
     async def validate_session(self, session_id: str, session_token: str, db: AsyncSession) -> PublicChatSession:
         token_hash = _hash_key(session_token)
@@ -199,6 +269,60 @@ class PublicChatService:
         if tokens >= tokens_per_month:
             raise ValueError("Monthly token quota exceeded")
 
+    @staticmethod
+    def _task_belongs_to_chat(task: Task, session_id: str, thread_user_id: str) -> bool:
+        metadata = task.metadata_json or {}
+        if metadata.get("source") != "public_chat":
+            return False
+        if metadata.get("public_session_id") == session_id:
+            return True
+        return thread_user_id != PUBLIC_CHAT_USER_ID and metadata.get("thread_user_id") == thread_user_id
+
+    async def handle_cancel_request(
+        self,
+        session_id: str,
+        session_token: str,
+        content: str,
+        db: AsyncSession,
+        *,
+        client_ip: str = "",
+    ) -> str | None:
+        """If the message only asks to stop, cancel this chat's running tasks and return the reply text."""
+        if not is_cancel_request(content):
+            return None
+        if not self.rate_limiter.check(session_id):
+            raise ValueError("Rate limit exceeded")
+        if client_ip and not self.ip_rate_limiter.check(client_ip):
+            raise ValueError("Rate limit exceeded")
+        session = await self.validate_session(session_id, session_token, db)
+        api_key = await db.get(PublicChatApiKey, session.api_key_id)
+        thread_user_id, _ = await self._resolve_identity(api_key, session, db)
+        session.last_activity = utcnow()
+        result = await db.execute(
+            select(Task).where(Task.agent_id == session.agent_id, Task.status.in_(("running", "queued")))
+        )
+        mine = [task for task in result.scalars().all() if self._task_belongs_to_chat(task, session_id, thread_user_id)]
+        active = getattr(self.supervisor, "active_tasks", {})
+        for task in mine:
+            if task.id in active:
+                await self.supervisor.cancel_task(task.id)
+            else:
+                task.status = "cancelled"
+                task.completed_at = utcnow()
+                task.board_column = runtime_status_to_board_column("cancelled")
+        if mine:
+            reply = (
+                "⏹️ Listo, cancelé la tarea en curso. ¿Qué necesitas ahora?"
+                if len(mine) == 1
+                else f"⏹️ Listo, cancelé las {len(mine)} tareas en curso. ¿Qué necesitas ahora?"
+            )
+        else:
+            reply = "No tengo ninguna tarea en curso para cancelar. ¿Qué necesitas?"
+        db.add(PublicChatMessage(session_id=session_id, role="user", content=content))
+        db.add(PublicChatMessage(session_id=session_id, role="assistant", content=reply))
+        await db.commit()
+        return reply
+
     async def send_message(
         self,
         session_id: str,
@@ -226,6 +350,8 @@ class PublicChatService:
             )
         session.last_activity = utcnow()
 
+        thread_user_id, binding_denied = await self._resolve_identity(api_key, session, db)
+
         user_msg = PublicChatMessage(
             session_id=session_id,
             role="user",
@@ -237,17 +363,25 @@ class PublicChatService:
         if not agent or agent.status != "running":
             raise ValueError("Agent is not available")
 
+        task_metadata = {
+            "conversation": True,
+            "source": "public_chat",
+            "public_session_id": session_id,
+            "thread_user_id": thread_user_id,
+        }
+        if thread_user_id != PUBLIC_CHAT_USER_ID:
+            task_metadata["public_chat_bound_user_id"] = thread_user_id
+            if api_key and not api_key.bound_user_id:
+                task_metadata["public_chat_sender_id"] = session.sender_id
+        elif binding_denied:
+            task_metadata["public_chat_binding_denied"] = binding_denied
+
         task = Task(
             agent_id=session.agent_id,
             created_by_user_id=None,
             title="Public chat message",
             prompt=content,
-            metadata_json={
-                "conversation": True,
-                "source": "public_chat",
-                "public_session_id": session_id,
-                "thread_user_id": PUBLIC_CHAT_USER_ID,
-            },
+            metadata_json=task_metadata,
         )
         task.board_column = runtime_status_to_board_column(task.status)
         task.board_order = next_board_order()
@@ -386,6 +520,8 @@ class PublicChatService:
         widget_theme: str = "auto",
         widget_accent: str = "#6366f1",
         widget_position: str = "right",
+        bound_user_id: str | None = None,
+        trust_sender_id: bool = False,
     ) -> dict:
         agent = await db.get(Agent, agent_id)
         if not agent:
@@ -407,7 +543,11 @@ class PublicChatService:
             widget_theme=widget_theme,
             widget_accent=widget_accent,
             widget_position=widget_position,
+            bound_user_id=bound_user_id,
+            trust_sender_id=trust_sender_id,
         )
+        if bound_user_id or trust_sender_id:
+            await self._check_binding(api_key, db)
         db.add(api_key)
         await db.commit()
         await db.refresh(api_key)
@@ -418,6 +558,16 @@ class PublicChatService:
             "key_prefix": key_prefix,
             "label": label,
         }
+
+    async def _check_binding(self, api_key: PublicChatApiKey, db: AsyncSession) -> None:
+        if _has_widget_config(api_key):
+            raise BindingError("A key that carries a user identity cannot have widget configuration")
+        if api_key.bound_user_id and api_key.trust_sender_id:
+            raise BindingError("Choose either a bound user or trusted sender IDs, not both")
+        if api_key.bound_user_id:
+            problem = await _binding_problem(db, api_key.agent_id, api_key.bound_user_id)
+            if problem:
+                raise BindingError(problem)
 
     async def update_api_key(
         self,
@@ -431,6 +581,12 @@ class PublicChatService:
         update_data = payload.safe_update_dict()
         for field, value in update_data.items():
             setattr(api_key, field, value)
+        if api_key.bound_user_id or api_key.trust_sender_id:
+            try:
+                await self._check_binding(api_key, db)
+            except BindingError:
+                await db.rollback()
+                raise
         await db.commit()
         await db.refresh(api_key)
         return api_key

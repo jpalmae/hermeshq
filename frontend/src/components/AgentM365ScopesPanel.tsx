@@ -3,7 +3,7 @@ import { useMe } from "../api/auth";
 import { useAgentM365Scopes, useMyM365Status, useUpdateAgentM365Scopes } from "../api/m365";
 import { useSessionStore } from "../stores/sessionStore";
 
-const SHAREPOINT_SCOPE = "Files.Read.All";
+const SHAREPOINT_SCOPES = ["Files.Read.All", "Files.ReadWrite.All", "Sites.ReadWrite.All"];
 
 export function AgentM365ScopesPanel({ agentId }: { agentId: string }) {
   const token = useSessionStore((s) => s.token);
@@ -96,7 +96,7 @@ export function AgentM365ScopesPanel({ agentId }: { agentId: string }) {
 
   const currentSelected = selected ?? scopeData.user_scopes;
   const allAllowed = scopeData.user_scopes.every((s) => currentSelected.includes(s));
-  const sharepointEnabled = currentSelected.includes(SHAREPOINT_SCOPE);
+  const sharepointEnabled = SHAREPOINT_SCOPES.some((scope) => currentSelected.includes(scope));
 
   return (
     <div className="space-y-4">

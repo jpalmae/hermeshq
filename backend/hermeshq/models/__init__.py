@@ -21,6 +21,7 @@ from hermeshq.models.provider import ProviderDefinition
 from hermeshq.models.public_chat import (
     PublicChatApiKey,
     PublicChatMessage,
+    PublicChatNotification,
     PublicChatSession,
     PublicChatTranscript,
 )
@@ -59,6 +60,7 @@ __all__ = [
     "ProviderDefinition",
     "PublicChatApiKey",
     "PublicChatMessage",
+    "PublicChatNotification",
     "PublicChatSession",
     "PublicChatTranscript",
     "ScheduledTask",
