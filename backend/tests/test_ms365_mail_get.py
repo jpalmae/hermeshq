@@ -194,3 +194,99 @@ class SearchEmailsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+<<<<<<< HEAD
+=======
+
+
+class SearchTests(unittest.TestCase):
+    def setUp(self):
+        self.plugin = _load()
+
+    def _run(self, args, messages=None):
+        captured = {}
+
+        def fake_graph(method, path, token, *a, **k):
+            captured["path"] = path
+            return {"value": messages or []}
+
+        with (
+            patch.object(self.plugin, "_task_user_id", return_value="u1"),
+            patch.object(self.plugin, "_get_m365_token", return_value=("tok", None)),
+            patch.object(self.plugin, "_graph", side_effect=fake_graph),
+            patch.object(self.plugin, "_resolve_folder", return_value=("FOLDERID", None)),
+        ):
+            return json.loads(self.plugin._search_emails_tool(args)), captured["path"] if captured else None
+
+    def test_filters_are_combined_into_one_kql_search(self):
+        out, path = self._run(
+            {"query": "cuentas", "from": "Servantis", "since": "2026-10-07", "has_attachments": True, "folder": "inbox"}
+        )
+        self.assertTrue(out["success"])
+        self.assertIn("mailFolders/FOLDERID/messages", path)
+        self.assertEqual(out["search"], 'cuentas from:"Servantis" received>=2026-10-07 hasattachments:true')
+
+    def test_results_come_newest_first_and_empty_search_is_rejected(self):
+        old = {"id": "1", "receivedDateTime": "2026-10-01T10:00:00Z", "bodyPreview": ""}
+        new = {"id": "2", "receivedDateTime": "2026-10-09T10:00:00Z", "bodyPreview": ""}
+        out, _ = self._run({"query": "x"}, [old, new])
+        self.assertEqual([m["id"] for m in out["messages"]], ["2", "1"])
+        out, _ = self._run({})
+        self.assertFalse(out["success"])
+        out, _ = self._run({"since": "no es fecha"})
+        self.assertFalse(out["success"])
+
+
+class GetManyTests(unittest.TestCase):
+    def setUp(self):
+        self.plugin = _load()
+
+    def _run(self, args):
+        def fake_graph(method, path, token, *a, **k):
+            if "bad" in path:
+                return {"error": "no encontrado"}
+            return _graph_message("<p>Hola mundo</p>", id=path.split("/")[-1].split("?")[0])
+
+        with (
+            patch.object(self.plugin, "_task_user_id", return_value="u1"),
+            patch.object(self.plugin, "_get_m365_token", return_value=("tok", None)),
+            patch.object(self.plugin, "_graph", side_effect=fake_graph),
+        ):
+            return json.loads(self.plugin._get_emails_tool(args))
+
+    def test_reads_several_in_one_call_keeping_order_and_errors(self):
+        out = self._run({"message_ids": ["a", "bad", "c", "a"]})
+        self.assertTrue(out["success"])
+        self.assertEqual([m.get("id") or m.get("message_id") for m in out["messages"]], ["a", "bad", "c"])
+        self.assertEqual(out["messages"][1]["error"], "no encontrado")
+        self.assertEqual(out["messages"][0]["body"]["content"], "Hola mundo")
+
+    def test_caps_at_ten_and_requires_ids(self):
+        out = self._run({"message_ids": [f"m{i}" for i in range(13)]})
+        self.assertEqual(out["count"], 10)
+        self.assertEqual(out["omitted_ids"], ["m10", "m11", "m12"])
+        self.assertFalse(self._run({"message_ids": []})["success"])
+
+
+class IdRepairTests(unittest.TestCase):
+    def setUp(self):
+        import os
+        import tempfile
+
+        self.plugin = _load()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        env = patch.dict(os.environ, {"HERMES_SESSION_CWD": self.tmp.name})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def test_a_truncated_copy_of_a_known_id_is_completed(self):
+        real = "AAMkAGQ2" + "x" * 140 + "AAA="
+        self.plugin._remember_ids([{"id": real}, {"id": "AAMkOTRO" + "y" * 140}])
+        self.assertEqual(self.plugin._resolve_message_id(real[:120]), real)
+        self.assertEqual(self.plugin._resolve_message_id(real), real)
+
+    def test_unknown_or_ambiguous_ids_are_left_alone(self):
+        self.plugin._remember_ids([{"id": "AAMk" + "a" * 100 + "1"}, {"id": "AAMk" + "a" * 100 + "2"}])
+        self.assertEqual(self.plugin._resolve_message_id("AAMk" + "a" * 70), "AAMk" + "a" * 70)
+        self.assertEqual(self.plugin._resolve_message_id("ZZZ" + "b" * 80), "ZZZ" + "b" * 80)
+>>>>>>> origin/main

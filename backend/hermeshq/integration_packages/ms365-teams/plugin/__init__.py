@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import mimetypes
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -315,6 +317,174 @@ def _send_chat_message_tool(args: dict, **_kwargs) -> str:
     return json.dumps({"success": True, "message": "Mensaje enviado correctamente.", "id": result.get("id")})
 
 
+def _find_user(token: str, email: str) -> tuple[dict | None, str]:
+    limpio = email.replace("'", "''")
+    consulta = urllib.parse.quote(f"mail eq '{limpio}' or userPrincipalName eq '{limpio}'", safe="")
+    resultado = _graph("GET", f"/users?$filter={consulta}&$select=id,displayName,mail,userPrincipalName", token)
+    if "error" in resultado:
+        return None, str(resultado["error"])
+    encontrados = resultado.get("value", [])
+    if not encontrados:
+        return None, f"No encontré a '{email}' en el directorio de la empresa."
+    return encontrados[0], ""
+
+
+def _find_direct_chat(token: str, person_id: str) -> str | None:
+    ruta = "/me/chats?$filter=chatType eq 'oneOnOne'&$expand=members&$top=50"
+    for _ in range(4):
+        resultado = _graph("GET", ruta, token)
+        if "error" in resultado:
+            return None
+        for chat in resultado.get("value", []):
+            if any(m.get("userId") == person_id for m in chat.get("members") or []):
+                return chat.get("id")
+        ruta = resultado.get("@odata.nextLink") or ""
+        if not ruta:
+            return None
+    return None
+
+
+_APPROVAL_TTL_SECONDS = 1800
+
+
+def _current_task_id() -> str:
+    raw = os.environ.get("HERMESHQ_TASK_PAYLOAD", "")
+    try:
+        return str(json.loads(raw).get("task_id") or "") if raw else ""
+    except (ValueError, AttributeError):
+        return ""
+
+
+def _previews_path() -> Path:
+    return Path(os.environ.get("HERMES_SESSION_CWD") or os.getcwd()) / "work" / ".teams_previews.json"
+
+
+def _load_previews() -> dict:
+    try:
+        data = json.loads(_previews_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    limit = time.time() - _APPROVAL_TTL_SECONDS
+    return {k: v for k, v in data.items() if isinstance(v, dict) and float(v.get("ts") or 0) >= limit}
+
+
+def _save_previews(previews: dict) -> None:
+    try:
+        path = _previews_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(previews), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _message_fingerprint(user_id: str, person_id: str, message: str, file_path: str) -> str:
+    return hashlib.sha256(f"{user_id}|{person_id}|{message}|{file_path}".encode()).hexdigest()
+
+
+def _remember_preview(fingerprint: str) -> None:
+    previews = _load_previews()
+    previews[fingerprint] = {"task": _current_task_id(), "ts": time.time()}
+    _save_previews(previews)
+
+
+def _approval_is_real(fingerprint: str) -> bool:
+    """La aprobación vale solo si la vista previa idéntica se mostró en una tarea ANTERIOR (el usuario respondió después)."""
+    entry = _load_previews().get(fingerprint)
+    current = _current_task_id()
+    return bool(entry and current and entry.get("task") and entry["task"] != current)
+
+
+def _send_to_person_tool(args: dict, **_kwargs) -> str:
+    user_id = _task_user_id()
+    if not user_id:
+        return json.dumps({"success": False, "error": "No se pudo determinar el usuario de esta tarea."})
+    token, err = _get_m365_token(user_id)
+    if not token:
+        return _auth_error(err)
+    email = str(args.get("email") or "").strip()
+    message = str(args.get("message") or "").strip()
+    file_path = str(args.get("file_path") or "").strip()
+    if "@" not in email or (not message and not file_path):
+        return json.dumps(
+            {
+                "success": False,
+                "error": "Se requiere el correo exacto de la persona (email) y message o file_path. "
+                "Si solo tienes el nombre, búscalo antes con ms365_find_person y confírmalo con el usuario.",
+            },
+            ensure_ascii=False,
+        )
+    persona, error = _find_user(token, email)
+    if persona is None:
+        return json.dumps({"success": False, "error": error}, ensure_ascii=False)
+    para = {"nombre": persona.get("displayName"), "correo": persona.get("mail") or email}
+    fingerprint = _message_fingerprint(user_id, str(persona.get("id")), message, file_path)
+    if not args.get("aprobado_por_el_usuario") or not _approval_is_real(fingerprint):
+        _remember_preview(fingerprint)
+        resultado = {
+            "success": False,
+            "requiere_aprobacion": True,
+            "vista_previa": {"para": para, "mensaje": message, "archivo": file_path or None},
+            "siguiente": "Muéstrale al usuario esta vista previa (a quién y qué texto) y pregunta si lo envías; "
+            "termina tu respuesta ahí y espera su siguiente mensaje. Cuando diga que sí, vuelve a llamar con "
+            "aprobado_por_el_usuario=true y EXACTAMENTE los mismos datos.",
+        }
+        if args.get("aprobado_por_el_usuario"):
+            resultado["error"] = (
+                "No se envió: esta vista previa aún no se le mostró al usuario en un mensaje anterior. No puedes "
+                "aprobar por él en la misma respuesta."
+            )
+        return json.dumps(resultado, ensure_ascii=False)
+    chat_id = _find_direct_chat(token, str(persona.get("id")))
+    creado = False
+    if not chat_id:
+        yo = _graph("GET", "/me?$select=id", token)
+        if "error" in yo:
+            return json.dumps({"success": False, "error": yo["error"]}, ensure_ascii=False)
+        base = f"{GRAPH_BASE}/users"
+        nuevo = _graph(
+            "POST",
+            "/chats",
+            token,
+            {
+                "chatType": "oneOnOne",
+                "members": [
+                    {
+                        "@odata.type": "#microsoft.graph.aadUserConversationMember",
+                        "roles": ["owner"],
+                        "user@odata.bind": f"{base}('{yo['id']}')",
+                    },
+                    {
+                        "@odata.type": "#microsoft.graph.aadUserConversationMember",
+                        "roles": ["owner"],
+                        "user@odata.bind": f"{base}('{persona['id']}')",
+                    },
+                ],
+            },
+        )
+        if "error" in nuevo:
+            detalle = str(nuevo["error"])
+            if "403" in detalle:
+                detalle += (
+                    " Falta el permiso Chat.Create: el usuario debe reconectar su cuenta Microsoft 365 en Mi cuenta."
+                )
+            return json.dumps({"success": False, "error": detalle}, ensure_ascii=False)
+        chat_id = nuevo.get("id")
+        creado = True
+    enviado = json.loads(_send_chat_message_tool({"chat_id": chat_id, "message": message, "file_path": file_path}))
+    if not enviado.get("success"):
+        return json.dumps(
+            {"success": False, "error": enviado.get("error"), "chat_id": chat_id, "chat_creado": creado},
+            ensure_ascii=False,
+        )
+    consumida = _load_previews()
+    consumida.pop(fingerprint, None)
+    _save_previews(consumida)
+    return json.dumps(
+        {"success": True, "enviado_a": para, "chat_id": chat_id, "chat_creado": creado, "id": enviado.get("id")},
+        ensure_ascii=False,
+    )
+
+
 # ── Plugin registration ───────────────────────────────────────────────────────
 
 
@@ -366,6 +536,35 @@ def register(ctx):
         handler=_get_chat_messages_tool,
         description="Obtener mensajes de un chat Teams",
         emoji="📨",
+    )
+    ctx.register_tool(
+        name="teams_send_to_person",
+        toolset=TOOLSET,
+        schema={
+            "name": "teams_send_to_person",
+            "description": (
+                "Envía un mensaje de Teams a UNA PERSONA por su correo, usando la cuenta del usuario: encuentra el chat "
+                "1:1 con ella o lo crea si nunca hablaron. SIEMPRE confirma antes con el usuario a quién y qué texto: la "
+                "primera llamada devuelve una vista previa sin enviar; solo con aprobado_por_el_usuario=true envía. "
+                "Si solo tienes el nombre, busca el correo con ms365_find_person y confírmalo."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "email": {"type": "string", "description": "Correo exacto de la persona."},
+                    "message": {"type": "string", "description": "Texto del mensaje. Opcional si se envía file_path."},
+                    "file_path": {"type": "string", "description": "Ruta local de un archivo a adjuntar (máx 4 MB)."},
+                    "aprobado_por_el_usuario": {
+                        "type": "boolean",
+                        "description": "true SOLO si el usuario ya vio la vista previa y dijo que sí.",
+                    },
+                },
+                "required": ["email"],
+            },
+        },
+        handler=_send_to_person_tool,
+        description="Enviar un mensaje de Teams a una persona por correo (con aprobación)",
+        emoji="💬",
     )
     ctx.register_tool(
         name="teams_send_chat_message",

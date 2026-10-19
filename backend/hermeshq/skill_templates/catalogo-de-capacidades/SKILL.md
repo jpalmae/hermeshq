@@ -16,7 +16,14 @@ description: "Mapa en lenguaje simple de lo que sabes hacer y con qué herramien
 | Buscar correos por palabra | `ms365_mail_search` |
 | El correo de una persona dado su nombre | `ms365_find_person` (busca en su historial de correos y reuniones, no en el directorio de la empresa). **Muestra el correo encontrado y pide confirmación** |
 | Enviar un correo | `ms365_mail_send`: varios destinatarios en `to`, `cc` y `bcc` (listas, todos en un solo correo) |
+<<<<<<< HEAD
 | Adjuntar archivos | `attachments` en `ms365_mail_send`: hasta 10 archivos y 18 MB. Hasta 2,8 MB sale directo; por encima sale como adjunto real si la cuenta tiene `Mail.ReadWrite`, y si no, como enlace de OneDrive (avísale al usuario) |
+=======
+| Reenviar un correo recibido (con sus adjuntos e imágenes) | `ms365_mail_forward(message_id, to)`: vista previa, el usuario responde «sí» y recién entonces se envía. **No** extraigas los adjuntos ni armes un correo nuevo |
+| Responder un correo recibido | `ms365_mail_reply(message_id, comment, reply_all?)`, con la misma vista previa y aprobación |
+| Ver o descargar los adjuntos de un correo recibido | `ms365_mail_attachments(message_id, download?)` |
+| Adjuntar archivos | `attachments` en `ms365_mail_send`: hasta 10 archivos y 25 MB. Hasta 2,8 MB sale directo; por encima sale como adjunto real si la cuenta tiene `Mail.ReadWrite`, y si no, como enlace de OneDrive (avísale al usuario) |
+>>>>>>> origin/main
 | Imágenes dentro del cuerpo (firma) | `inline_images` (1,5 MB cada una) con `cid:` en el HTML. Nunca pegues base64 |
 
 ## Calendario y reuniones
@@ -38,6 +45,7 @@ description: "Mapa en lenguaje simple de lo que sabes hacer y con qué herramien
 | Analizar una imagen | `vision_analyze`, una imagen por llamada |
 | Crear una imagen | La skill `generador-imagenes` |
 
+<<<<<<< HEAD
 ## Datos y skills
 | Si piden… | Haz esto |
 |---|---|
@@ -46,6 +54,8 @@ description: "Mapa en lenguaje simple de lo que sabes hacer y con qué herramien
 | Saber qué cambió entre dos versiones (dos HTML o dos Excel/CSV) | `hq_comparar(antes, despues, clave?)` y cita su `resumen` |
 | Crear, ajustar o compartir una skill propia | `hq_skill_crear` (valida antes de guardar); la skill `crear-skill` guía la entrevista |
 
+=======
+>>>>>>> origin/main
 ## Tareas programadas y coordinación
 | Si piden… | Haz esto |
 |---|---|
@@ -62,5 +72,9 @@ description: "Mapa en lenguaje simple de lo que sabes hacer y con qué herramien
 - Buscar a cualquier persona en el directorio completo de la empresa (falta un permiso; solo se encuentra a quien ya tiene correos o reuniones con el usuario).
 - Adjuntos reales de más de 2,8 MB sin el permiso `Mail.ReadWrite` (sale como enlace).
 - Reuniones recurrentes (semanal o mensual): crea los eventos individuales y avisa.
+<<<<<<< HEAD
 - Reglas de Outlook, o leer los chats de Teams: no hay herramienta.
+=======
+- Reglas de Outlook: no hay herramienta.
+>>>>>>> origin/main
 Si algo no está aquí ni en tus herramientas, dilo con claridad, ofrece la alternativa más cercana y no prometas lo que no puedes verificar.

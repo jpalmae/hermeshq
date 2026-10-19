@@ -9538,6 +9538,7 @@ export interface operations {
             };
             header?: {
                 "X-HermesHQ-Device-Token"?: string | null;
+                authorization?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -9569,6 +9570,7 @@ export interface operations {
             query?: never;
             header?: {
                 "X-HermesHQ-Device-Token"?: string | null;
+                authorization?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -9742,6 +9744,7 @@ export interface operations {
             query?: never;
             header?: {
                 "X-HermesHQ-Device-Token"?: string | null;
+                authorization?: string | null;
             };
             path?: never;
             cookie?: never;

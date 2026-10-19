@@ -16,6 +16,10 @@ AZURE_FINAL_LIST = [
     "GroupMember.Read.All",
     "Chat.Create",
     "Chat.ReadWrite",
+<<<<<<< HEAD
+=======
+    "User.ReadBasic.All",
+>>>>>>> origin/main
 ]
 
 
@@ -38,6 +42,10 @@ class TestM365ScopeMapping(unittest.TestCase):
     def test_new_scopes_map_to_the_right_integrations(self):
         expected = {
             "Mail.Send.Shared": "ms365-mail",
+<<<<<<< HEAD
+=======
+            "User.ReadBasic.All": "ms365-mail",
+>>>>>>> origin/main
             "Contacts.ReadWrite": "ms365-mail",
             "Files.ReadWrite.All": "sharepoint",
             "Sites.ReadWrite.All": "sharepoint",

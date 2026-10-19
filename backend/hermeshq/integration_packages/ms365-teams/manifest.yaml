@@ -1,6 +1,5 @@
 slug: ms365-teams
 name: Microsoft 365 Teams
-hidden: true
 description: Managed Microsoft Teams integration for chat and team management. Uses delegated permissions — each user must connect their own Microsoft 365 account from their profile.
 version: "1.0.0"
 standard_compatible: true

@@ -306,6 +306,7 @@ class AgentScopesUpdate(BaseModel):
 # Mapping: which scopes activate which delegated integration
 # Keys must match the actual Azure AD granted permissions
 _SCOPE_TO_INTEGRATION: dict[str, str] = {
+    "User.ReadBasic.All": "ms365-mail",
     "Mail.Read": "ms365-mail",
     "Mail.Send": "ms365-mail",
     "Mail.ReadWrite": "ms365-mail",

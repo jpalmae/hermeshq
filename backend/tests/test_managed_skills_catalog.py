@@ -52,6 +52,10 @@ class TestManagedSkills(unittest.TestCase):
             bundle = fetch_local_skill_bundle(f"local/{name}")
             self.assertIsNotNone(bundle, name)
             self.assertIn("SKILL.md", bundle["files"])
+<<<<<<< HEAD
+=======
+        self.assertIn("references/plantilla.md", fetch_local_skill_bundle("local/crear-skill")["files"])
+>>>>>>> origin/main
 
     def test_catalog_covers_the_key_capabilities(self):
         text = (skill_templates_root() / "catalogo-de-capacidades" / "SKILL.md").read_text(encoding="utf-8")
@@ -70,4 +74,8 @@ class TestManagedSkills(unittest.TestCase):
         text = (skill_templates_root() / "crear-skill" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("6 herramientas", text)
         self.assertIn("catalogo-de-capacidades", text)
+<<<<<<< HEAD
         self.assertIn("hq_skill_crear", text)
+=======
+        self.assertIn("8 KB", text)
+>>>>>>> origin/main
