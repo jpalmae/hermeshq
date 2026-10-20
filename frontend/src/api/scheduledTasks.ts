@@ -67,3 +67,19 @@ export function useRunScheduledTaskNow() {
     },
   });
 }
+
+export function useApproveScheduledTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (schedule: Pick<ScheduledTask, "id" | "cron_expression" | "prompt">) => {
+      const { data } = await apiClient.post<ScheduledTask>(`/scheduled-tasks/${schedule.id}/approve`, {
+        cron_expression: schedule.cron_expression,
+        prompt: schedule.prompt,
+      });
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["scheduled-tasks"] });
+    },
+  });
+}

@@ -122,6 +122,16 @@ var CSS = (function(){
 }\
 .hq-msg-user .hq-msg-time { text-align: right; }\
 \
+.hq-attachment {\
+  display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 12px;\
+  border-radius: 10px; background: rgba(' + rgb + ',.08); text-decoration: none;\
+  color: inherit; font-size: 12.5px;\
+}\
+.hq-attachment:hover { background: rgba(' + rgb + ',.15); }\
+.hq-attachment-icon { font-size: 16px; }\
+.hq-attachment-name { font-weight: 600; }\
+.hq-attachment-size { opacity: .55; font-size: 11px; }\
+\
 .hq-typing { align-self: flex-start; padding: 12px 16px; }\
 .hq-typing-dots { display: flex; gap: 5px; }\
 .hq-typing-dots span {\
@@ -407,9 +417,25 @@ function readSSE(res, typingEl) {
           scrollBottom();
         } else if (data.type === 'done') {
           removeTyping(typingEl);
+          // Strip trailing "MEDIA: uploads/<uuid>.ext" marker lines — the
+          // backend leaves these for plain-text-only consumers (e.g. the
+          // Teams bridge) to regex out, but this widget already shows the
+          // file as a proper attachment card below, so the raw marker is
+          // just noise here.
+          var displayContent = (data.content || '').replace(/\n?MEDIA:\s*uploads\/[0-9a-f-]+\.\w+\s*$/gim, '').replace(/\s+$/, '');
           if (!msgEl) {
-            assistantContent = data.content || '';
-            msgEl = addMsg('assistant', assistantContent);
+            msgEl = addMsg('assistant', displayContent);
+          } else {
+            // The server-side cleanup (stripping MEDIA:/sandbox: references,
+            // now this marker too) only applies to the final response text —
+            // streamed chunks shown live are the pre-cleanup text. Sync the
+            // bubble to the cleaned final version now that it's available.
+            msgEl.querySelector('.hq-msg-text').textContent = displayContent;
+          }
+          if (data.attachments && data.attachments.length) {
+            for (var ai = 0; ai < data.attachments.length; ai++) {
+              addAttachment(msgEl, data.attachments[ai]);
+            }
           }
           return;
         } else if (data.type === 'error') {
@@ -448,6 +474,49 @@ function addMsg(role, text) {
   msgs.appendChild(el);
   scrollBottom();
   return el;
+}
+
+function formatBytes(n) {
+  if (!n || n < 1024) return (n || 0) + ' B';
+  if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+  return (n / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function addAttachment(msgEl, att) {
+  if (!att || !att.file_id) return;
+  var url = BASE + '/api/public/chat/sessions/' + sessionId + '/attachments/' + att.file_id +
+    '?token=' + encodeURIComponent(sessionToken);
+  var link = document.createElement('a');
+  link.className = 'hq-attachment';
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+
+  var icon = document.createElement('span');
+  icon.className = 'hq-attachment-icon';
+  icon.textContent = '📄';
+  link.appendChild(icon);
+
+  var meta = document.createElement('span');
+  var nameEl = document.createElement('span');
+  nameEl.className = 'hq-attachment-name';
+  nameEl.textContent = att.filename || 'archivo';
+  meta.appendChild(nameEl);
+  if (att.size) {
+    var sizeEl = document.createElement('span');
+    sizeEl.className = 'hq-attachment-size';
+    sizeEl.textContent = ' · ' + formatBytes(att.size);
+    meta.appendChild(sizeEl);
+  }
+  link.appendChild(meta);
+
+  var timeEl = msgEl.querySelector('.hq-msg-time');
+  if (timeEl) {
+    msgEl.insertBefore(link, timeEl);
+  } else {
+    msgEl.appendChild(link);
+  }
+  scrollBottom();
 }
 
 function showTyping() {

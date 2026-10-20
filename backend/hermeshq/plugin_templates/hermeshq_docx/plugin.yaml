@@ -1,0 +1,6 @@
+name: hermeshq_docx
+version: "1.0.0"
+description: Word document (.docx) generation tool for agents. Create structured documents from headings, paragraphs, lists, and tables.
+author: HermesHQ
+provides_tools:
+  - hq_docx_generate

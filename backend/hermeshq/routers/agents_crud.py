@@ -157,6 +157,7 @@ async def create_agent(
         {
             "approval_mode": payload.approval_mode,
             "tool_progress_mode": payload.tool_progress_mode,
+            "thinking_mode": payload.thinking_mode,
             "gateway_notifications_mode": payload.gateway_notifications_mode,
         },
     )
@@ -213,6 +214,14 @@ async def get_agent(
 # ------------------------------------------------------------------
 
 
+def _runtime_profile_changed(agent: Agent, update_data: dict) -> bool:
+    if "runtime_profile" not in update_data:
+        return False
+    return normalize_runtime_profile_slug(update_data["runtime_profile"]) != normalize_runtime_profile_slug(
+        agent.runtime_profile
+    )
+
+
 @router.put("/{agent_id}", response_model=AgentRead)
 async def update_agent(
     agent_id: str,
@@ -235,7 +244,7 @@ async def update_agent(
         await _validate_supervisor(db, agent_id, update_data.get("supervisor_agent_id"))
     # Capture old values BEFORE any mutation for audit trail
     old_snapshot = {k: getattr(agent, k, None) for k in update_data} if update_data else None
-    runtime_profile_changed = "runtime_profile" in update_data
+    runtime_profile_changed = _runtime_profile_changed(agent, update_data)
     hermes_version_changed = "hermes_version" in update_data
     if hermes_version_changed:
         update_data["hermes_version"] = await _validate_hermes_version(request, update_data.get("hermes_version"))
