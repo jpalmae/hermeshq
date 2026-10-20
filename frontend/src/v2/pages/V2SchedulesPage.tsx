@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { useAgents } from "../../api/agents";
 import {
+  useApproveScheduledTask,
   useCreateScheduledTask,
   useDeleteScheduledTask,
   useRunScheduledTaskNow,
@@ -13,6 +14,7 @@ import { describeCron, isValidCron } from "../../lib/cron";
 import { v2toast, extractErrorMessage } from "../toast";
 import type { ScheduledTask } from "../../types/api";
 import { useI18n } from "../../lib/i18n";
+import { useSessionStore } from "../../stores/sessionStore";
 
 function agentLabel(agent: { friendly_name: string | null; name: string }) {
   return agent.friendly_name || agent.name;
@@ -33,6 +35,8 @@ export function V2SchedulesPage() {
   const deleteScheduledTask = useDeleteScheduledTask();
   const updateScheduledTask = useUpdateScheduledTask();
   const runNow = useRunScheduledTaskNow();
+  const approveScheduledTask = useApproveScheduledTask();
+  const currentUser = useSessionStore((state) => state.user);
   const [searchParams] = useSearchParams();
 
   const requestedAgentId = searchParams.get("agentId") ?? "";
@@ -99,6 +103,33 @@ export function V2SchedulesPage() {
     try {
       await updateScheduledTask.mutateAsync({ id: schedule.id, enabled: !schedule.enabled });
       v2toast.success(schedule.enabled ? t("v2.scheduleDisabled") : t("v2.scheduleEnabled"));
+    } catch (error) {
+      v2toast.error(extractErrorMessage(error, t("v2.updateFailed")));
+    }
+  }
+
+  async function onToggleNotify(schedule: ScheduledTask) {
+    try {
+      await updateScheduledTask.mutateAsync({ id: schedule.id, notify_public_chat: !schedule.notify_public_chat });
+    } catch (error) {
+      v2toast.error(extractErrorMessage(error, t("v2.updateFailed")));
+    }
+  }
+
+  async function onApprove(schedule: ScheduledTask) {
+    const zone = schedule.timezone === "UTC" ? "UTC" : t("v2.chileTime");
+    const confirmed = window.confirm(
+      t("v2.approveConfirm", {
+        name: schedule.name,
+        cron: schedule.cron_expression,
+        zone,
+        prompt: schedule.prompt,
+      }),
+    );
+    if (!confirmed) return;
+    try {
+      await approveScheduledTask.mutateAsync(schedule);
+      v2toast.success(t("v2.scheduleEnabled"));
     } catch (error) {
       v2toast.error(extractErrorMessage(error, t("v2.updateFailed")));
     }
@@ -180,6 +211,7 @@ export function V2SchedulesPage() {
               ) : (
                 <span className="v2-field-hint">{t("v2.cronPlaceholder")}</span>
               )}
+              <span className="v2-field-hint">{t("v2.chileTime")}</span>
             </div>
             <div className="v2-field">
               <label className="v2-field-label">{t("v2.prompt")}</label>
@@ -230,25 +262,48 @@ export function V2SchedulesPage() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           <span style={{ fontWeight: 620, fontSize: 14.5 }}>{schedule.name}</span>
-                          <span className="v2-pill" data-tone={schedule.enabled ? "success" : "neutral"}>
+                          <span
+                            className="v2-pill"
+                            data-tone={schedule.approval_status === "pending" ? "warn" : schedule.enabled ? "success" : "neutral"}
+                          >
                             <span className="v2-pill-dot" />
-                            {schedule.enabled ? t("v2.active") : t("v2.paused")}
+                            {schedule.approval_status === "pending"
+                              ? t("v2.pendingApproval")
+                              : schedule.enabled
+                                ? t("v2.active")
+                                : t("v2.paused")}
                           </span>
                         </div>
                         <div className="v2-mono" style={{ marginTop: 6, fontSize: 12, color: "var(--v2-text-secondary)" }}>
                           {schedule.cron_expression}
                           <span style={{ color: "var(--v2-success)", marginLeft: 8 }}>{describeCron(schedule.cron_expression, "en")}</span>
+                          <span style={{ marginLeft: 8 }}>{schedule.timezone === "UTC" ? "UTC" : t("v2.chileTime")}</span>
                         </div>
-                        <p style={{ marginTop: 8, fontSize: 13, color: "var(--v2-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <p
+                          style={{
+                            marginTop: 8,
+                            fontSize: 13,
+                            color: "var(--v2-text-secondary)",
+                            ...(schedule.approval_status === "pending"
+                              ? { whiteSpace: "pre-wrap" }
+                              : { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }),
+                          }}
+                        >
                           {schedule.prompt}
                         </p>
+                        {schedule.approval_status === "pending" && schedule.created_by_agent_id ? (
+                          <p className="v2-field-hint">{t("v2.requestedByAgent")}</p>
+                        ) : null}
                         <div className="v2-mono" style={{ marginTop: 8, fontSize: 11, color: "var(--v2-text-muted)" }}>
                           {schedule.agent ? agentLabel(schedule.agent) : schedule.agent_id.slice(0, 8)}
                           {schedule.next_run ? ` · ${t("v2.next")} ${new Date(schedule.next_run).toLocaleString()}` : ""}
                         </div>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
-                        <button className="v2-btn v2-btn-secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => void onRunNow(schedule)} disabled={runNow.isPending && runNow.variables === schedule.id}>
+                        <button className="v2-btn v2-btn-secondary" style={{ padding: "5px 12px", fontSize: 12 }} title={t("v2.notifyHint")} onClick={() => void onToggleNotify(schedule)} disabled={updateScheduledTask.isPending}>
+                          {schedule.notify_public_chat ? t("v2.notifyOn") : t("v2.notifyOff")}
+                        </button>
+                        <button className="v2-btn v2-btn-secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => void onRunNow(schedule)} disabled={schedule.approval_status === "pending" || (runNow.isPending && runNow.variables === schedule.id)}>
                           {runNow.isPending && runNow.variables === schedule.id ? t("v2.runningLoading") : t("v2.runNow")}
                         </button>
                         <button
@@ -258,9 +313,19 @@ export function V2SchedulesPage() {
                         >
                           {t("v2.edit")}
                         </button>
-                        <button className="v2-btn v2-btn-secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => void onToggleEnabled(schedule)} disabled={updateScheduledTask.isPending}>
-                          {schedule.enabled ? t("v2.disable") : t("v2.enable")}
-                        </button>
+                        {schedule.approval_status === "pending" ? (
+                          currentUser?.id === schedule.owner_user_id ? (
+                            <button className="v2-btn v2-btn-primary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => void onApprove(schedule)} disabled={approveScheduledTask.isPending && approveScheduledTask.variables?.id === schedule.id}>
+                              {t("v2.approve")}
+                            </button>
+                          ) : (
+                            <span className="v2-field-hint">{t("v2.awaitingOwner")}</span>
+                          )
+                        ) : (
+                          <button className="v2-btn v2-btn-secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => void onToggleEnabled(schedule)} disabled={updateScheduledTask.isPending}>
+                            {schedule.enabled ? t("v2.disable") : t("v2.enable")}
+                          </button>
+                        )}
                         <button className="v2-btn v2-btn-danger" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => void onDelete(schedule)} disabled={deleteScheduledTask.isPending && deleteScheduledTask.variables === schedule.id}>
                           {t("v2.delete")}
                         </button>

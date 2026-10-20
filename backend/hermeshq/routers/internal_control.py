@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from hermeshq.core.security import decode_device_token_claims, verify_agent_service_token
+from hermeshq.core.security import decode_device_token_claims, ensure_agent_access, verify_agent_service_token
 from hermeshq.database import get_db_session
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
@@ -21,6 +21,7 @@ from hermeshq.models.secret import Secret
 from hermeshq.models.task import Task
 from hermeshq.models.user import User
 from hermeshq.routers import agents_crud as agents_router
+from hermeshq.routers import agents_managed as agents_managed_router
 from hermeshq.routers import agents_runtime as agents_runtime_router
 from hermeshq.routers import agents_shared as agents_shared_router
 from hermeshq.routers import integration_factory as integration_factory_router
@@ -766,7 +767,7 @@ async def control_test_agent_integration(
     db: AsyncSession = Depends(get_db_session),
 ) -> ManagedIntegrationTestResult:
     admin_user = await _load_admin_proxy(db)
-    return await agents_router.test_agent_integration(
+    return await agents_managed_router.test_agent_integration(
         agent_id,
         integration_slug,
         ManagedIntegrationTestRequest(),
@@ -792,7 +793,9 @@ async def control_create_scheduled_task(
     db: AsyncSession = Depends(get_db_session),
 ) -> ScheduledTaskRead:
     admin_user = await _load_admin_proxy(db)
-    created = await scheduled_tasks_router.create_scheduled_task(payload, admin_user, db)
+    await ensure_agent_access(db, admin_user, payload.agent_id)
+    item = await scheduled_tasks_router.create_scheduled_task_record(db, payload, None)
+    created = ScheduledTaskRead.model_validate(item)
     await _log_control_action(
         db,
         current_agent,
@@ -1273,8 +1276,6 @@ async def control_list_devices(
         raise HTTPException(status_code=503, detail="Enrollment service unavailable")
     admin_user = await _load_admin_proxy(db)
     if agent_id:
-        from hermeshq.core.security import ensure_agent_access
-
         await ensure_agent_access(db, admin_user, agent_id)
     devices = await service.list_devices(agent_id)
     await _log_control_action(
@@ -1314,7 +1315,6 @@ async def control_enroll_device(
     if service is None:
         raise HTTPException(status_code=503, detail="Enrollment service unavailable")
     admin_user = await _load_admin_proxy(db)
-    from hermeshq.core.security import ensure_agent_access
 
     await ensure_agent_access(db, admin_user, payload.agent_id)
     try:
@@ -1362,7 +1362,6 @@ async def control_revoke_device(
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     admin_user = await _load_admin_proxy(db)
-    from hermeshq.core.security import ensure_agent_access
 
     await ensure_agent_access(db, admin_user, device.agent_id)
     try:

@@ -23,6 +23,7 @@ class Agent(TimestampMixin, Base):
     hermes_version: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     approval_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
     tool_progress_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    thinking_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
     gateway_notifications_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
     model: Mapped[str] = mapped_column(String(255), default="anthropic/claude-sonnet-4")
     use_provider_default: Mapped[bool] = mapped_column(Boolean, default=True)

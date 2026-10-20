@@ -35,6 +35,7 @@ export function V2AgentConfigTab({
   const [description, setDescription] = useState(agent.description ?? "");
   const [approvalMode, setApprovalMode] = useState(agent.approval_mode ?? "inherit");
   const [toolProgressMode, setToolProgressMode] = useState(agent.tool_progress_mode ?? "inherit");
+  const [thinkingMode, setThinkingMode] = useState(agent.thinking_mode ?? "inherit");
   const [gatewayNotifMode, setGatewayNotifMode] = useState(agent.gateway_notifications_mode ?? "inherit");
   const [runtimeProfile, setRuntimeProfile] = useState(agent.runtime_profile ?? "standard");
   const [hermesVersion, setHermesVersion] = useState(agent.hermes_version || "");
@@ -117,6 +118,7 @@ export function V2AgentConfigTab({
       system_prompt: systemPrompt || null,
       approval_mode: approvalMode,
       tool_progress_mode: toolProgressMode,
+      thinking_mode: thinkingMode,
       gateway_notifications_mode: gatewayNotifMode,
       runtime_profile: runtimeProfile,
       hermes_version: hermesVersion || null,
@@ -288,6 +290,14 @@ export function V2AgentConfigTab({
           <div className="v2-field">
             <label className="v2-field-label">{t("v2.toolProgress")}</label>
             <select className="v2-select" value={toolProgressMode} onChange={(e) => setToolProgressMode(e.target.value)} disabled={!isAdmin}>
+              <option value="inherit">{t("v2.inherit")}</option>
+              <option value="on">{t("v2.on")}</option>
+              <option value="off">{t("v2.off")}</option>
+            </select>
+          </div>
+          <div className="v2-field">
+            <label className="v2-field-label">{t("v2.thinkingMode")}</label>
+            <select className="v2-select" value={thinkingMode} onChange={(e) => setThinkingMode(e.target.value)} disabled={!isAdmin}>
               <option value="inherit">{t("v2.inherit")}</option>
               <option value="on">{t("v2.on")}</option>
               <option value="off">{t("v2.off")}</option>
