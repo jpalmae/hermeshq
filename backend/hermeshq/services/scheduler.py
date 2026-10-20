@@ -3,13 +3,13 @@ import contextlib
 import logging
 from datetime import UTC, datetime
 
-from croniter import croniter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.task import Task
+from hermeshq.services.cron_schedule import build_scheduled_prompt, compute_next_run, scheduled_task_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,10 @@ class SchedulerService:
     async def _tick_once(self) -> None:
         now = datetime.now(UTC)
         async with self.session_factory() as session:
-            statement = select(ScheduledTask).where(ScheduledTask.enabled == True)  # noqa: E712
+            statement = select(ScheduledTask).where(
+                ScheduledTask.enabled == True,  # noqa: E712
+                ScheduledTask.approval_status == "approved",
+            )
             # session.bind is always None in SQLAlchemy 2.x AsyncSession.
             # PostgreSQL is the only supported backend, so always use SKIP LOCKED
             # to prevent duplicate task creation when multiple workers are running.
@@ -68,21 +71,33 @@ class SchedulerService:
                 try:
                     schedule.next_run = self._ensure_utc(schedule.next_run)
                     schedule.last_run = self._ensure_utc(schedule.last_run)
-                    next_run = schedule.next_run or self._get_next_run(schedule.cron_expression, now)
+                    next_run = schedule.next_run or self._get_next_run(schedule.cron_expression, now, schedule.timezone)
                     if not schedule.next_run:
                         schedule.next_run = next_run
                     if schedule.next_run and schedule.next_run <= now:
+                        if await self._has_active_run(session, schedule.id):
+                            schedule.next_run = self._get_next_run(schedule.cron_expression, now, schedule.timezone)
+                            session.add(
+                                ActivityLog(
+                                    agent_id=schedule.agent_id,
+                                    event_type="schedule.skipped_overlap",
+                                    message=schedule.name,
+                                    details={"schedule_id": schedule.id},
+                                )
+                            )
+                            continue
                         task = Task(
                             agent_id=schedule.agent_id,
                             title=schedule.name,
-                            prompt=schedule.prompt,
-                            metadata_json={"scheduled_task_id": schedule.id, "scheduled": True},
+                            prompt=build_scheduled_prompt(schedule, now),
+                            created_by_user_id=schedule.owner_user_id,
+                            metadata_json=scheduled_task_metadata(schedule),
                         )
                         session.add(task)
                         await session.flush()
                         created_task_ids.append(task.id)
                         schedule.last_run = now
-                        schedule.next_run = self._get_next_run(schedule.cron_expression, now)
+                        schedule.next_run = self._get_next_run(schedule.cron_expression, now, schedule.timezone)
                         session.add(
                             ActivityLog(
                                 agent_id=schedule.agent_id,
@@ -98,11 +113,19 @@ class SchedulerService:
         for task_id in created_task_ids:
             await self.on_task_created(task_id)
 
-    def _get_next_run(self, expression: str, now: datetime) -> datetime:
-        fields = expression.split()
-        if len(fields) == 6:
-            return self._ensure_utc(croniter(expression, now, second_at_beginning=True).get_next(datetime))
-        return self._ensure_utc(croniter(expression, now).get_next(datetime))
+    async def _has_active_run(self, session: AsyncSession, schedule_id: str) -> bool:
+        result = await session.execute(
+            select(Task.id)
+            .where(
+                Task.metadata_json["scheduled_task_id"].as_string() == schedule_id,
+                Task.status.in_(("pending", "queued", "running")),
+            )
+            .limit(1)
+        )
+        return result.first() is not None
+
+    def _get_next_run(self, expression: str, now: datetime, timezone_name: str | None = "UTC") -> datetime:
+        return compute_next_run(expression, timezone_name, now)
 
     def _ensure_utc(self, value: datetime | None) -> datetime | None:
         if value is None:

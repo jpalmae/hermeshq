@@ -1,0 +1,6 @@
+name: hermeshq_pptx
+version: "1.0.0"
+description: PowerPoint presentation (.pptx) generation tool for agents. Create slide decks with a title slide, bullet content, and speaker notes.
+author: HermesHQ
+provides_tools:
+  - hq_pptx_generate

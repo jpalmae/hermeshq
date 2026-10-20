@@ -15,6 +15,15 @@ from sqlalchemy.orm import aliased
 logger = logging.getLogger(__name__)
 
 
+HISTORY_USER_MARKER = "[Mensaje anterior, ya respondido; no lo repitas] "
+
+
+def history_assistant_text(content: str, max_chars: int) -> str:
+    if max_chars > 0 and len(content) > max_chars:
+        return content[:max_chars].rstrip() + "\n…(respuesta anterior recortada)"
+    return content
+
+
 class _ResizableLimiter:
     def __init__(self, limit: int) -> None:
         self._limit = limit
@@ -177,6 +186,7 @@ from hermeshq.models.node import Node
 from hermeshq.models.secret import Secret
 from hermeshq.models.task import Task
 from hermeshq.services.hermes_runtime import HermesRuntime
+from hermeshq.services.schedule_notifications import enqueue_schedule_notification
 from hermeshq.services.secret_vault import SecretVault
 from hermeshq.services.task_board import sync_board_with_runtime
 
@@ -243,6 +253,10 @@ class AgentSupervisor:
             select(Task).where(Task.agent_id == task.agent_id).order_by(desc(Task.queued_at)).limit(24)
         )
         candidates = list(result.scalars().all())
+        settings = get_settings()
+        max_age = max(0, int(settings.conversation_history_max_age_hours))
+        max_chars = max(0, int(settings.conversation_history_turn_max_chars))
+        cutoff = utcnow() - timedelta(hours=max_age) if max_age else None
         prior_turns = [
             item
             for item in reversed(candidates)
@@ -250,14 +264,15 @@ class AgentSupervisor:
             and item.status == "completed"
             and (item.metadata_json or {}).get("conversation")
             and (not thread_id or str((item.metadata_json or {}).get("thread_id") or "").strip() == thread_id)
+            and (cutoff is None or item.queued_at is None or item.queued_at >= cutoff)
         ]
         history: list[dict] = []
         for prior in prior_turns[-6:]:
             if prior.prompt.strip():
-                history.append({"role": "user", "content": prior.prompt.strip()})
+                history.append({"role": "user", "content": f"{HISTORY_USER_MARKER}{prior.prompt.strip()}"})
             assistant_content = self._build_conversation_assistant_content(prior)
             if assistant_content:
-                history.append({"role": "assistant", "content": assistant_content})
+                history.append({"role": "assistant", "content": history_assistant_text(assistant_content, max_chars)})
         return history
 
     async def bootstrap_runtime(self) -> None:
@@ -537,6 +552,7 @@ class AgentSupervisor:
                 self._dispatch_wakeup.clear()
                 try:
                     await self._recover_expired_tasks()
+                    await self._expire_stale_queued_tasks()
                     await self._cancel_requested_claims()
                     await self._dispatch_available_tasks()
                 except Exception:
@@ -563,6 +579,49 @@ class AgentSupervisor:
             runner = asyncio.create_task(self._run_claimed_task(task_id, claim_token))
             self.active_tasks[task_id] = runner
             self._active_claims[task_id] = claim_token
+
+    async def _expire_stale_queued_tasks(self) -> None:
+        timeout = int(get_settings().public_chat_queue_timeout_seconds)
+        if timeout <= 0:
+            return
+        cutoff = utcnow() - timedelta(seconds=timeout)
+        events: list[dict] = []
+        async with self.session_factory() as session:
+            result = await session.execute(select(Task).where(Task.status == "queued", Task.queued_at < cutoff))
+            stale = [
+                task for task in result.scalars().all() if (task.metadata_json or {}).get("source") == "public_chat"
+            ]
+            if not stale:
+                return
+            message = f"Task waited {timeout}s in the queue without a free slot"
+            for task in stale:
+                task.status = "failed"
+                task.completed_at = utcnow()
+                task.error_message = message
+                await sync_board_with_runtime(session, task.id, task.status)
+                agent = await session.get(Agent, task.agent_id)
+                if agent:
+                    await self._log(
+                        session,
+                        "task.failed",
+                        agent=agent,
+                        task=task,
+                        message=task.title or "Task failed",
+                        details={"error": message, "error_type": "QueueTimeout"},
+                    )
+                event: dict = {
+                    "type": "task.failed",
+                    "task_id": task.id,
+                    "agent_id": task.agent_id,
+                    "error": message,
+                    "error_type": "QueueTimeout",
+                }
+                if task.created_by_user_id:
+                    event["created_by_user_id"] = task.created_by_user_id
+                events.append(event)
+            await session.commit()
+        for event in events:
+            await self.event_broker.publish(event)
 
     async def _claim_next_task(self) -> tuple[str, str] | None:
         queued_task = aliased(Task)
@@ -833,6 +892,7 @@ class AgentSupervisor:
                     summary=execution.final_response,
                     callbacks=callbacks,
                 )
+                await enqueue_schedule_notification(session, task, success=True, summary=execution.final_response)
                 await session.commit()
                 await self._drain_callbacks(callbacks)
 
@@ -961,6 +1021,7 @@ class AgentSupervisor:
                         summary=str(exc),
                         callbacks=callbacks,
                     )
+                    await enqueue_schedule_notification(session, task, success=False, summary=str(exc))
                 await session.commit()
                 await self._drain_callbacks(callbacks)
                 if task:

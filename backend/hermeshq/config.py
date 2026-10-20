@@ -70,6 +70,14 @@ class Settings(BaseSettings):
     runtime_runner_url: str = "http://runtime-runner:8080"
     runtime_runner_token: str = ""
     runtime_egress_allowlist: str = ""
+    task_idle_timeout_seconds: int = 600
+    scheduled_tasks_thinking: str = "off"
+    conversation_history_max_age_hours: int = 3
+    conversation_history_turn_max_chars: int = 4000
+    public_chat_queue_timeout_seconds: int = 240
+    public_chat_task_timeout_seconds: int = 540
+    model_call_timeout_seconds: int = 120
+    model_context_length: int = 0
     enrollment_llm_proxy: bool = True
 
     model_config = SettingsConfigDict(

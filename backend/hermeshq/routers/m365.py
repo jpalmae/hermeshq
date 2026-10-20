@@ -306,14 +306,23 @@ class AgentScopesUpdate(BaseModel):
 # Mapping: which scopes activate which delegated integration
 # Keys must match the actual Azure AD granted permissions
 _SCOPE_TO_INTEGRATION: dict[str, str] = {
+    "User.ReadBasic.All": "ms365-mail",
     "Mail.Read": "ms365-mail",
     "Mail.Send": "ms365-mail",
+    "Mail.ReadWrite": "ms365-mail",
+    "Mail.Send.Shared": "ms365-mail",
+    "Contacts.ReadWrite": "ms365-mail",
     "Calendars.Read": "ms365-calendar",
     "Calendars.ReadWrite": "ms365-calendar",
     "Files.Read.All": "sharepoint",
+    "Files.ReadWrite.All": "sharepoint",
+    "Sites.ReadWrite.All": "sharepoint",
     "Chat.Read": "ms365-teams",
     "Chat.ReadWrite": "ms365-teams",
+    "Chat.Create": "ms365-teams",
     "Team.ReadBasic.All": "ms365-teams",
+    "Group.Read.All": "ms365-teams",
+    "GroupMember.Read.All": "ms365-teams",
 }
 
 # Companion skill each integration ships with (must match manifest skill_identifier)
