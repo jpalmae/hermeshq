@@ -46,6 +46,9 @@ def main() -> int:
     payload = json.loads(payload_raw)
     os.environ["HERMES_HOME"] = payload["hermes_home"]
     os.environ["HERMES_QUIET"] = "1"
+    os.environ["HERMESHQ_TASK_PAYLOAD"] = json.dumps(
+        {"metadata": payload.get("metadata") or {}, "task_id": payload.get("task_id")}
+    )
     os.environ.setdefault("TERM", "xterm-256color")
 
     os.chdir(payload["cwd"])
@@ -116,6 +119,7 @@ def main() -> int:
             enabled_toolsets=payload.get("enabled_toolsets") or None,
             disabled_toolsets=payload.get("disabled_toolsets") or None,
             ephemeral_system_prompt=payload.get("system_prompt"),
+            request_overrides=payload.get("request_overrides") or None,
             max_iterations=payload.get("max_iterations", 90),
             skip_context_files=False,
             skip_memory=False,

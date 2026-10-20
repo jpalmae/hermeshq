@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hermeshq.database import get_db_session
+from hermeshq.database import AsyncSessionLocal, get_db_session
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
 from hermeshq.models.enums import TaskStatus
@@ -991,16 +991,22 @@ async def mcp_http_endpoint(
 async def mcp_sse_endpoint(
     request: Request,
     authorization: str | None = Header(default=None),
-    db: AsyncSession = Depends(get_db_session),
 ) -> Response:
     """SSE transport for MCP clients that support it.
 
     After establishing the EventSource connection the server sends an
     ``endpoint`` event whose data is the URL the client should POST to.
     """
-    access = await authenticate_mcp_token(db, authorization)
-    await _rate_limiter.check(access.id)
-    await db.commit()
+    # Auth uses its own short-lived session instead of a request-scoped
+    # `Depends(get_db_session)` — that dependency stays open for the whole
+    # response body, and this response is a long-lived SSE stream (heartbeat
+    # loop for the life of the client connection). Holding a pooled DB
+    # connection per connected MCP SSE client can exhaust the pool (same bug
+    # class as the M365 device-flow poll fixed on 2026-09-14).
+    async with AsyncSessionLocal() as db:
+        access = await authenticate_mcp_token(db, authorization)
+        await _rate_limiter.check(access.id)
+        await db.commit()
 
     async def _sse_generator():
         # Per the MCP spec the first event advertises the POST endpoint.

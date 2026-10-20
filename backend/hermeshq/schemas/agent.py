@@ -41,6 +41,7 @@ class AgentCreate(BaseModel):
     hermes_version: str | None = None
     approval_mode: str | None = None
     tool_progress_mode: str | None = None
+    thinking_mode: str | None = None
     gateway_notifications_mode: str | None = None
     model: str | None = None
     use_provider_default: bool = True
@@ -77,6 +78,7 @@ class AgentUpdate(BaseModel):
     hermes_version: str | None = None
     approval_mode: str | None = None
     tool_progress_mode: str | None = None
+    thinking_mode: str | None = None
     gateway_notifications_mode: str | None = None
     model: str | None = None
     use_provider_default: bool | None = None
@@ -120,6 +122,7 @@ class AgentRead(ORMModel):
     hermes_version: str | None
     approval_mode: str | None
     tool_progress_mode: str | None
+    thinking_mode: str | None = None
     gateway_notifications_mode: str | None
     model: str
     use_provider_default: bool = True

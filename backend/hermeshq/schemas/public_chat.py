@@ -34,7 +34,7 @@ def _sanitize_title(v: str | None) -> str | None:
 
 
 class CreateSessionRequest(BaseModel):
-    pass
+    sender_id: str | None = Field(default=None, max_length=255)
 
 
 class CreateSessionResponse(BaseModel):
@@ -75,6 +75,8 @@ class CreateApiKeyRequest(BaseModel):
     widget_theme: WidgetTheme = WidgetTheme.auto
     widget_accent: str = "#6366f1"
     widget_position: WidgetPosition = WidgetPosition.right
+    bound_user_id: str | None = None
+    trust_sender_id: bool = False
 
     @field_validator("widget_accent")
     @classmethod
@@ -98,6 +100,8 @@ _UPDATE_ALLOWED_FIELDS = frozenset(
         "widget_theme",
         "widget_accent",
         "widget_position",
+        "bound_user_id",
+        "trust_sender_id",
     }
 )
 
@@ -112,6 +116,8 @@ class UpdateApiKeyRequest(BaseModel):
     widget_theme: WidgetTheme | None = None
     widget_accent: str | None = None
     widget_position: WidgetPosition | None = None
+    bound_user_id: str | None = None
+    trust_sender_id: bool | None = None
 
     @field_validator("widget_accent")
     @classmethod
@@ -144,6 +150,8 @@ class ApiKeyRead(ORMModel):
     widget_theme: str
     widget_accent: str
     widget_position: str
+    bound_user_id: str | None = None
+    trust_sender_id: bool = False
     created_at: datetime
 
 
@@ -160,3 +168,13 @@ class TranscriptRead(ORMModel):
     agent_id: str
     messages_json: list[dict]
     archived_at: datetime
+
+
+class NotificationRead(BaseModel):
+    id: str
+    title: str
+    body: str
+    created_at: datetime
+    sender_id: str | None = None
+    task_id: str | None = None
+    schedule_id: str | None = None

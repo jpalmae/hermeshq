@@ -7,3 +7,4 @@ provides_tools:
   - teams_list_chats
   - teams_get_chat_messages
   - teams_send_chat_message
+  - teams_send_to_person
