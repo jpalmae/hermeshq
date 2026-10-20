@@ -13,6 +13,7 @@ import {
   formatHermesVersionLabel,
   gatewayNotificationsModeOptions,
   slugify,
+  thinkingModeOptions,
   toolProgressModeOptions,
 } from "./utils";
 import type { AgentDraftsState } from "./useAgentDrafts";
@@ -59,6 +60,8 @@ export function OverviewTab({
     setApprovalModeDraft,
     toolProgressModeDraft,
     setToolProgressModeDraft,
+    thinkingModeDraft,
+    setThinkingModeDraft,
     gatewayNotificationsModeDraft,
     setGatewayNotificationsModeDraft,
     useProviderDefaultDraft,
@@ -390,6 +393,27 @@ export function OverviewTab({
                           {t(toolProgressModeOptions.find((option) => option.value === toolProgressModeDraft)?.labelKey ?? "agent.interactionModeInherit")}
                         </div>
                       )}
+                    </label>
+
+                    <label className="panel-field">
+                      <span className="panel-label">{t("agent.thinkingMode")}</span>
+                      {isAdmin ? (
+                        <select
+                          value={thinkingModeDraft}
+                          onChange={(event) => setThinkingModeDraft(event.target.value)}
+                        >
+                          {thinkingModeOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {t(option.labelKey)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="rounded-2xl border border-[var(--border-visible)] bg-[color-mix(in_srgb,var(--surface)_86%,transparent)] px-4 py-3 text-sm text-[var(--text-display)]">
+                          {t(thinkingModeOptions.find((option) => option.value === thinkingModeDraft)?.labelKey ?? "agent.interactionModeInherit")}
+                        </div>
+                      )}
+                      <span className="text-xs text-[var(--text-secondary)]">{t("agent.thinkingModeHint")}</span>
                     </label>
 
                     <label className="panel-field">

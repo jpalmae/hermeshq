@@ -35,6 +35,7 @@ export function useAgentDrafts(
   const [hermesVersionDraft, setHermesVersionDraft] = useState("bundled");
   const [approvalModeDraft, setApprovalModeDraft] = useState("inherit");
   const [toolProgressModeDraft, setToolProgressModeDraft] = useState("inherit");
+  const [thinkingModeDraft, setThinkingModeDraft] = useState("inherit");
   const [gatewayNotificationsModeDraft, setGatewayNotificationsModeDraft] = useState("inherit");
   const [useProviderDefaultDraft, setUseProviderDefaultDraft] = useState(true);
   const [customModelDraft, setCustomModelDraft] = useState("");
@@ -111,6 +112,7 @@ export function useAgentDrafts(
     setHermesVersionDraft(agent.hermes_version ?? "bundled");
     setApprovalModeDraft(agent.approval_mode ?? "inherit");
     setToolProgressModeDraft(agent.tool_progress_mode ?? "inherit");
+    setThinkingModeDraft(agent.thinking_mode ?? "inherit");
     setGatewayNotificationsModeDraft(agent.gateway_notifications_mode ?? "inherit");
     setFallbackDraft({
       provider: agent.fallback_provider ?? null,
@@ -158,6 +160,8 @@ export function useAgentDrafts(
     setApprovalModeDraft,
     toolProgressModeDraft,
     setToolProgressModeDraft,
+    thinkingModeDraft,
+    setThinkingModeDraft,
     gatewayNotificationsModeDraft,
     setGatewayNotificationsModeDraft,
     useProviderDefaultDraft,

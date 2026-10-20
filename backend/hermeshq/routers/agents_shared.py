@@ -52,6 +52,8 @@ APPROVAL_MODE_OPTIONS = {"off", "on-request", "on-failure"}
 
 TOOL_PROGRESS_MODE_OPTIONS = {"on", "off"}
 
+THINKING_MODE_OPTIONS = {"on", "off"}
+
 GATEWAY_NOTIFICATIONS_MODE_OPTIONS = {"all", "result", "off"}
 
 # ---------------------------------------------------------------------------
@@ -107,6 +109,12 @@ def _apply_agent_runtime_behavior_settings(agent: Agent, values: dict[str, objec
             values.get("tool_progress_mode"),
             field_name="tool_progress_mode",
             allowed=TOOL_PROGRESS_MODE_OPTIONS,
+        )
+    if "thinking_mode" in values:
+        agent.thinking_mode = _normalize_optional_mode(
+            values.get("thinking_mode"),
+            field_name="thinking_mode",
+            allowed=THINKING_MODE_OPTIONS,
         )
     if "gateway_notifications_mode" in values:
         agent.gateway_notifications_mode = _normalize_optional_mode(
