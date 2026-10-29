@@ -33,6 +33,7 @@ class RuntimeRunnerClient:
         environment: dict[str, str],
         input_data: str,
         hermes_version: str | None = None,
+        network_policy: dict | None = None,
     ) -> AsyncIterator[str]:
         execution_id = str(uuid4())
         payload = {
@@ -43,6 +44,8 @@ class RuntimeRunnerClient:
             "input_data": input_data,
             "hermes_version": hermes_version,
         }
+        if network_policy is not None:
+            payload["network_policy"] = network_policy
         exit_event: dict | None = None
         try:
             try:

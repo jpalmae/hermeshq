@@ -125,6 +125,7 @@ services:
       RUNTIME_IMAGE: ${RUNTIME_IMAGE:-hermeshq-runtime:local}
       RUNTIME_BACKEND_CONTAINER: hermeshq-backend
       RUNTIME_EGRESS_CONTAINER: hermeshq-runtime-egress
+      RUNTIME_EGRESS_IMAGE: ${RUNTIME_EGRESS_IMAGE:-hermeshq-runtime-egress:local}
       RUNTIME_INTERNAL_API_URL: http://backend:8000/api/internal
       RUNTIME_EGRESS_PROXY_URL: http://runtime-egress:3128
       RUNTIME_CONTAINER_MEMORY: ${RUNTIME_CONTAINER_MEMORY:-768m}
@@ -175,6 +176,7 @@ services:
     build:
       context: .
       dockerfile: backend/runtime-egress/Dockerfile
+    image: ${RUNTIME_EGRESS_IMAGE:-hermeshq-runtime-egress:local}
     container_name: hermeshq-runtime-egress
     environment:
       RUNTIME_EGRESS_ALLOWLIST: ${RUNTIME_EGRESS_ALLOWLIST:-.api.openai.com,.api.anthropic.com,.openrouter.ai,.integrate.api.nvidia.com,.puget.sixmanager.io,.inference-api.nousresearch.com,.api.kimi.com,.api.moonshot.ai,.api.z.ai,.generativelanguage.googleapis.com,.chatgpt.com,.api.telegram.org,bedrock-runtime.us-east-1.amazonaws.com}
