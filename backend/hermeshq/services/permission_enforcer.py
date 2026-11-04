@@ -21,12 +21,33 @@ def _is_delegation_tool(tool_name: str) -> bool:
 
 
 _NETWORK_COMMAND_RE = re.compile(
-    r"(?:^|[\s;&|])(?:curl|wget|nc|ncat|netcat|ssh|scp|sftp|ftp|telnet)(?:\s|$)"
-    r"|(?:^|[\s;&|])git\s+(?:clone|fetch|pull|push|ls-remote)(?:\s|$)"
-    r"|(?:^|[\s;&|])(?:pip|pip3|npm|pnpm|yarn)\s+(?:install|add|publish)(?:\s|$)",
+    r"(?:^|[\s;&|(])(?:[A-Za-z0-9_./@+-]+/)?(?:curl|wget|nc|ncat|netcat|ssh|scp|sftp|ftp|telnet)(?:\s|$)"
+    r"|(?:^|[\s;&|(])(?:[A-Za-z0-9_./@+-]+/)?git\s+(?:clone|fetch|pull|push|ls-remote)(?:\s|$)"
+    r"|(?:^|[\s;&|(])(?:[A-Za-z0-9_./@+-]+/)?(?:pip|pip3|npm|pnpm|yarn)\s+(?:install|add|publish)(?:\s|$)",
     re.IGNORECASE,
 )
 _URL_HOST_RE = re.compile(r"(?:https?|ftp)://([^/:\s]+)", re.IGNORECASE)
+
+
+def enforceable_egress_domains(allow_domains: object) -> list[str]:
+    if not isinstance(allow_domains, list):
+        return []
+    domains: list[str] = []
+    for pattern in allow_domains:
+        if not isinstance(pattern, str):
+            continue
+        entry = pattern.strip().lower().rstrip(".")
+        if not entry:
+            continue
+        if entry.startswith("*."):
+            entry = entry[1:]
+        if any(character in entry for character in "*?[]"):
+            continue
+        if entry not in domains:
+            domains.append(entry)
+    return domains
+
+
 _HOST_ARGUMENT_RE = re.compile(r"(?:^|\s)(?:[A-Za-z0-9._-]+@)?([A-Za-z0-9.-]+\.[A-Za-z]{2,})(?::\d+)?(?:[/\s]|$)")
 
 
