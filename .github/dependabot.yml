@@ -5,8 +5,7 @@ updates:
   - package-ecosystem: pip
     directory: /backend
     schedule:
-      interval: weekly
-      day: monday
+      interval: daily
     open-pull-requests-limit: 5
     groups:
       patch-minor:
@@ -18,8 +17,7 @@ updates:
   - package-ecosystem: npm
     directory: /frontend
     schedule:
-      interval: weekly
-      day: monday
+      interval: daily
     open-pull-requests-limit: 5
     groups:
       patch-minor:
