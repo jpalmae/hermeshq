@@ -18,6 +18,10 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
+_EGRESS_IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,127}$")
+_egress_domain_re = re.compile(
+    r"^\.?[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$"
+)
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 _RESOURCE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@-]{0,31}$")
@@ -34,10 +38,28 @@ _RESERVED_ENV = {
 }
 
 
+class NetworkPolicy(BaseModel):
+    deny_all: bool = False
+    allow_domains: list[str] = Field(default_factory=list)
+
+    @field_validator("allow_domains")
+    @classmethod
+    def validate_allow_domains(cls, value: list[str]) -> list[str]:
+        if len(value) > 256:
+            raise ValueError("Too many domains")
+        if sum(len(item) for item in value) > 16 * 1024:
+            raise ValueError("Allowlist is too large")
+        for item in value:
+            if not _egress_domain_re.fullmatch(item):
+                raise ValueError("Invalid domain entry")
+        return value
+
+
 class RuntimeEnvironmentRequest(BaseModel):
     agent_id: UUID
     environment: dict[str, str] = Field(default_factory=dict)
     hermes_version: str | None = None
+    network_policy: NetworkPolicy | None = None
 
     @field_validator("environment")
     @classmethod
@@ -124,7 +146,9 @@ def _isolated_environment(request: RuntimeEnvironmentRequest) -> dict[str, str]:
             "PI_CODING_AGENT_DIR": "/run/hermeshq/pi",
         }
     )
-    if proxy_url:
+    policy = request.network_policy
+    fully_isolated = policy is not None and policy.deny_all and not policy.allow_domains
+    if proxy_url and not fully_isolated:
         env["HTTP_PROXY"] = proxy_url
         env["HTTPS_PROXY"] = proxy_url
         env["NO_PROXY"] = "backend,runtime-egress,localhost,127.0.0.1"
@@ -334,13 +358,13 @@ async def _resolve_workspace_volume() -> str:
     return candidates[0]
 
 
-async def _prepare_execution_network(execution_id: UUID) -> str:
+async def _prepare_execution_network(execution_id: UUID, include_egress: bool = True) -> str:
     network_name = f"hq-net-{execution_id.hex}"
-    await _prepare_private_network(network_name)
+    await _prepare_private_network(network_name, include_egress=include_egress)
     return network_name
 
 
-async def _prepare_private_network(network_name: str) -> None:
+async def _prepare_private_network(network_name: str, include_egress: bool = True) -> None:
     if not _RESOURCE_NAME_RE.fullmatch(network_name):
         raise RuntimeError("Runtime network name is invalid")
     backend_container = _required_resource_name("RUNTIME_BACKEND_CONTAINER", "hermeshq-backend")
@@ -357,7 +381,8 @@ async def _prepare_private_network(network_name: str) -> None:
     )
     try:
         await _docker_output("network", "connect", "--alias", "backend", network_name, backend_container)
-        await _docker_output("network", "connect", "--alias", "runtime-egress", network_name, egress_container)
+        if include_egress:
+            await _docker_output("network", "connect", "--alias", "runtime-egress", network_name, egress_container)
     except (RuntimeError, TimeoutError):
         await _teardown_execution_network(network_name)
         raise
@@ -442,9 +467,6 @@ async def _reconcile_gateway_networks_loop() -> None:
             continue
 
 
-_egress_domain_re = re.compile(
-    r"^\.?[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$"
-)
 _egress_allowlist_domains: list[str] = []
 _egress_allowlist_applied_to: str = ""
 
@@ -646,18 +668,118 @@ async def _remove_container(container_name: str) -> None:
         await asyncio.wait_for(process.wait(), timeout=10)
 
 
+def _egress_image() -> str:
+    image = os.environ.get("RUNTIME_EGRESS_IMAGE", "hermeshq-runtime-egress:local")
+    if not _EGRESS_IMAGE_RE.fullmatch(image):
+        raise RuntimeError("RUNTIME_EGRESS_IMAGE is invalid")
+    return image
+
+
+def build_egress_container_command(
+    container_name: str,
+    network_name: str,
+    allow_domains: list[str],
+) -> list[str]:
+    return [
+        shutil.which("docker") or "/usr/local/bin/docker",
+        "run",
+        "--detach",
+        "--init",
+        "--name",
+        container_name,
+        "--hostname",
+        "runtime-egress",
+        "--network",
+        network_name,
+        "--network-alias",
+        "runtime-egress",
+        "--label",
+        "hermeshq.runtime-execution=true",
+        "--label",
+        "hermeshq.runtime-owner=hermeshq-runtime-runner",
+        "--read-only",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges:true",
+        "--pids-limit",
+        "64",
+        "--memory",
+        "128m",
+        "--cpus",
+        "0.25",
+        "--log-driver",
+        "none",
+        "--tmpfs",
+        "/tmp:rw,noexec,nosuid,size=16m,uid=13,gid=13,mode=0770",
+        "--tmpfs",
+        "/run:rw,noexec,nosuid,size=4m,uid=13,gid=13,mode=0770",
+        "--tmpfs",
+        "/var/log/squid:rw,noexec,nosuid,size=16m,uid=13,gid=13,mode=0770",
+        "--tmpfs",
+        "/var/spool/squid:rw,noexec,nosuid,size=16m,uid=13,gid=13,mode=0770",
+        "--env",
+        f"RUNTIME_EGRESS_ALLOWLIST={','.join(allow_domains)}",
+        _egress_image(),
+    ]
+
+
+async def _connect_egress_upstream(container_name: str) -> None:
+    egress_container = _required_resource_name("RUNTIME_EGRESS_CONTAINER", "hermeshq-runtime-egress")
+    raw = await _docker_output("inspect", "--format", "{{json .NetworkSettings.Networks}}", egress_container)
+    networks = json.loads(raw)
+    connected = False
+    for name in networks:
+        internal = await _docker_output("network", "inspect", "--format", "{{.Internal}}", str(name))
+        if internal.strip().lower() == "true":
+            continue
+        with contextlib.suppress(RuntimeError, TimeoutError):
+            await _docker_output("network", "connect", str(name), container_name)
+            connected = True
+    if not connected:
+        raise RuntimeError("No external network available for the per-execution egress proxy")
+
+
+async def _wait_for_egress_container(container_name: str, attempts: int = 20) -> None:
+    for _ in range(attempts):
+        with contextlib.suppress(RuntimeError, TimeoutError):
+            await _docker_output(
+                "exec",
+                container_name,
+                "sh",
+                "-c",
+                "test -s /tmp/squid.pid",
+            )
+            return
+        await asyncio.sleep(0.5)
+    raise RuntimeError("Per-execution egress proxy did not become ready")
+
+
 async def _execute_container(request: ExecutionRequest) -> AsyncIterator[bytes]:
     env_path = ""
     process: asyncio.subprocess.Process | None = None
     container_name = ""
     execution_network = ""
+    egress_container_name = ""
     timed_out = False
     try:
         env_path = _write_environment_file(request)
 
         workspace_volume = await _resolve_workspace_volume()
-        execution_network = await _prepare_execution_network(request.execution_id)
+        policy = request.network_policy
+        deny_all = policy is not None and policy.deny_all
+        execution_network = await _prepare_execution_network(request.execution_id, include_egress=not deny_all)
         await _ensure_ssh_relay_attached(request.agent_id, execution_network)
+        if deny_all and policy is not None and policy.allow_domains:
+            egress_container_name = f"hq-egress-{request.execution_id.hex}"
+            egress_command = build_egress_container_command(
+                egress_container_name,
+                execution_network,
+                policy.allow_domains,
+            )
+            await _docker_output(*egress_command[1:])
+            await _connect_egress_upstream(egress_container_name)
+            await _wait_for_egress_container(egress_container_name)
         command, container_name = build_container_command(
             request,
             env_path,
@@ -729,6 +851,8 @@ async def _execute_container(request: ExecutionRequest) -> AsyncIterator[bytes]:
                 await asyncio.wait_for(process.wait(), timeout=10)
         if container_name:
             await _remove_container(container_name)
+        if egress_container_name:
+            await _remove_container(egress_container_name)
         if execution_network:
             await _teardown_execution_network(execution_network)
         if env_path:

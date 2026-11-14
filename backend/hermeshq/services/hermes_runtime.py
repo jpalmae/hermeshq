@@ -9,6 +9,7 @@ from hermeshq.models.agent import Agent
 from hermeshq.models.task import Task
 from hermeshq.services.credentials import require_secret_value
 from hermeshq.services.hermes_installation import HermesInstallationManager
+from hermeshq.services.permission_enforcer import PermissionEnforcer, enforceable_egress_domains
 from hermeshq.services.provider_catalog import normalize_runtime_provider
 from hermeshq.services.runtime_base import RuntimeBase, RuntimeExecutionError, RuntimeExecutionResult
 from hermeshq.services.runtime_profiles import resolve_effective_toolsets
@@ -491,6 +492,17 @@ class HermesRuntime(RuntimeBase):
         for env_key, env_value in self._model_timeout_env().items():
             process_env.setdefault(env_key, env_value)
 
+        network_policy: dict | None = None
+        if self.runtime_runner_client is not None:
+            policy = await PermissionEnforcer(self.session_factory).get_policy(agent)
+            if policy is not None:
+                rules = policy.network_rules or {}
+                if rules.get("deny_all"):
+                    network_policy = {
+                        "deny_all": True,
+                        "allow_domains": enforceable_egress_domains(rules.get("allow_domains")),
+                    }
+
         process: asyncio.subprocess.Process | None = None
         if self.runtime_runner_client is None:
             process = await asyncio.create_subprocess_exec(
@@ -548,6 +560,7 @@ class HermesRuntime(RuntimeBase):
                     environment=process_env,
                     input_data=json.dumps(payload),
                     hermes_version=runtime_version,
+                    network_policy=network_policy,
                 ):
                     await handle_line(text.strip())
                 return result

@@ -46,6 +46,6 @@
     "vitest": "^5.1.0"
   },
   "overrides": {
-    "follow-redirects": "1.16.1"
+    "follow-redirects": "1.16.2"
   }
 }
