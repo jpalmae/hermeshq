@@ -9,7 +9,7 @@ from hermeshq.models.agent import Agent
 from hermeshq.models.task import Task
 from hermeshq.services.credentials import require_secret_value
 from hermeshq.services.hermes_installation import HermesInstallationManager
-from hermeshq.services.permission_enforcer import PermissionEnforcer, enforceable_egress_domains
+from hermeshq.services.permission_enforcer import PermissionEnforcer, enforceable_egress_domains, llm_egress_hosts
 from hermeshq.services.provider_catalog import normalize_runtime_provider
 from hermeshq.services.runtime_base import RuntimeBase, RuntimeExecutionError, RuntimeExecutionResult
 from hermeshq.services.runtime_profiles import resolve_effective_toolsets
@@ -498,10 +498,11 @@ class HermesRuntime(RuntimeBase):
             if policy is not None:
                 rules = policy.network_rules or {}
                 if rules.get("deny_all"):
-                    network_policy = {
-                        "deny_all": True,
-                        "allow_domains": enforceable_egress_domains(rules.get("allow_domains")),
-                    }
+                    allow = enforceable_egress_domains(rules.get("allow_domains"))
+                    for host in llm_egress_hosts([effective_base_url, agent.fallback_base_url]):
+                        if host not in allow:
+                            allow.append(host)
+                    network_policy = {"deny_all": True, "allow_domains": allow}
 
         process: asyncio.subprocess.Process | None = None
         if self.runtime_runner_client is None:

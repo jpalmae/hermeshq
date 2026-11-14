@@ -26,6 +26,15 @@ def test_enforceable_egress_domains_translates_policy_patterns() -> None:
     ]
 
 
+def test_llm_egress_hosts_extracts_model_hosts() -> None:
+    from hermeshq.services.permission_enforcer import llm_egress_hosts
+
+    hosts = llm_egress_hosts(
+        ["https://puget.sixmanager.io/v1", " https://api.z.ai/api/coding/paas/v4 ", None, "", "not a url"]
+    )
+    assert hosts == ["puget.sixmanager.io", "api.z.ai"]
+
+
 def test_enforceable_egress_domains_drops_unenforceable_patterns() -> None:
     assert enforceable_egress_domains(["*", "api.*.com", "", None, 42, "example.com."]) == ["example.com"]
     assert enforceable_egress_domains("not-a-list") == []
