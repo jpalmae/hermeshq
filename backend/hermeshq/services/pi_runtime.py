@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hermeshq.models.agent import Agent
 from hermeshq.models.task import Task
-from hermeshq.services.permission_enforcer import PermissionEnforcer, enforceable_egress_domains
+from hermeshq.services.permission_enforcer import PermissionEnforcer, enforceable_egress_domains, llm_egress_hosts
 from hermeshq.services.pi_installation import PiInstallationManager
 from hermeshq.services.pi_rpc_client import PiRpcClient
 from hermeshq.services.runtime_base import RuntimeBase, RuntimeExecutionError, RuntimeExecutionResult
@@ -100,10 +100,11 @@ class PiRuntime(RuntimeBase):
         if policy is not None:
             rules = policy.network_rules or {}
             if rules.get("deny_all"):
-                network_policy = {
-                    "deny_all": True,
-                    "allow_domains": enforceable_egress_domains(rules.get("allow_domains")),
-                }
+                allow = enforceable_egress_domains(rules.get("allow_domains"))
+                for host in llm_egress_hosts([agent.base_url, getattr(agent, "fallback_base_url", None)]):
+                    if host not in allow:
+                        allow.append(host)
+                network_policy = {"deny_all": True, "allow_domains": allow}
         input_data = "\n".join(
             [
                 json.dumps(

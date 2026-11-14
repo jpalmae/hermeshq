@@ -48,6 +48,27 @@ def enforceable_egress_domains(allow_domains: object) -> list[str]:
     return domains
 
 
+def llm_egress_hosts(base_urls: list) -> list[str]:
+    """Squid-allowlist entries for the hosts an agent needs to reach its own model.
+
+    A deny_all policy must never sever the agent's LLM endpoint or it cannot
+    operate at all, so callers always union these into the per-execution
+    allowlist."""
+    from urllib.parse import urlparse
+
+    hosts: list[str] = []
+    for base_url in base_urls:
+        if not isinstance(base_url, str) or not base_url.strip():
+            continue
+        try:
+            host = (urlparse(base_url.strip()).hostname or "").strip().lower()
+        except ValueError:
+            continue
+        if host and host not in hosts:
+            hosts.append(host)
+    return hosts
+
+
 _HOST_ARGUMENT_RE = re.compile(r"(?:^|\s)(?:[A-Za-z0-9._-]+@)?([A-Za-z0-9.-]+\.[A-Za-z]{2,})(?::\d+)?(?:[/\s]|$)")
 
 

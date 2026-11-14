@@ -251,8 +251,9 @@ async def lifespan(app: FastAPI):
     app.state.event_broker = EventBroker()
     app.state.workspace_manager = WorkspaceManager(settings.workspaces_root)
     try:
-        result = await AsyncSessionLocal.execute(select(Agent.id))
-        live_ids = set(result.scalars())
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(Agent.id))
+            live_ids = set(result.scalars())
         reclaimed = app.state.workspace_manager.cleanup_orphan_pi_configs(live_ids)
         if reclaimed:
             logger.info("Reclaimed %d orphan Pi config dirs: %s", len(reclaimed), ", ".join(reclaimed))
