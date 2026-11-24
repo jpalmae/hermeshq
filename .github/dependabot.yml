@@ -12,6 +12,11 @@ updates:
         update-types:
           - patch
           - minor
+    ignore:
+      - dependency-name: pypdf
+        versions: ["7.x"]
+      - dependency-name: croniter
+        versions: ["7.x"]
 
   # Frontend npm deps
   - package-ecosystem: npm
@@ -24,6 +29,17 @@ updates:
         update-types:
           - patch
           - minor
+    ignore:
+      - dependency-name: msw
+        versions: ["3.x"]
+      - dependency-name: eslint
+        versions: ["10.x"]
+      - dependency-name: vite
+        versions: ["8.x"]
+      - dependency-name: "@vitejs/plugin-react"
+        versions: ["6.x"]
+      - dependency-name: jsdom
+        versions: ["31.x"]
 
   # WhatsApp bridge npm deps
   - package-ecosystem: npm
@@ -31,6 +47,11 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: express
+        versions: ["5.x"]
+      - dependency-name: pino
+        versions: ["10.x"]
 
   # GitHub Actions
   - package-ecosystem: github-actions
