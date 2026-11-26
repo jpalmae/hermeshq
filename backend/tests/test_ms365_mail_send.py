@@ -56,12 +56,21 @@ class TestSendWithAttachments(unittest.TestCase):
             self.sent.append((method, path, payload))
             return {}
 
+        def correr(argumentos, actual):
+            with (
+                patch.object(self.mod, "_current_task_id", return_value=actual),
+                patch.dict(os.environ, {"HERMESHQ_TASK_PAYLOAD": json.dumps({"task_id": actual, "mensaje": "sí"})}),
+            ):
+                return json.loads(self.mod._send_email_tool(argumentos))
+
         with (
             patch.object(self.mod, "_task_user_id", return_value="u1"),
             patch.object(self.mod, "_get_m365_token", return_value=("tok", "")),
             patch.object(self.mod, "_graph", side_effect=graph),
         ):
-            return json.loads(self.mod._send_email_tool(args))
+            correr(args, "tarea-1")
+            self.sent.clear()
+            return correr({**args, "aprobado_por_el_usuario": True}, "tarea-2")
 
     def test_multiple_recipients_in_one_message(self):
         out = self._send({"to": "a@x.cl;b@y.cl", "cc": ["c@z.cl"], "subject": "s", "body": "b"})
@@ -142,13 +151,23 @@ class TestLargeAttachments(unittest.TestCase):
             self.chunks.append((url, len(chunk), start, total))
             return {}
 
+        def correr(argumentos, actual):
+            with (
+                patch.object(self.mod, "_current_task_id", return_value=actual),
+                patch.dict(os.environ, {"HERMESHQ_TASK_PAYLOAD": json.dumps({"task_id": actual, "mensaje": "sí"})}),
+            ):
+                return json.loads(self.mod._send_email_tool(argumentos))
+
         with (
             patch.object(self.mod, "_task_user_id", return_value="u1"),
             patch.object(self.mod, "_get_m365_token", return_value=("tok", "")),
             patch.object(self.mod, "_graph", side_effect=graph_fn or default_graph),
             patch.object(self.mod, "_put_upload_chunk", side_effect=put_chunk),
         ):
-            return json.loads(self.mod._send_email_tool(args))
+            correr(args, "tarea-1")
+            self.calls.clear()
+            self.chunks.clear()
+            return correr({**args, "aprobado_por_el_usuario": True}, "tarea-2")
 
     def _file(self, name, size):
         Path(self.dir.name, name).write_bytes(b"x" * size)
@@ -257,7 +276,7 @@ class TestOneDriveFallback(unittest.TestCase):
             if path.endswith("/createUploadSession"):
                 return {"uploadUrl": "https://upload.example/s1"}
             if path.endswith("/createLink"):
-                return {"link": {"webUrl": "https://contoso-my.sharepoint.com/:p:/g/abc"}}
+                return {"link": {"webUrl": "https://empresa-my.sharepoint.com/:p:/g/abc"}}
             return {}
 
         def put_bytes(path, token, data):
@@ -268,6 +287,13 @@ class TestOneDriveFallback(unittest.TestCase):
             self.puts.append((url, len(chunk)))
             return {"id": "ITEM1"} if start + len(chunk) >= total else {}
 
+        def correr(argumentos, actual):
+            with (
+                patch.object(self.mod, "_current_task_id", return_value=actual),
+                patch.dict(os.environ, {"HERMESHQ_TASK_PAYLOAD": json.dumps({"task_id": actual, "mensaje": "sí"})}),
+            ):
+                return json.loads(self.mod._send_email_tool(argumentos))
+
         with (
             patch.object(self.mod, "_task_user_id", return_value="u1"),
             patch.object(self.mod, "_get_m365_token", return_value=("tok", "")),
@@ -275,7 +301,10 @@ class TestOneDriveFallback(unittest.TestCase):
             patch.object(self.mod, "_graph_put_bytes", side_effect=put_bytes),
             patch.object(self.mod, "_put_upload_chunk", side_effect=put_chunk),
         ):
-            return json.loads(self.mod._send_email_tool(args))
+            correr(args, "tarea-1")
+            self.calls.clear()
+            self.puts.clear()
+            return correr({**args, "aprobado_por_el_usuario": True}, "tarea-2")
 
     def test_without_mail_readwrite_big_file_goes_as_onedrive_link(self):
         Path(self.dir.name, "Plantilla PPT.pptx").write_bytes(b"x" * 3_500_000)
@@ -286,7 +315,7 @@ class TestOneDriveFallback(unittest.TestCase):
         self.assertEqual(out["delivery"], "enlaces_onedrive")
         send_call = [c for c in self.calls if c[1] == "/me/sendMail"][0]
         body = send_call[2]["message"]["body"]["content"]
-        self.assertIn("https://contoso-my.sharepoint.com/:p:/g/abc", body)
+        self.assertIn("https://empresa-my.sharepoint.com/:p:/g/abc", body)
         self.assertIn("Plantilla PPT.pptx", body)
         self.assertTrue(body.startswith("<p>Hola</p>"))
         self.assertNotIn("attachments", send_call[2]["message"])
@@ -312,3 +341,48 @@ class TestOneDriveFallback(unittest.TestCase):
         )
         self.assertTrue(out["success"])
         self.assertNotIn("delivery", out)
+
+
+class TestDestinatarioInventado(unittest.TestCase):
+    def setUp(self):
+        self.mod = _load()
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.env = patch.dict(os.environ, {"HERMES_SESSION_CWD": self.dir.name})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+
+    def _vista(self, args, directorio=("operador@contoso.cl",)):
+        def graph(method, path, token, payload=None, **kwargs):
+            if path.startswith("/me?"):
+                return {"mail": "operador@contoso.cl"}
+            if path.startswith("/users?"):
+                return {"value": [{"mail": d, "displayName": d} for d in directorio]}
+            return {}
+
+        with (
+            patch.object(self.mod, "_task_user_id", return_value="u1"),
+            patch.object(self.mod, "_get_m365_token", return_value=("tok", "")),
+            patch.object(self.mod, "_aprobacion_central_activa", return_value=False),
+            patch.object(self.mod, "_graph", side_effect=graph),
+            patch.object(self.mod, "_current_task_id", return_value="t1"),
+            patch.dict(os.environ, {"HERMESHQ_TASK_PAYLOAD": json.dumps({"task_id": "t1", "mensaje": "envíame"})}),
+        ):
+            return json.loads(self.mod._send_email_tool(args))
+
+    def test_caso_real_a_mi_mismo_va_a_la_direccion_real_del_usuario(self):
+        res = self._vista({"to": ["yo"], "subject": "Batería C4", "body": "prueba"})
+        self.assertTrue(res.get("requiere_aprobacion"))
+        self.assertEqual(res["vista_previa"]["para"], ["operador@contoso.cl"])
+        self.assertNotIn("Revisa estas direcciones", res["borrador"])
+
+    def test_caso_real_direccion_de_ejemplo_se_rechaza(self):
+        res = self._vista({"to": ["usuario@cuentamicrosoft365.com"], "subject": "Batería C4", "body": "prueba"})
+        self.assertFalse(res["success"])
+        self.assertIn("dirección de ejemplo", res["error"])
+        self.assertIn("to=['yo']", res["error"])
+
+    def test_direccion_fuera_del_directorio_queda_advertida_en_el_borrador(self):
+        res = self._vista({"to": ["proveedor@externo.cl"], "subject": "Cotización", "body": "hola"})
+        self.assertIn("⚠️ Revisa estas direcciones", res["borrador"])
+        self.assertIn("proveedor@externo.cl", res["borrador"])

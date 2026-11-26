@@ -25,6 +25,7 @@ from hermeshq.models import ActivityLog, Agent, AppSettings, Node, ProviderDefin
 from hermeshq.routers import (
     agent_builder,
     agents,
+    aprobaciones,
     attachments,
     audit,
     auth,
@@ -431,6 +432,7 @@ async def lifespan(app: FastAPI):
 
     async def _periodic_cleanup() -> None:
         from hermeshq.routers.mcp_server import _analytics, _rate_limiter
+        from hermeshq.services import ejecucion_aprobada
         from hermeshq.services.ssh_relay import reconcile_ssh_relays
 
         while True:
@@ -441,6 +443,10 @@ async def lifespan(app: FastAPI):
                 with contextlib.suppress(Exception):
                     async with AsyncSessionLocal() as session:
                         await reconcile_ssh_relays(app, session)
+            try:
+                await ejecucion_aprobada.barrido(AsyncSessionLocal)
+            except Exception:  # noqa: BLE001
+                logger.exception("barrido de aprobaciones fallido")
 
     app.state._cleanup_task = asyncio.create_task(_periodic_cleanup())
 
@@ -500,6 +506,10 @@ app.include_router(managed_integrations.router, prefix=settings.api_prefix)
 app.include_router(mcp_access.router, prefix=settings.api_prefix)
 app.include_router(agents.router, prefix=settings.api_prefix)
 app.include_router(tasks.router, prefix=settings.api_prefix)
+app.include_router(aprobaciones.user_router, prefix=settings.api_prefix)
+app.include_router(aprobaciones.internal_router, prefix=settings.api_prefix)
+app.include_router(aprobaciones.public_router)
+app.include_router(aprobaciones.admin_router, prefix=settings.api_prefix)
 app.include_router(runtime_ledger.router, prefix=settings.api_prefix)
 app.include_router(dashboard.router, prefix=settings.api_prefix)
 app.include_router(comms.router, prefix=settings.api_prefix)
@@ -507,6 +517,9 @@ app.include_router(internal_agents.router, prefix=settings.api_prefix)
 app.include_router(internal_control.router, prefix=settings.api_prefix)
 app.include_router(ssh_destinations_router, prefix=settings.api_prefix)
 app.include_router(cloud_router, prefix=settings.api_prefix)
+from hermeshq.routers import m365_broker as _m365_broker  # noqa: E402
+
+app.include_router(_m365_broker.router, prefix=settings.api_prefix)
 app.include_router(secrets.router, prefix=settings.api_prefix)
 app.include_router(settings_router.router, prefix=settings.api_prefix)
 app.include_router(backup.router, prefix=settings.api_prefix)

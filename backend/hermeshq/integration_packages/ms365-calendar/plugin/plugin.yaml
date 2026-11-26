@@ -8,3 +8,4 @@ provides_tools:
   - ms365_calendar_create_event
   - ms365_calendar_update_event
   - ms365_calendar_delete_event
+  - ms365_calendar_respond_event

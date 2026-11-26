@@ -1,7 +1,7 @@
 import re
 
 """Avisos internos del motor en el chat del usuario. Caso real 12-11 12:24 (Ana, abcbbfb4, «busca la reunión
-Prueba AsistenteBot y dime quienes confirmaron asistencia»): en Teams aparecieron «⟳ compacting context…», «Session
+Prueba HermesHQ y dime quienes confirmaron asistencia»): en Teams aparecieron «⟳ compacting context…», «Session
 compressed 8 times — accuracy may degrade. Consider /new to start fresh.» y «⚠️ API call failed (attempt 1/3):
 BadRequestError [HTTP 400] 🔌 Provider: … Model: qwen3.8-27b 🌐 Endpoint: https://servicio-imagenes.proveedor.io/v1 …». El motor
 los imprime con print por fd 1 y el runtime entregaba al usuario toda línea que no fuera JSON."""

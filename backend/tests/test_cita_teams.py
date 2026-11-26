@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from hermeshq.services import cita_teams
 
 AGENTE = "agente-1"
-CLAVE = "clave-asistentebot"
+CLAVE = "clave-hermeshq"
 ANA = "user-ana"
 BETO = "user-beto"
 CITADO = datetime.fromtimestamp(1794342705193 / 1000, UTC)

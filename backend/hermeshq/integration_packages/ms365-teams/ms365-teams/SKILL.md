@@ -19,8 +19,16 @@ Usa esta skill cuando el usuario necesite consultar o interactuar con sus chats 
 
 - Usa `teams_list_chats` para descubrir IDs de chats disponibles
 - Usa `teams_get_chat_messages` con el `chat_id` para leer mensajes
-- Para enviar, necesitas el `chat_id` y el `message`
+- Para enviar a un chat o grupo usa `teams_send_chat_message(chat_nombre="<nombre del grupo o persona>", message=...)`. Usa `chat_id` solo si salió de `teams_list_chats` en ESTE mensaje: el historial no conserva los IDs y nunca debes inventarlos.
+- Para pedir confirmación llama la herramienta (devuelve la vista previa con el chat real); no escribas la vista previa a mano. Con el «sí», repite con `aprobado_por_el_usuario=true`, el mismo `chat_nombre` y el mismo texto.
 - `teams_list_teams` muestra los equipos, no los chats individuales
+
+## Chats sin responder
+
+- Una sola llamada: `teams_list_chats(count=50)`. Cada chat trae `ultimo_mensaje` (de, hora_chile, texto) y `pendiente`: `te_toca_responder` (el último es de otra persona) o `esperas_respuesta` (el último es tuyo y no te han respondido). Lista ambos grupos, sin abrir cada chat. `bot` y `sin_mensajes` no son pendientes.
+- «No leídos» no es lo mismo que «sin responder»: cada chat trae `leido` (`false` = tiene mensajes de otra persona que el usuario no ha abierto) y el `resumen` trae `no_leidos`. Si piden no leídos, lista los de `leido: false`.
+- Las horas ya vienen en hora de Chile: nunca las conviertas. Si el usuario duda de una hora o de quién escribió, vuelve a llamar la herramienta; no corrijas de memoria.
+- No repitas la misma lectura en una tarea: la herramienta la rechaza.
 
 ## Mandar un mensaje a una persona
 

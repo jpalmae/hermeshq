@@ -28,6 +28,8 @@ from hermeshq.services.m365_oauth import (
 
 router = APIRouter(prefix="/m365", tags=["m365"])
 
+ACTIVE_TASK_STATUSES = ("running", "queued")
+
 # Almacenamiento en memoria para flows pendientes (user_id → flow_state)
 # En producción con múltiples workers se debería usar Redis/cache compartido,
 # pero para una instancia single-server es suficiente.
@@ -419,6 +421,21 @@ async def update_agent_m365_scopes(
     }
 
 
+async def agent_has_active_task_for_user(db: AsyncSession, agent_id: str, user_id: str) -> bool:
+    from hermeshq.models.task import Task
+    from hermeshq.services.task_visibility import task_acts_for_user
+
+    result = await db.execute(
+        select(Task.status, Task.created_by_user_id, Task.metadata_json).where(
+            Task.agent_id == agent_id, Task.status.in_(ACTIVE_TASK_STATUSES)
+        )
+    )
+    rows = result.all()
+    running = [row for row in rows if row.status == "running"]
+    candidates = running or rows
+    return any(task_acts_for_user(row, user_id) for row in candidates)
+
+
 @router.get("/agent-token")
 async def get_agent_m365_token(
     request: Request,
@@ -428,20 +445,28 @@ async def get_agent_m365_token(
     """Called by managed integration plugins running inside an agent runtime.
     Validates agent credentials, verifies the agent is assigned to the user,
     checks allowed scopes, and returns a fresh access token."""
+    from hermeshq.config import get_settings as _ajustes
     from hermeshq.models.agent import Agent
     from hermeshq.models.agent_assignment import AgentAssignment
+
+    if not _ajustes().m365_agent_token_enabled:
+        logger.warning(
+            "Entrega de token M365 retirada: petición rechazada (agente %s)",
+            request.headers.get("X-HermesHQ-Agent-ID", "?")[:64],
+        )
+        raise HTTPException(status_code=410, detail={"motivo": "entrega_de_tokens_retirada"})
 
     agent_id = request.headers.get("X-HermesHQ-Agent-ID", "").strip()
     agent_token = request.headers.get("X-HermesHQ-Agent-Token", "").strip()
     if not agent_id or not agent_token:
         raise HTTPException(status_code=401, detail="Missing agent credentials")
-    agent = await db.get(Agent, agent_id)
-    if not agent or agent.is_archived:
-        raise HTTPException(status_code=401, detail="Unknown agent")
     from hermeshq.services.credencial_agente import credencial_valida
 
     if not await credencial_valida(db, agent_id, agent_token, origen="m365_agent_token", cabeceras=request.headers):
         raise HTTPException(status_code=401, detail="Invalid agent credentials")
+    agent = await db.get(Agent, agent_id)
+    if not agent or agent.is_archived:
+        raise HTTPException(status_code=401, detail="Unknown agent")
 
     assignment_result = await db.execute(
         select(AgentAssignment).where(
@@ -452,6 +477,29 @@ async def get_agent_m365_token(
     assignment = assignment_result.scalar_one_or_none()
     if not assignment:
         raise HTTPException(status_code=403, detail="This agent is not assigned to this user.")
+    from hermeshq.models.task import Task
+    from hermeshq.services.aprobacion_central import central_activa_para
+    from hermeshq.services.external_actions import ExternalActionDenied, require_live_attempt
+
+    if central_activa_para(agent):
+        logger.warning("Token M365 denegado: el agente %s está sujeto a aprobación central", agent_id)
+        raise HTTPException(status_code=403, detail={"motivo": "aprobacion_central_activa"})
+    from hermeshq.services.task_visibility import task_acts_for_user
+
+    try:
+        attempt = await require_live_attempt(db, request.headers, agent_id=agent_id)
+    except ExternalActionDenied as exc:
+        logger.warning("Token M365 denegado: agente %s sin intento vigente (%s)", agent_id, exc.motivo)
+        raise HTTPException(status_code=403, detail={"motivo": exc.motivo})
+    attempt_task = await db.get(Task, attempt.task_id)
+    if attempt_task is None or not task_acts_for_user(attempt_task, user_id):
+        raise HTTPException(status_code=403, detail={"motivo": "intento_de_otro_usuario"})
+    if not await agent_has_active_task_for_user(db, agent_id, user_id):
+        logger.warning("Token M365 denegado: el agente %s no tiene una tarea activa del usuario %s", agent_id, user_id)
+        raise HTTPException(
+            status_code=403,
+            detail="El agente no tiene una tarea en curso de este usuario; no se entrega su token de Microsoft 365.",
+        )
 
     vault = request.app.state.secret_vault
     try:

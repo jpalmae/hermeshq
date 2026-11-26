@@ -51,7 +51,7 @@ async def empty_db():
     await admin.dispose()
 
 
-NEW_TABLES = ("task_execution_attempts", "external_action_records")
+NEW_TABLES = ("task_execution_attempts", "external_action_records", "approvals", "approval_events")
 
 
 async def _stamped_at_previous_head(url: str, tmp_path: Path) -> None:
@@ -66,7 +66,8 @@ async def _schema(url: str) -> dict:
             await conn.execute(
                 text(
                     "SELECT table_name, column_name FROM information_schema.columns "
-                    "WHERE table_name IN ('task_execution_attempts', 'external_action_records')"
+                    "WHERE table_name IN ('task_execution_attempts', 'external_action_records', 'approvals', "
+                    "'approval_events')"
                 )
             )
         ).all()
@@ -101,7 +102,7 @@ class TestRecoveryMigration:
         for table in NEW_TABLES:
             expected = {c.name for c in Base.metadata.tables[table].columns}
             assert schema[table] == expected, table
-        assert schema["version"] == "e1a2b3c4d5f5"
+        assert schema["version"] == "e1a2b3c4d5f8"
         assert "WHERE" in schema["indices"]["uq_task_execution_attempts_live_task"]
         assert "UNIQUE" in schema["indices"]["uq_tasks_scheduled_fire_key"]
 
@@ -114,4 +115,4 @@ class TestRecoveryMigration:
         assert "task_execution_attempts" not in schema
         assert "uq_tasks_scheduled_fire_key" not in schema["indices"]
         assert _alembic(tmp_path, empty_db, "upgrade", "head").returncode == 0
-        assert (await _schema(empty_db))["version"] == "e1a2b3c4d5f5"
+        assert (await _schema(empty_db))["version"] == "e1a2b3c4d5f8"

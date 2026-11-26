@@ -3,9 +3,9 @@ import unittest
 
 import hermeshq.scripts.hermes_task_runner as runner
 
-RUTA = "/app/workspaces/agent-e9df4600/output/prueba_asistentebot-3.xlsx"
+RUTA = "/app/workspaces/agent-e9df4600/output/prueba_hermeshq-3.xlsx"
 TEXTO = f"Archivo creado y guardado correctamente.\n- Sitio SharePoint: SitioTI\n\nMEDIA:{RUTA}"
-PEDIDO = "crea un archivo excel llamado prueba_asistentebot y guárdalo en esta ruta de sharepoint TI - Sistemas"
+PEDIDO = "crea un archivo excel llamado prueba_hermeshq y guárdalo en esta ruta de sharepoint TI - Sistemas"
 
 
 def mensajes(exito=True, ruta=RUTA):
@@ -27,7 +27,7 @@ def mensajes(exito=True, ruta=RUTA):
         {
             "role": "tool",
             "tool_call_id": "c1",
-            "content": json.dumps({"success": exito, "name": "prueba_asistentebot.xlsx"}),
+            "content": json.dumps({"success": exito, "name": "prueba_hermeshq.xlsx"}),
         },
     ]
 
@@ -53,7 +53,7 @@ class TestAdjuntoTrasSubida(unittest.TestCase):
     def test_solo_se_quita_el_adjunto_del_archivo_subido(self):
         texto = TEXTO + "\nMEDIA:/app/workspaces/agent-e9df4600/output/otro-informe.pdf"
         salida = runner.adjunto_quitado_tras_subida(texto, mensajes(), 0, PEDIDO)
-        self.assertNotIn("prueba_asistentebot-3.xlsx", salida)
+        self.assertNotIn("prueba_hermeshq-3.xlsx", salida)
         self.assertIn("MEDIA:/app/workspaces/agent-e9df4600/output/otro-informe.pdf", salida)
 
     def test_sin_subida_en_el_turno_no_cambia_nada(self):

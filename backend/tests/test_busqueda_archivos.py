@@ -24,7 +24,7 @@ class TestBusquedaDeArchivosSinRipgrep(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         (Path(self.tmp.name) / "outputs").mkdir()
-        (Path(self.tmp.name) / "outputs" / "gobernanza-datos_3.pptx").write_bytes(b"x")
+        (Path(self.tmp.name) / "outputs" / "equipo-datos_3.pptx").write_bytes(b"x")
         (Path(self.tmp.name) / "outputs" / "otro.pdf").write_bytes(b"x")
         clase = file_operations.ShellFileOperations
         originales = (clase.search, clase._search_files, getattr(clase, "_hq_busqueda_corregida", False))
@@ -44,17 +44,17 @@ class TestBusquedaDeArchivosSinRipgrep(unittest.TestCase):
         return self.ops.search(path=self.tmp.name, target="files", **kwargs).files
 
     def test_caso_real_sin_la_correccion_no_encuentra_el_archivo(self):
-        self.assertEqual(self.buscar(pattern="gobernanza"), [])
+        self.assertEqual(self.buscar(pattern="equipo"), [])
 
     def test_caso_real_un_nombre_parcial_encuentra_el_archivo(self):
         runner._activar_busqueda_de_archivos()
         encontrados = self.buscar(pattern="Gobernanza")
-        self.assertEqual([Path(f).name for f in encontrados], ["gobernanza-datos_3.pptx"])
+        self.assertEqual([Path(f).name for f in encontrados], ["equipo-datos_3.pptx"])
 
     def test_caso_real_punto_asterisco_con_file_glob_usa_el_glob(self):
         runner._activar_busqueda_de_archivos()
         encontrados = self.buscar(pattern=".*", file_glob="*.pptx")
-        self.assertEqual([Path(f).name for f in encontrados], ["gobernanza-datos_3.pptx"])
+        self.assertEqual([Path(f).name for f in encontrados], ["equipo-datos_3.pptx"])
 
     def test_un_patron_con_comodines_se_respeta(self):
         runner._activar_busqueda_de_archivos()

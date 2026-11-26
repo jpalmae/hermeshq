@@ -41,12 +41,14 @@ async def _env(self, agent):
     env = await _stub.build_process_env(agent)
     if os.environ.get("HQ_E2E_INSTALACION_REAL") == "1" and len(sys.argv) > 1:
         from hermeshq.core.security import create_agent_service_token
+        from hermeshq.services.aprobacion_central import central_activa_para
 
         env.update(
             {
                 "HERMESHQ_INTERNAL_API_URL": f"http://127.0.0.1:{sys.argv[1]}/api/internal",
                 "HERMESHQ_AGENT_ID": str(agent.id),
                 "HERMESHQ_AGENT_TOKEN": create_agent_service_token(agent.id),
+                "HERMESHQ_APROBACION_CENTRAL": "1" if central_activa_para(agent) else "0",
             }
         )
     return env

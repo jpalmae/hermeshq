@@ -134,7 +134,7 @@ def test_mencion_de_fuente_no_es_formato_pedido(texto):
 
 
 PEDIDO_BRUNO = (
-    "Analiza el archivo ReprocesosMtto.xlsx, que contiene dos hojas:\nIW38: órdenes de trabajo (OT) de mantenimiento."
+    "Analiza el archivo Datos.xlsx, que contiene dos hojas:\nIW38: órdenes de trabajo (OT) de mantenimiento."
     "\neSkuad: solicitudes de atención por fallas de equipos.\nMetodología requerida:\nNormalización previa: "
     "normaliza los identificadores. Documenta las equivalencias aplicadas.\nEntregables:\nTabla de reprocesos "
     "detectados: equipo, OT base, OT posterior.\nResumen estadístico: total de reprocesos.\nRestricciones: no "

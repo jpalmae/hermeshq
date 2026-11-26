@@ -6,12 +6,12 @@ import hermeshq.scripts.hermes_task_runner as runner
 PEDIDO = "si renombralo, siempre debe ir con el nombre original al menos que se indique lo contrario"
 RESPUESTA_REAL = (
     "Listo. El archivo ahora se llama **Pruebas.xlsx** en ambos lugares:\n\n**1. OneDrive personal**\n"
-    "`Escritorio/Ana/Proyectos/IA/6M/AsistenteBot/Pruebas 121126`"
+    "`Escritorio/Ana/Proyectos/Demo/Pruebas`"
 )
 SUBIDA = {
     "success": True,
     "name": "Pruebas.xlsx",
-    "folder": "Escritorio/Ana/Proyectos/IA/6M/AsistenteBot/Pruebas 121126",
+    "folder": "Escritorio/Ana/Proyectos/Demo/Pruebas",
 }
 
 

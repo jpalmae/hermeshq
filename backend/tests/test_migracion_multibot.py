@@ -16,7 +16,7 @@ COLUMNAS_NUEVAS = {
     "public_chat_notifications": ("bot_channel_id", "recipient_external_id", "recipient_aad_object_id", "origin"),
 }
 HEAD_ANTERIOR = "e1a2b3c4d5f2"
-HEAD = "e1a2b3c4d5f5"
+HEAD = "e1a2b3c4d5f8"
 
 
 async def _en_head_anterior_con_datos(url, tmp_path) -> None:

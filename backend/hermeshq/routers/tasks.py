@@ -97,6 +97,18 @@ async def create_task(
             db.add(thread)
             await db.flush()
         metadata["thread_id"] = thread.id
+        from hermeshq.services.aprobacion_central import aprobar_texto_si_corresponde
+
+        aprobada = await aprobar_texto_si_corresponde(
+            db, payload.agent_id, current_user.id, thread.id, payload.prompt, "web"
+        )
+        if aprobada:
+            metadata["aprobacion_id"] = aprobada
+        from hermeshq.services import ejecucion_aprobada
+
+        aviso = await ejecucion_aprobada.avisos_pendientes(db, payload.agent_id, current_user.id, thread.id)
+        if aviso:
+            metadata["aprobacion_aviso"] = aviso
     elif metadata.get("thread_id"):
         propio = await db.get(ConversationThread, metadata["thread_id"])
         if not propio or propio.agent_id != payload.agent_id or propio.user_id != current_user.id:

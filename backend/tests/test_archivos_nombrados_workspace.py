@@ -7,12 +7,12 @@ import pytest
 
 from hermeshq.services import archivos_conversacion as ac
 
-PEDIDO_8B9BD4DD = "Agrega una lámina de cierre a la presentación gobernanza-datos_3.pptx con los próximos pasos."
+PEDIDO_8B9BD4DD = "Agrega una lámina de cierre a la presentación equipo-datos_3.pptx con los próximos pasos."
 
 
 def _workspace(tmp_path):
     (tmp_path / "outputs").mkdir()
-    (tmp_path / "outputs" / "gobernanza-datos_3.pptx").write_bytes(b"x")
+    (tmp_path / "outputs" / "equipo-datos_3.pptx").write_bytes(b"x")
     (tmp_path / "uploads").mkdir()
     (tmp_path / "uploads" / "Informe Q3.docx").write_bytes(b"x")
     (tmp_path / "otra").mkdir()
@@ -22,7 +22,7 @@ def _workspace(tmp_path):
 
 class TestNombresCitados:
     def test_nombre_suelto_en_el_pedido(self):
-        assert ac.nombres_citados(PEDIDO_8B9BD4DD) == ["gobernanza-datos_3.pptx"]
+        assert ac.nombres_citados(PEDIDO_8B9BD4DD) == ["equipo-datos_3.pptx"]
 
     def test_nombre_entre_comillas_con_espacios(self):
         assert ac.nombres_citados("Resume «Informe Q3.docx» por favor") == ["informe q3.docx"]
@@ -35,14 +35,14 @@ class TestNombresCitados:
         assert ac.nombres_citados("hazme un resumen del trimestre") == []
 
     def test_una_ruta_se_reduce_al_nombre(self):
-        assert ac.nombres_citados("abre outputs/gobernanza-datos_3.pptx") == []
-        assert ac.nombres_citados("abre `outputs/gobernanza-datos_3.pptx`") == ["gobernanza-datos_3.pptx"]
+        assert ac.nombres_citados("abre outputs/equipo-datos_3.pptx") == []
+        assert ac.nombres_citados("abre `outputs/equipo-datos_3.pptx`") == ["equipo-datos_3.pptx"]
 
 
 class TestArchivosNombrados:
     def test_encuentra_el_archivo_de_outputs_sin_distinguir_mayusculas(self, tmp_path):
         ws = _workspace(tmp_path)
-        assert ac.archivos_nombrados(ws, "edita GOBERNANZA-datos_3.PPTX") == ["outputs/gobernanza-datos_3.pptx"]
+        assert ac.archivos_nombrados(ws, "edita EQUIPO-datos_3.PPTX") == ["outputs/equipo-datos_3.pptx"]
 
     def test_encuentra_el_de_uploads_con_espacios(self, tmp_path):
         ws = _workspace(tmp_path)
@@ -54,18 +54,16 @@ class TestArchivosNombrados:
 
     def test_nombre_sin_extension_entre_comillas_o_con_separadores(self, tmp_path):
         ws = _workspace(tmp_path)
-        (ws / "outputs" / "gobernanza-datos_5.pptx").write_bytes(b"x")
-        pedido = "En la presentación «gobernanza-datos_5» (Proyecto de Gobernanza de Datos), agrega un cuarto riesgo."
-        assert ac.archivos_nombrados(ws, pedido) == ["outputs/gobernanza-datos_5.pptx"]
-        assert ac.archivos_nombrados(ws, "abre gobernanza-datos_5 y cambia el título") == [
-            "outputs/gobernanza-datos_5.pptx"
-        ]
+        (ws / "outputs" / "equipo-datos_5.pptx").write_bytes(b"x")
+        pedido = "En la presentación «equipo-datos_5» (Proyecto Demo), agrega un cuarto riesgo."
+        assert ac.archivos_nombrados(ws, pedido) == ["outputs/equipo-datos_5.pptx"]
+        assert ac.archivos_nombrados(ws, "abre equipo-datos_5 y cambia el título") == ["outputs/equipo-datos_5.pptx"]
 
     def test_nombre_sin_extension_no_coincide_parcialmente(self, tmp_path):
         ws = _workspace(tmp_path)
-        (ws / "outputs" / "gobernanza-datos_5.pptx").write_bytes(b"x")
-        assert ac.archivos_nombrados(ws, "habla de la gobernanza de datos en general") == []
-        assert ac.archivos_nombrados(ws, "usa «gobernanza-datos» como base") == []
+        (ws / "outputs" / "equipo-datos_5.pptx").write_bytes(b"x")
+        assert ac.archivos_nombrados(ws, "habla de la equipo de datos en general") == []
+        assert ac.archivos_nombrados(ws, "usa «equipo-datos» como base") == []
 
     def test_inexistente_o_sin_workspace(self, tmp_path):
         ws = _workspace(tmp_path)
@@ -85,7 +83,7 @@ class TestConArchivosGenerados:
         db = SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(workspace_path=str(ws))))
         salida = await ac.con_archivos_generados(db, "ag", "u", "s", None, PEDIDO_8B9BD4DD)
         assert salida.startswith(ac.ENCABEZADO_NOMBRADOS)
-        assert "outputs/gobernanza-datos_3.pptx" in salida
+        assert "outputs/equipo-datos_3.pptx" in salida
         assert salida.endswith(PEDIDO_8B9BD4DD)
 
     async def test_control_negativo_sin_archivo_nombrado_el_pedido_no_cambia(self, tmp_path):
@@ -108,32 +106,30 @@ class TestConArchivosGenerados:
 class TestArchivoQueElUsuarioUbicaEnLaNube:
     def test_si_dice_que_esta_en_su_onedrive_no_se_antepone_la_nota_del_workspace(self, tmp_path):
         ws = _workspace(tmp_path)
-        pedido = (
-            "Comparte con ana@x.cl el archivo gobernanza-datos_3.pptx que está en mi OneDrive en la carpeta «Pruebas»."
-        )
+        pedido = "Comparte con ana@x.cl el archivo equipo-datos_3.pptx que está en mi OneDrive en la carpeta «Pruebas»."
         assert ac.archivos_nombrados(ws, pedido) == []
 
     def test_de_sharepoint_tampoco(self, tmp_path):
         ws = _workspace(tmp_path)
-        assert ac.archivos_nombrados(ws, "Descarga gobernanza-datos_3.pptx de SharePoint y resúmelo") == []
+        assert ac.archivos_nombrados(ws, "Descarga equipo-datos_3.pptx de SharePoint y resúmelo") == []
 
     def test_control_negativo_subir_al_onedrive_si_antepone_la_nota(self, tmp_path):
         ws = _workspace(tmp_path)
-        pedido = "Sube gobernanza-datos_3.pptx a mi OneDrive en la carpeta «Pruebas»."
-        assert ac.archivos_nombrados(ws, pedido) == ["outputs/gobernanza-datos_3.pptx"]
+        pedido = "Sube equipo-datos_3.pptx a mi OneDrive en la carpeta «Pruebas»."
+        assert ac.archivos_nombrados(ws, pedido) == ["outputs/equipo-datos_3.pptx"]
 
     def test_control_negativo_sin_ubicacion_en_la_nube(self, tmp_path):
         ws = _workspace(tmp_path)
-        assert ac.archivos_nombrados(ws, PEDIDO_8B9BD4DD) == ["outputs/gobernanza-datos_3.pptx"]
+        assert ac.archivos_nombrados(ws, PEDIDO_8B9BD4DD) == ["outputs/equipo-datos_3.pptx"]
 
 
 @pytest.mark.asyncio
 class TestReinicioNoOcultaElArchivoNombrado:
     PEDIDO = (
-        "Edita gobernanza-datos_3.pptx de tu espacio de trabajo: agrega al final una sección con el título «Anexo A» y "
+        "Edita equipo-datos_3.pptx de tu espacio de trabajo: agrega al final una sección con el título «Anexo A» y "
         "debajo un párrafo que diga «Contenido de ejemplo del anexo.». Guarda una versión nueva (no toques el "
         "original) y adjúntala aquí, sin subirla a OneDrive."
-        "\n[Búsqueda en SharePoint por «Edita gobernanza-datos_3.pptx»: no hay archivos con ese nombre.]"
+        "\n[Búsqueda en SharePoint por «Edita equipo-datos_3.pptx»: no hay archivos con ese nombre.]"
     )
 
     def _db(self, ws):

@@ -250,6 +250,15 @@ async def get_valid_token(
     return result_token["access_token"], token_record.account_email, granted_scopes
 
 
+async def motivo_sin_token(user_id: str, db: AsyncSession) -> str:
+    existe = (
+        await db.execute(
+            select(UserM365Token.id).where(UserM365Token.user_id == user_id, UserM365Token.revoked_at.is_(None))
+        )
+    ).first()
+    return "sesion_m365_vencida_reconectar_en_hermeshq" if existe else "usuario_sin_cuenta_m365"
+
+
 async def revoke_user_token(user_id: str, db: AsyncSession) -> bool:
     result = await db.execute(select(UserM365Token).where(UserM365Token.user_id == user_id))
     token_record = result.scalar_one_or_none()

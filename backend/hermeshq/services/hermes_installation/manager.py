@@ -325,6 +325,9 @@ class HermesInstallationManager:
         env["HERMESHQ_AGENT_ID"] = agent.id
         env["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id, agent.service_token_version or 1)
         env["HERMESHQ_INTERNAL_API_URL"] = get_settings().internal_api_base_url.rstrip("/")
+        from hermeshq.services.aprobacion_central import central_activa_para
+
+        env["HERMESHQ_APROBACION_CENTRAL"] = "1" if central_activa_para(agent) else "0"
         env["HERMESHQ_RUNTIME_PROFILE"] = profile["slug"]
         env["HERMESHQ_RUNTIME_PROFILE_NAME"] = profile["name"]
         runtime_selection = await self.resolve_hermes_runtime(agent)

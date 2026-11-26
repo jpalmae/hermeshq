@@ -34,7 +34,7 @@ AGENTE = [
 
 class TestToolsetsPedido(unittest.TestCase):
     def test_excel_adjunto_no_carga_correo_ppt_ni_sharepoint(self):
-        pedido = "[Archivos adjuntos, ya disponibles en tu workspace: - ReprocesosMtto.xlsx (1365 KB)] Analiza el Excel"
+        pedido = "[Archivos adjuntos, ya disponibles en tu workspace: - Datos.xlsx (1365 KB)] Analiza el Excel"
         elegidos = toolsets_para_pedido(pedido, AGENTE)
         self.assertIn("hermeshq_xlsx", elegidos)
         self.assertIn("hermeshq_documentos", elegidos)
@@ -44,7 +44,7 @@ class TestToolsetsPedido(unittest.TestCase):
         self.assertNotIn("hermeshq_ms365_teams", elegidos)
 
     def test_excel_nombrado_sin_adjunto_mantiene_sharepoint_para_buscarlo(self):
-        pedido = "En el siguiente archivo en la ubicación ReprocesosMtto.xlsx tiene 2 hojas"
+        pedido = "En el siguiente archivo en la ubicación Datos.xlsx tiene 2 hojas"
         elegidos = toolsets_para_pedido(pedido, AGENTE)
         self.assertIn("hermeshq_sharepoint", elegidos)
         self.assertIn("hermeshq_xlsx", elegidos)
@@ -123,7 +123,7 @@ class TestToolsetsPedido(unittest.TestCase):
 
     def test_tarea_de_chat_si_se_filtra(self):
         tarea = SimpleNamespace(
-            prompt="[Archivos adjuntos, ya disponibles] ReprocesosMtto.xlsx: analiza",
+            prompt="[Archivos adjuntos, ya disponibles] Datos.xlsx: analiza",
             metadata_json={"source": "public_chat"},
         )
         self.assertNotIn("hermeshq_ms365_mail", filtrar_para_tarea(tarea, AGENTE))

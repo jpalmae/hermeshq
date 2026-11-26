@@ -2,6 +2,7 @@ from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
 from hermeshq.models.agent_assignment import AgentAssignment
 from hermeshq.models.app_settings import AppSettings
+from hermeshq.models.aprobacion import Aprobacion, EventoAprobacion
 from hermeshq.models.audit_log import AuditLog
 from hermeshq.models.base import Base
 from hermeshq.models.bot_channel import BotChannel, PublicChatDeliveryPref, UserChannelIdentity
@@ -55,12 +56,11 @@ __all__ = [
     "UserChannelIdentity",
     "ConversationThread",
     "EnrolledDevice",
-    "ExternalActionRecord",
     "HermesVersion",
     "IntegrationDraft",
     "McpAccessToken",
-    "MessagingChannel",
     "MfaCode",
+    "MessagingChannel",
     "Node",
     "OidcProvider",
     "PasswordResetToken",
@@ -77,6 +77,9 @@ __all__ = [
     "SshDestination",
     "Task",
     "TaskExecutionAttempt",
+    "ExternalActionRecord",
+    "Aprobacion",
+    "EventoAprobacion",
     "TerminalSession",
     "User",
     "UserM365Token",

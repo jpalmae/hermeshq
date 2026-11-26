@@ -47,12 +47,12 @@ def entorno(tmp_path, monkeypatch):
     pytest.importorskip("pptx")
     monkeypatch.setenv("HERMES_SESSION_CWD", str(tmp_path))
     (tmp_path / "outputs").mkdir()
-    original = tmp_path / "outputs" / "gobernanza.pptx"
+    original = tmp_path / "outputs" / "equipo.pptx"
     _crear_presentacion(original)
     plugin = _plugin()
 
     def editar(cambios):
-        return json.loads(plugin._handle_edit_pptx({"path": "outputs/gobernanza.pptx", "cambios": cambios}))
+        return json.loads(plugin._handle_edit_pptx({"path": "outputs/equipo.pptx", "cambios": cambios}))
 
     return {
         "tmp": tmp_path,
@@ -88,7 +88,7 @@ class TestEtiquetaLarga:
         assert r["success"] is True, r
 
     def test_un_titulo_largo_en_un_marcador_de_titulo_no_se_bloquea(self, entorno):
-        largo = "Riesgos principales del proyecto de gobernanza de datos para el primer trimestre de 2027"
+        largo = "Riesgos principales del proyecto de equipo de datos para el primer trimestre de 2027"
         r = entorno["editar"]([{"reemplazar": {"lamina": 1, "texto": "Riesgos principales", "por": largo}}])
         assert r["success"] is True, r
 

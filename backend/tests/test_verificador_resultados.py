@@ -221,7 +221,7 @@ class TestFalsosPositivosRealesDelHistorico(unittest.TestCase):
 
     def test_la_cancelacion_avisada_por_el_calendario(self):
         mensajes = _turno(("ms365_calendar_delete_event", {"success": True}))
-        respuesta = "Se envió la notificación de cancelación a Gestión BI, así que quedan liberados ✅."
+        respuesta = "Se envió la notificación de cancelación a Equipo Datos, así que quedan liberados ✅."
         self.assertEqual(runner.verificar_afirmaciones(respuesta, mensajes, 0), [])
 
     def test_envio_verificado_en_la_bandeja(self):

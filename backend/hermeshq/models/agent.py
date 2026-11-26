@@ -24,6 +24,10 @@ class Agent(TimestampMixin, Base):
     approval_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
     tool_progress_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
     thinking_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    approval_central_mode: Mapped[str] = mapped_column(
+        String(16), default="heredar", server_default="heredar", nullable=False
+    )
+    approval_policy: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     gateway_notifications_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
     model: Mapped[str] = mapped_column(String(255), default="anthropic/claude-sonnet-4")
     use_provider_default: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -78,6 +82,10 @@ class Agent(TimestampMixin, Base):
         CheckConstraint(
             "status IN ('stopped', 'running', 'error', 'starting')",
             name="ck_agents_status",
+        ),
+        CheckConstraint(
+            "approval_central_mode IN ('heredar', 'activada', 'desactivada')",
+            name="ck_agents_approval_central_mode",
         ),
     )
 

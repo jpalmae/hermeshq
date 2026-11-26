@@ -130,6 +130,11 @@ class TestResetConTexto(unittest.IsolatedAsyncioTestCase):
 
 
 class TestResetCancelaTareas(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        parche = patch("hermeshq.services.ejecucion_aprobada.avisos_pendientes", AsyncMock(return_value=None))
+        parche.start()
+        self.addCleanup(parche.stop)
+
     def _service(self, tareas, activas=None):
         service = PublicChatService.__new__(PublicChatService)
         service.rate_limiter = SimpleRateLimiter(max_requests=100)
@@ -185,8 +190,13 @@ class TestResetCancelaTareas(unittest.IsolatedAsyncioTestCase):
 
 
 class TestPedidoDuplicado(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        parche = patch("hermeshq.services.ejecucion_aprobada.avisos_pendientes", AsyncMock(return_value=None))
+        parche.start()
+        self.addCleanup(parche.stop)
+
     async def test_no_encola_dos_veces_el_mismo_trabajo_en_segundo_plano(self):
-        pedido = "necesito el análisis de reprocesos del archivo ReprocesosMtto.xlsx"
+        pedido = "necesito el análisis de reprocesos del archivo Datos.xlsx"
         activa = SimpleNamespace(
             id="bg1",
             status="running",
@@ -234,30 +244,28 @@ class TestBusquedaPreviaEnSharePoint(unittest.IsolatedAsyncioTestCase):
     async def test_un_archivo_nombrado_sin_adjunto_se_busca_antes(self):
         from unittest.mock import patch
 
-        hits = [{"name": "ReprocesosMtto.xlsx", "url": "https://sp/x"}]
+        hits = [{"name": "Datos.xlsx", "url": "https://sp/x"}]
         with patch(
             "hermeshq.services.public_chat_service.buscar_en_sharepoint", AsyncMock(return_value=hits)
         ) as buscar:
             texto = await self._service()._con_busqueda_previa(
-                MagicMock(), "u1", "analiza ReprocesosMtto.xlsx", "analiza ReprocesosMtto.xlsx"
+                MagicMock(), "u1", "analiza Datos.xlsx", "analiza Datos.xlsx"
             )
         buscar.assert_awaited_once()
-        self.assertIn("ReprocesosMtto.xlsx (https://sp/x)", texto)
+        self.assertIn("Datos.xlsx (https://sp/x)", texto)
 
     async def test_con_adjunto_no_busca(self):
         from unittest.mock import patch
 
         with patch("hermeshq.services.public_chat_service.buscar_en_sharepoint", AsyncMock(return_value=[])) as buscar:
             texto = await self._service()._con_busqueda_previa(
-                MagicMock(), "u1", "[Archivos adjuntos, ya disponibles] ReprocesosMtto.xlsx", "x"
+                MagicMock(), "u1", "[Archivos adjuntos, ya disponibles] Datos.xlsx", "x"
             )
         buscar.assert_not_called()
         self.assertEqual(texto, "x")
 
     async def test_sin_vault_no_cambia_nada(self):
-        texto = await self._service(vault=None)._con_busqueda_previa(
-            MagicMock(), "u1", "analiza ReprocesosMtto.xlsx", "p"
-        )
+        texto = await self._service(vault=None)._con_busqueda_previa(MagicMock(), "u1", "analiza Datos.xlsx", "p")
         self.assertEqual(texto, "p")
 
     async def test_si_la_busqueda_falla_el_chat_sigue(self):
@@ -266,13 +274,13 @@ class TestBusquedaPreviaEnSharePoint(unittest.IsolatedAsyncioTestCase):
         with patch(
             "hermeshq.services.public_chat_service.buscar_en_sharepoint", AsyncMock(side_effect=RuntimeError("x"))
         ):
-            texto = await self._service()._con_busqueda_previa(MagicMock(), "u1", "analiza ReprocesosMtto.xlsx", "p")
+            texto = await self._service()._con_busqueda_previa(MagicMock(), "u1", "analiza Datos.xlsx", "p")
         self.assertIn("no disponible", texto)
 
 
 class TestPedidoLargoSinDuplicar(unittest.IsolatedAsyncioTestCase):
     async def test_el_pedido_en_segundo_plano_no_se_repite_en_el_historial(self):
-        pedido = "Analiza el archivo ReprocesosMtto.xlsx y detecta los reprocesos del equipo, hazlo directo"
+        pedido = "Analiza el archivo Datos.xlsx y detecta los reprocesos del equipo, hazlo directo"
         service = PublicChatService.__new__(PublicChatService)
         service.rate_limiter = SimpleRateLimiter(max_requests=100)
         service.ip_rate_limiter = SimpleRateLimiter(max_requests=100)

@@ -2,7 +2,7 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from hermeshq.services.hermes_runtime import HermesRuntime
 from hermeshq.services.public_chat_service import PublicChatService
@@ -161,6 +161,11 @@ class TestMarcador(unittest.TestCase):
 
 
 class TestEnvioDeMensaje(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        parche = patch("hermeshq.services.ejecucion_aprobada.avisos_pendientes", AsyncMock(return_value=None))
+        parche.start()
+        self.addCleanup(parche.stop)
+
     async def test_a_stuck_chat_gets_a_marker_and_the_notice_in_the_new_task(self):
         servicio = PublicChatService.__new__(PublicChatService)
         servicio.rate_limiter = SimpleNamespace(check=lambda _: True)

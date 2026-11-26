@@ -52,7 +52,7 @@ class TestVistaEnvioAMano(unittest.TestCase):
         pedido = "enviaste el mensaje de Teams?"
         respuesta = (
             "No, todavía no lo envié. Te mostré la vista previa y quedé a la espera de tu confirmación. ¿Te lo envío "
-            "ahora? (Julia Mora — «Hola, esta es una prueba con AsistenteBot»)"
+            "ahora? (Julia Mora — «Hola, esta es una prueba con HermesHQ»)"
         )
         self.assertIsNone(runner.vista_envio_a_mano(pedido, respuesta, _turno(pedido), 0))
 

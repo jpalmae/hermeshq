@@ -97,6 +97,11 @@ def _trabajos(db):
 
 
 class TestFlujoDelChat(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        parche = patch("hermeshq.services.ejecucion_aprobada.avisos_pendientes", AsyncMock(return_value=None))
+        parche.start()
+        self.addCleanup(parche.stop)
+
     async def test_caso_real_sin_imagen_no_lanza_el_trabajo_y_la_pide(self):
         service, db = _servicio()
         with patch("hermeshq.services.auto_background._recent_history", AsyncMock(return_value="")):

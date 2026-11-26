@@ -271,6 +271,7 @@ from hermeshq.services.auto_background import (
     error_de_incompleto,
     motivo_resultado_incompleto,
 )
+from hermeshq.services.ejecucion_aprobada import MARCA_EJECUTADA
 from hermeshq.services.execution_lease import (
     INSTANCE_OWNER,
     ExecutionLeaseError,
@@ -1320,6 +1321,16 @@ class AgentSupervisor:
                     )
                     conversation_history.herramientas = herramientas_previas
                     conversation_history.omitidos, conversation_history.por_antiguedad = omitidos_previos
+                aviso_aprobacion = metadata.get("aprobacion_aviso")
+                if aviso_aprobacion:
+                    herramientas_previas = getattr(conversation_history, "herramientas", [])
+                    conversation_history = HistorialConversacion(
+                        [
+                            *conversation_history,
+                            {"role": "user", "content": f"[Sistema, no es del usuario] {aviso_aprobacion}"},
+                        ]
+                    )
+                    conversation_history.herramientas = herramientas_previas
 
             event = {
                 "type": "task.started",
@@ -1396,6 +1407,8 @@ class AgentSupervisor:
                                 task.prompt,
                             ),
                             messages,
+                            aprobacion_ejecutada_en_servidor=MARCA_EJECUTADA
+                            in str((task.metadata_json or {}).get("aprobacion_aviso") or ""),
                         ),
                         messages,
                     )

@@ -97,8 +97,14 @@ class Settings(BaseSettings):
     execution_reconcile_interval_seconds: int = 60
     execution_reconcile_grace_seconds: int = 120
     scheduler_misfire_grace_seconds: int = 3600
+    approval_central_enabled: bool = False
+    approval_central_enforced: bool = False
+    approval_policy_default: str = ""
+    m365_agent_token_enabled: bool = False
+    m365_politica_compatibilidad: bool = True
     tool_exposure_progressive_agents: str = ""
     agent_token_mode: str = "dual"
+    approval_reconcile_wait_seconds: int = 1800
     accion_narrada_guard: bool = True
     runaway_guard_enabled: bool = True
     runaway_guard_max_chars: int = 120000

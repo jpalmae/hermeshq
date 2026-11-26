@@ -39,7 +39,7 @@ class TestBusquedaDeArchivo:
     def test_busqueda_de_correo_o_calendario_no_agrega_sharepoint(self):
         for texto in (
             "busca en mi bandeja de entrada el correo con asunto bateria c4",
-            "busca la reunión prueba asistentebot y dime quiénes confirmaron",
+            "busca la reunión prueba hermeshq y dime quiénes confirmaron",
             "busca en teams si tengo algún chat sin responder",
         ):
             assert "hermeshq_sharepoint" not in toolsets(texto), texto

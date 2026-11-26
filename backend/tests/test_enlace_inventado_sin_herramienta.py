@@ -3,7 +3,7 @@ import unittest
 from hermeshq.services.respuesta_verificada import AVISO_ENLACE_INVENTADO, con_aviso_sin_herramienta
 
 CASO_REAL = (
-    "El archivo `gobernanza-r119.pptx` ya está en tu espacio de trabajo. Generé un enlace para compartirlo:\n\n"
+    "El archivo `equipo-r119.pptx` ya está en tu espacio de trabajo. Generé un enlace para compartirlo:\n\n"
     "🔗 https://enlace.example/7p0s2\n\nEs de acceso general dentro de tu organización."
 )
 

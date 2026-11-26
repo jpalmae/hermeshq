@@ -1140,6 +1140,19 @@ class PublicChatService:
                 }
             ),
         }
+        if thread_user_id != PUBLIC_CHAT_USER_ID:
+            from hermeshq.services.aprobacion_central import aprobar_texto_si_corresponde
+
+            aprobada = await aprobar_texto_si_corresponde(
+                db, session.agent_id, thread_user_id, session_id, content, "public_chat"
+            )
+            if aprobada:
+                task_metadata["aprobacion_id"] = aprobada
+            from hermeshq.services import ejecucion_aprobada
+
+            aviso = await ejecucion_aprobada.avisos_pendientes(db, session.agent_id, thread_user_id, session_id)
+            if aviso:
+                task_metadata["aprobacion_aviso"] = aviso
         if aviso_racha:
             task_metadata["auto_reset_aviso"] = aviso_racha
         task_metadata["conversation_epoch"] = await _epoca_actual(db, session_id)

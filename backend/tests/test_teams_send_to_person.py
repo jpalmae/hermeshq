@@ -18,7 +18,11 @@ def _cargar():
     return modulo
 
 
-PERSONA = {"id": "u-jon", "displayName": "Jorge Soto", "mail": "jsoto@external.example.com"}
+PERSONA = {
+    "id": "u-jon",
+    "displayName": "Víctor Ortiz",
+    "mail": "vortiz@contoso.cl",
+}
 
 
 class TestSendToPerson(unittest.TestCase):
@@ -32,7 +36,14 @@ class TestSendToPerson(unittest.TestCase):
         self.addCleanup(entorno.stop)
 
     def _ejecutar(
-        self, args, usuarios=None, chats=None, crear_error=None, envio_error=None, vista_previa=True, tarea="tarea-2"
+        self,
+        args,
+        usuarios=None,
+        chats=None,
+        crear_error=None,
+        envio_error=None,
+        vista_previa=True,
+        tarea="tarea-2",
     ):
         def graph(method, path, token, payload=None):
             self.llamadas.append((method, path, payload))
@@ -49,7 +60,12 @@ class TestSendToPerson(unittest.TestCase):
             raise AssertionError(path)
 
         def correr(argumentos, tarea_actual):
-            with patch.object(self.mod, "_current_task_id", return_value=tarea_actual):
+            with (
+                patch.object(self.mod, "_current_task_id", return_value=tarea_actual),
+                patch.dict(
+                    os.environ, {"HERMESHQ_TASK_PAYLOAD": json.dumps({"task_id": tarea_actual, "mensaje": "sí"})}
+                ),
+            ):
                 return json.loads(self.mod._send_to_person_tool(argumentos))
 
         with (
@@ -58,17 +74,20 @@ class TestSendToPerson(unittest.TestCase):
             patch.object(self.mod, "_graph", side_effect=graph),
         ):
             if args.get("aprobado_por_el_usuario") and vista_previa:
-                correr({k: v for k, v in args.items() if k != "aprobado_por_el_usuario"}, "tarea-1")
+                correr(
+                    {k: v for k, v in args.items() if k != "aprobado_por_el_usuario"},
+                    "tarea-1",
+                )
             return correr(args, tarea)
 
     def _enviados(self):
         return [c for c in self.llamadas if c[0] == "POST" and c[1].endswith("/messages")]
 
     def test_without_approval_it_only_returns_a_preview_and_sends_nothing(self):
-        r = self._ejecutar({"email": "jsoto@external.example.com", "message": "Hola"})
+        r = self._ejecutar({"email": "vortiz@contoso.cl", "message": "Hola"})
         self.assertFalse(r["success"])
         self.assertTrue(r["requiere_aprobacion"])
-        self.assertEqual(r["vista_previa"]["para"]["nombre"], "Jorge Soto")
+        self.assertEqual(r["vista_previa"]["para"]["nombre"], "Víctor Ortiz")
         self.assertEqual(r["vista_previa"]["mensaje"], "Hola")
         self.assertEqual(self._enviados(), [])
         self.assertFalse(any(c[0] == "POST" for c in self.llamadas))
@@ -76,10 +95,18 @@ class TestSendToPerson(unittest.TestCase):
     def test_with_approval_it_reuses_the_existing_direct_chat(self):
         chats = [
             {"id": "otro", "members": [{"userId": "u-x"}, {"userId": "u-yo"}]},
-            {"id": "chat-existente", "members": [{"userId": "u-yo"}, {"userId": "u-jon"}]},
+            {
+                "id": "chat-existente",
+                "members": [{"userId": "u-yo"}, {"userId": "u-jon"}],
+            },
         ]
         r = self._ejecutar(
-            {"email": "jsoto@external.example.com", "message": "Hola", "aprobado_por_el_usuario": True}, chats=chats
+            {
+                "email": "vortiz@contoso.cl",
+                "message": "Hola",
+                "aprobado_por_el_usuario": True,
+            },
+            chats=chats,
         )
         self.assertTrue(r["success"], r)
         self.assertEqual((r["chat_id"], r["chat_creado"]), ("chat-existente", False))
@@ -88,7 +115,13 @@ class TestSendToPerson(unittest.TestCase):
         self.assertEqual(self._enviados()[0][2], {"body": {"contentType": "text", "content": "Hola"}})
 
     def test_without_a_previous_chat_it_creates_one_with_both_members(self):
-        r = self._ejecutar({"email": "jsoto@external.example.com", "message": "Hola", "aprobado_por_el_usuario": True})
+        r = self._ejecutar(
+            {
+                "email": "vortiz@contoso.cl",
+                "message": "Hola",
+                "aprobado_por_el_usuario": True,
+            }
+        )
         self.assertTrue(r["success"], r)
         self.assertEqual((r["chat_id"], r["chat_creado"]), ("chat-nuevo", True))
         crear = next(c for c in self.llamadas if c[1] == "/chats")
@@ -99,7 +132,11 @@ class TestSendToPerson(unittest.TestCase):
 
     def test_missing_chat_create_permission_is_explained(self):
         r = self._ejecutar(
-            {"email": "jsoto@external.example.com", "message": "Hola", "aprobado_por_el_usuario": True},
+            {
+                "email": "vortiz@contoso.cl",
+                "message": "Hola",
+                "aprobado_por_el_usuario": True,
+            },
             crear_error="Sin permiso para acceder a este recurso (403).",
         )
         self.assertFalse(r["success"])
@@ -107,17 +144,24 @@ class TestSendToPerson(unittest.TestCase):
         self.assertEqual(self._enviados(), [])
 
     def test_person_not_in_the_directory_and_bad_input_are_reported(self):
-        r = self._ejecutar({"email": "nadie@x.cl", "message": "Hola", "aprobado_por_el_usuario": True}, usuarios=[])
+        r = self._ejecutar(
+            {"email": "nadie@x.cl", "message": "Hola", "aprobado_por_el_usuario": True},
+            usuarios=[],
+        )
         self.assertFalse(r["success"])
         self.assertIn("No encontré", r["error"])
-        r = self._ejecutar({"email": "Jonathan", "message": "Hola"})
+        r = self._ejecutar({"email": "Tomás", "message": "Hola"})
         self.assertIn("ms365_find_person", r["error"])
         r = self._ejecutar({"email": "a@x.cl"})
         self.assertFalse(r["success"])
 
     def test_a_failure_while_sending_is_reported_with_the_chat(self):
         r = self._ejecutar(
-            {"email": "jsoto@external.example.com", "message": "Hola", "aprobado_por_el_usuario": True},
+            {
+                "email": "vortiz@contoso.cl",
+                "message": "Hola",
+                "aprobado_por_el_usuario": True,
+            },
             chats=[{"id": "c1", "members": [{"userId": "u-jon"}]}],
             envio_error="Error 500",
         )
@@ -130,7 +174,11 @@ class TestSendToPerson(unittest.TestCase):
         self.assertIn("o%27%27brien", ruta)
 
     def _datos(self):
-        return {"email": PERSONA["mail"], "message": "Aviso de prueba", "aprobado_por_el_usuario": True}
+        return {
+            "email": PERSONA["mail"],
+            "message": "Aviso de prueba",
+            "aprobado_por_el_usuario": True,
+        }
 
     def test_an_approval_without_a_previous_preview_is_refused_and_sends_nothing(self):
         r = self._ejecutar(self._datos(), vista_previa=False)
@@ -144,10 +192,65 @@ class TestSendToPerson(unittest.TestCase):
         self.assertFalse(r["success"])
         self.assertEqual(self._enviados(), [])
 
-    def test_changing_the_text_after_the_preview_needs_a_new_preview(self):
-        self._ejecutar({**self._datos(), "message": "Texto distinto"}, vista_previa=False)
-        r = self._ejecutar(self._datos(), vista_previa=False)
+    def _turno(self, args, tarea, graph):
+        with (
+            patch.object(self.mod, "_task_user_id", return_value="u1"),
+            patch.object(self.mod, "_get_m365_token", return_value=("tok", "")),
+            patch.object(self.mod, "_graph", side_effect=graph),
+            patch.object(self.mod, "_current_task_id", return_value=tarea),
+            patch.dict(os.environ, {"HERMESHQ_TASK_PAYLOAD": json.dumps({"task_id": tarea, "mensaje": "sí"})}),
+        ):
+            return json.loads(self.mod._send_to_person_tool(args))
+
+    def test_reworded_text_after_the_preview_needs_a_new_preview(self):
+        chats = [{"id": "c1", "members": [{"userId": "u-jon"}, {"userId": "u-yo"}]}]
+
+        def graph(method, path, token, payload=None):
+            self.llamadas.append((method, path, payload))
+            if path.startswith("/users?"):
+                return {"value": [PERSONA]}
+            if method == "POST" and path.endswith("/messages"):
+                return {"id": "m1"}
+            if path.startswith("/me/chats"):
+                return {"value": chats}
+            if path.startswith("/me?"):
+                return {"id": "u-yo"}
+            raise AssertionError(path)
+
+        previo = self._turno({"email": PERSONA["mail"], "message": "Hola, te paso el informe."}, "tarea-1", graph)
+        self.assertTrue(previo["requiere_aprobacion"])
+        aprob = self._turno(
+            {
+                "email": PERSONA["mail"],
+                "message": "Estimado, adjunto el informe. Saludos.",
+                "aprobado_por_el_usuario": True,
+            },
+            "tarea-2",
+            graph,
+        )
+        self.assertFalse(aprob["success"], aprob)
+        self.assertTrue(aprob["requiere_aprobacion"])
+        self.assertEqual(aprob["vista_previa"]["mensaje"], "Estimado, adjunto el informe. Saludos.")
+        self.assertEqual(self._enviados(), [])
+
+    def test_changing_the_person_after_the_preview_needs_a_new_preview(self):
+        def graph(method, path, token, payload=None):
+            self.llamadas.append((method, path, payload))
+            if path.startswith("/users?"):
+                otra = "otra" in path.lower()
+                return {"value": [{"id": "u-otra", "displayName": "Otra", "mail": "otra@x.cl"} if otra else PERSONA]}
+            if method == "POST" and path.endswith("/messages"):
+                return {"id": "m1"}
+            if path.startswith("/me/chats"):
+                return {"value": [{"id": "c1", "members": [{"userId": "u-jon"}]}]}
+            if path.startswith("/me?"):
+                return {"id": "u-yo"}
+            raise AssertionError(path)
+
+        self._turno({"email": PERSONA["mail"], "message": "Hola"}, "tarea-1", graph)
+        r = self._turno({"email": "otra@x.cl", "message": "Hola", "aprobado_por_el_usuario": True}, "tarea-2", graph)
         self.assertFalse(r["success"])
+        self.assertTrue(r["requiere_aprobacion"])
         self.assertEqual(self._enviados(), [])
 
     def test_an_expired_preview_does_not_count(self):
@@ -162,7 +265,9 @@ class TestSendToPerson(unittest.TestCase):
         primero = self._ejecutar(self._datos(), chats=[{"id": "c1", "members": [{"userId": "u-jon"}]}])
         self.assertTrue(primero["success"], primero)
         segundo = self._ejecutar(
-            self._datos(), vista_previa=False, chats=[{"id": "c1", "members": [{"userId": "u-jon"}]}]
+            self._datos(),
+            vista_previa=False,
+            chats=[{"id": "c1", "members": [{"userId": "u-jon"}]}],
         )
         self.assertFalse(segundo["success"])
         self.assertEqual(len(self._enviados()), 1)
@@ -180,6 +285,35 @@ class TestSendToPerson(unittest.TestCase):
         self.assertIn("teams_send_to_person", ctx.nombres)
         manifiesto = RUTA.with_name("plugin.yaml").read_text(encoding="utf-8")
         self.assertIn("teams_send_to_person", manifiesto)
+
+    def test_changing_the_text_after_the_preview_needs_a_new_preview(self):
+        self._ejecutar({**self._datos(), "message": "Texto distinto"}, vista_previa=False)
+        r = self._ejecutar(self._datos(), vista_previa=False)
+        self.assertFalse(r["success"])
+        self.assertEqual(self._enviados(), [])
+
+
+class TestReadChatMessages(unittest.TestCase):
+    def test_messages_from_apps_system_events_and_people_do_not_crash_the_reader(self):
+        modulo = _cargar()
+        mensajes = [
+            {"id": "1", "from": {"user": {"displayName": "Ana Pérez"}}, "body": {"content": "hola"}},
+            {
+                "id": "2",
+                "from": {"application": {"displayName": "Bot de avisos"}, "user": None},
+                "body": {"content": "x"},
+            },
+            {"id": "3", "from": None, "body": None, "createdDateTime": "2026-10-20T12:00:00Z"},
+            {"id": "4", "from": {"user": None, "application": None}, "body": {"content": None}},
+        ]
+        with (
+            patch.object(modulo, "_task_user_id", return_value="u1"),
+            patch.object(modulo, "_get_m365_token", return_value=("tok", "")),
+            patch.object(modulo, "_graph", return_value={"value": mensajes}),
+        ):
+            r = json.loads(modulo._get_chat_messages_tool({"chat_id": "19:abc"}))
+        self.assertTrue(r["success"], r)
+        self.assertEqual([m["from"] for m in r["messages"]], ["Ana Pérez", "Bot de avisos", None, None])
 
 
 if __name__ == "__main__":

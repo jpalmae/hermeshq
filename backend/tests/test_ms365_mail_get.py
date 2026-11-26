@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import unittest
+import urllib.parse
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -22,7 +23,7 @@ def _load():
     spec = importlib.util.spec_from_file_location("ms365_mail_get_plugin_under_test", PLUGIN_PATH)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module
+    return _alinear_costuras_broker(module)
 
 
 def _graph_message(content, content_type="html", **extra):
@@ -163,32 +164,42 @@ class SearchEmailsTests(unittest.TestCase):
         with (
             patch.object(self.plugin, "_task_user_id", return_value="u1"),
             patch.object(self.plugin, "_get_m365_token", return_value=("tok", "")),
-            patch.object(self.plugin, "_graph", return_value=graph_result or {"value": []}) as graph,
+            patch.object(self.plugin, "_graph", return_value=graph_result or {"items": []}) as graph,
         ):
             result = json.loads(self.plugin._search_emails_tool(args))
         return result, graph
 
-    def test_special_characters_in_query_are_encoded(self):
+    @staticmethod
+    def _broker_acepta(path):
+        from hermeshq.services import kql_correo
+
+        literal = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)["$search"][0]
+        try:
+            kql_correo.validar(literal[1:-1])
+            return True
+        except kql_correo.KqlNoPermitido:
+            return False
+
+    def test_special_characters_in_query_are_encoded_and_rejected_by_the_broker_grammar(self):
         _, graph = self._search({"query": "AT&T facturación"})
         path = graph.call_args.args[1]
-        self.assertIn("$search=%22AT%26T%20facturaci%C3%B3n%22", path)
-        self.assertEqual(path.count("&"), 2)
+        self.assertIn("$search=%22%22AT%26T%22%20facturaci%C3%B3n%22", path)
+        self.assertEqual(path.count("&"), 1)
+        self.assertTrue(self._broker_acepta(path))
 
     def test_double_quotes_in_query_cannot_break_the_search_clause(self):
         _, graph = self._search({"query": 'foo" bar'})
-        path = graph.call_args.args[1]
-        self.assertIn("$search=%22foo%20bar%22", path)
+        self.assertFalse(self._broker_acepta(graph.call_args.args[1]))
 
-    def test_query_with_only_quotes_is_rejected(self):
-        result, graph = self._search({"query": '""'})
-        self.assertFalse(result["success"])
-        graph.assert_not_called()
+    def test_query_with_only_quotes_is_rejected_by_the_broker(self):
+        _, graph = self._search({"query": '""'})
+        self.assertFalse(self._broker_acepta(graph.call_args.args[1]))
 
     def test_previews_are_capped_like_in_list(self):
-        messages = {"value": [{"id": "1", "bodyPreview": "x" * 255}]}
+        messages = {"items": [{"id": "1", "bodyPreview": "x" * 255}]}
         result, _ = self._search({"query": "a", "preview_chars": 50}, messages)
         self.assertEqual(len(result["messages"][0]["bodyPreview"]), 51)
-        result, _ = self._search({"query": "a"}, {"value": [{"id": "1", "bodyPreview": "x" * 255}]})
+        result, _ = self._search({"query": "a"}, {"items": [{"id": "1", "bodyPreview": "x" * 255}]})
         self.assertEqual(len(result["messages"][0]["bodyPreview"]), 201)
 
 
@@ -205,47 +216,130 @@ class SearchTests(unittest.TestCase):
 
         def fake_graph(method, path, token, *a, **k):
             captured["path"] = path
-            return {"value": messages or []}
+            return {"items": messages or []}
 
         with (
             patch.object(self.plugin, "_task_user_id", return_value="u1"),
             patch.object(self.plugin, "_get_m365_token", return_value=("tok", None)),
             patch.object(self.plugin, "_graph", side_effect=fake_graph),
-            patch.object(self.plugin, "_resolve_folder", return_value=("FOLDERID", None)),
         ):
-            return json.loads(self.plugin._search_emails_tool(args)), captured["path"] if captured else None
+            return json.loads(self.plugin._search_emails_tool(args)), captured.get("path")
+
+    def _validada(self, out):
+        from hermeshq.services import kql_correo
+
+        return kql_correo.validar(out["search"])
 
     def test_filters_are_combined_into_one_kql_search(self):
         out, path = self._run(
-            {"query": "cuentas", "from": "Servantis", "since": "2026-10-07", "has_attachments": True, "folder": "inbox"}
+            {
+                "query": "cuentas",
+                "from": "Filial Sur",
+                "since": "2026-10-07",
+                "has_attachments": True,
+                "folder": "inbox",
+            }
         )
         self.assertTrue(out["success"])
-        self.assertIn("mailFolders/FOLDERID/messages", path)
-        self.assertEqual(out["search"], 'cuentas from:"Servantis" received>=2026-10-07 hasattachments:true')
+        self.assertIn("mailFolders/inbox/messages", path)
+        self.assertEqual(out["search"], 'cuentas from:"Filial Sur" received>=2026-10-07 hasattachments:true')
+        self.assertEqual(self._validada(out), out["search"])
 
-    def test_filters_written_inside_query_are_moved_to_proper_fields(self):
+    def test_free_query_is_not_reinterpreted_and_the_broker_decides(self):
+        from hermeshq.services import kql_correo
+
         out, _ = self._run({"query": 'subject:"Ticket 14.436, 15.691" from:"persona@example.com" informe'})
-        self.assertEqual(out["search"], 'informe from:"persona@example.com" subject:"Ticket 14.436, 15.691"')
-        out, _ = self._run({"query": "subject: reunión", "from": "Ana"})
-        self.assertEqual(out["search"], 'from:"Ana" subject:"reunión"')
-        out, _ = self._run({"query": 'to:"otra@example.com" factura subject:'})
-        self.assertEqual(out["search"], 'factura to:"otra@example.com"')
+        self.assertEqual(out["search"], 'subject:"Ticket 14.436, 15.691" from:"persona@example.com" informe')
+        self.assertEqual(kql_correo.validar(out["search"]), out["search"])
+        with self.assertRaises(kql_correo.KqlNoPermitido):
+            kql_correo.validar('subject:"x" OR from:"y"')
+        out, _ = self._run({"subject": "Ticket 14.436, 15.691", "from": "persona@example.com", "query": "informe"})
+        self.assertEqual(out["search"], 'informe from:"persona@example.com" subject:"Ticket 14.436 15.691"')
+        self.assertEqual(self._validada(out), out["search"])
 
-    def test_a_syntax_error_from_graph_carries_a_hint(self):
+    def test_field_values_are_single_quoted_phrases_without_inner_quotes(self):
+        cases = [
+            {"from": "Carolina Marin"},
+            {"from": "user@dominio.cl"},
+            {"subject": "Ticket 14.436"},
+            {"subject": 'Reporte "final"'},
+            {"from": "Carolina Marin", "since": "2026-10-07"},
+            {"subject": "Ticket 14.436", "until": "2026-10-10"},
+            {"from": "user@dominio.cl", "subject": "Ticket 14.436", "since": "2026-10-01", "until": "2026-10-10"},
+        ]
+        for args in cases:
+            out, _ = self._run(dict(args))
+            self.assertTrue(out["success"], args)
+            for campo in ("from", "subject"):
+                if campo in args:
+                    valor = out["search"].split(f'{campo}:"', 1)[1].split('"', 1)[0]
+                    self.assertNotIn('"', valor, args)
+            self.assertEqual(self._validada(out), out["search"], args)
+
+    def test_from_name_is_one_phrase(self):
+        out, _ = self._run({"from": "Carolina Marin"})
+        self.assertEqual(out["search"], 'from:"Carolina Marin"')
+
+    def test_from_email_is_one_phrase(self):
+        out, _ = self._run({"from": "user@dominio.cl"})
+        self.assertEqual(out["search"], 'from:"user@dominio.cl"')
+
+    def test_subject_tokens_stay_bound_to_subject(self):
+        out, _ = self._run({"subject": "Ticket 14.436"})
+        self.assertEqual(out["search"], 'subject:"Ticket 14.436"')
+
+    def test_subject_quote_is_dropped_not_sent_to_graph(self):
+        out, _ = self._run({"subject": 'Reporte "final"'})
+        self.assertEqual(out["search"], 'subject:"Reporte final"')
+
+    def test_from_subject_with_since_and_until(self):
+        out, _ = self._run(
+            {
+                "from": "user@dominio.cl",
+                "subject": "Ticket 14.436",
+                "since": "2026-10-01",
+                "until": "2026-10-10",
+            }
+        )
+        self.assertEqual(
+            out["search"],
+            'from:"user@dominio.cl" subject:"Ticket 14.436" received>=2026-10-01 received<=2026-10-10',
+        )
+
+    def test_unavailable_search_carries_a_hint(self):
         with (
             patch.object(self.plugin, "_task_user_id", return_value="u1"),
             patch.object(self.plugin, "_get_m365_token", return_value=("tok", None)),
-            patch.object(self.plugin, "_graph", return_value={"error": "Error 400: Syntax error: character"}),
+            patch.object(
+                self.plugin,
+                "_graph",
+                return_value={
+                    "error": "Acceso denegado por la política de correo de HermesHQ (busqueda_no_disponible)."
+                },
+            ),
         ):
             out = json.loads(self.plugin._search_emails_tool({"query": "x"}))
         self.assertFalse(out["success"])
-        self.assertIn("parámetros from, subject", out["error"])
+        self.assertIn("Simplifica", out["error"])
 
-    def test_results_come_newest_first_and_empty_search_is_rejected(self):
-        old = {"id": "1", "receivedDateTime": "2026-10-01T10:00:00Z", "bodyPreview": ""}
-        new = {"id": "2", "receivedDateTime": "2026-10-09T10:00:00Z", "bodyPreview": ""}
-        out, _ = self._run({"query": "x"}, [old, new])
-        self.assertEqual([m["id"] for m in out["messages"]], ["2", "1"])
+    def test_results_come_newest_first_from_the_broker_and_empty_search_is_rejected(self):
+        from hermeshq.services import graph_proxy as gp
+
+        old = {"id": "1", "receivedDateTime": "2026-10-01T10:00:00Z", "parentFolderId": "INBOX-ID"}
+        new = {"id": "2", "receivedDateTime": "2026-10-09T10:00:00Z", "parentFolderId": "INBOX-ID"}
+
+        def red(metodo, url, token, cuerpo, tipo, limite):
+            if "$search" in url:
+                return 200, json.dumps({"value": [old, new]}).encode()
+            return 200, b'{"id": "INBOX-ID"}'
+
+        out, path = self._run({"query": "informe", "folder": "inbox"})
+        politica = gp.PoliticaGraph(
+            correo=gp.PoliticaCorreo(operaciones=frozenset({"mail_search"}), carpetas=frozenset({"inbox"}))
+        )
+        with patch.object(gp, "_llamar", red):
+            res = gp.ejecutar("GET", path, None, None, politica, lambda: "tok", lambda t: None)
+        self.assertEqual([m["id"] for m in res["json"]["items"]], ["2", "1"])
         out, _ = self._run({})
         self.assertFalse(out["success"])
         out, _ = self._run({"since": "no es fecha"})
@@ -301,7 +395,29 @@ class IdRepairTests(unittest.TestCase):
         self.assertEqual(self.plugin._resolve_message_id(real[:120]), real)
         self.assertEqual(self.plugin._resolve_message_id(real), real)
 
+    def test_an_id_that_lost_its_middle_segment_is_recovered_by_head_and_tail(self):
+        base = "AAMkADAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMABGAAAAAADBmIefJsqbT5w5CYTGyV4ABwDDBbe_xmITSpzki-dR2kZm"
+        a = base + "AAAAz3uAADDBbe_xmITSpzki-dR2kZmAAMIlwlHAAA="
+        b = base + "AAAAz3uAADDBbe_xmITSpzki-dR2kZmAAMIlwlGAAA="
+        c = base + "AAAAz3OAADDBbe_xmITSpzki-dR2kZmAALtxly6AAA="
+        self.plugin._remember_ids([{"id": a}, {"id": b}, {"id": c}])
+        self.assertEqual(self.plugin._resolve_message_id(base + "AAMIlwlHAAA="), a)
+        self.assertEqual(self.plugin._resolve_message_id(base + "AAMIlwlGAAA="), b)
+        self.assertEqual(self.plugin._resolve_message_id(base + "AAMIlwlZAAA="), base + "AAMIlwlZAAA=")
+
     def test_unknown_or_ambiguous_ids_are_left_alone(self):
         self.plugin._remember_ids([{"id": "AAMk" + "a" * 100 + "1"}, {"id": "AAMk" + "a" * 100 + "2"}])
         self.assertEqual(self.plugin._resolve_message_id("AAMk" + "a" * 70), "AAMk" + "a" * 70)
         self.assertEqual(self.plugin._resolve_message_id("ZZZ" + "b" * 80), "ZZZ" + "b" * 80)
+
+
+def _alinear_costuras_broker(module):
+    module._broker_token_check = lambda user_id: module._get_m365_token(user_id)
+    module._broker_graph = lambda metodo, ruta, cuerpo_json=None, prefer=None: module._graph(
+        metodo,
+        ruta,
+        "tok",
+        **({"payload": cuerpo_json} if cuerpo_json is not None else {}),
+        **({"headers": {"Prefer": prefer}} if prefer else {}),
+    )
+    return module

@@ -7,8 +7,8 @@ from hermeshq.services.auto_background import _title_from
 from hermeshq.services.public_chat_service import PublicChatService, SimpleRateLimiter
 
 PEDIDO = (
-    "[Archivos adjuntos, ya disponibles en tu workspace:\n- ReprocesosMtto.xlsx (1360 KB) -> "
-    "uploads/e0c232b5-d8b9-43b7-a94a-9f.xlsx]\nAnaliza el archivo ReprocesosMtto.xlsx, que contiene dos hojas: Hoja OT "
+    "[Archivos adjuntos, ya disponibles en tu workspace:\n- Datos.xlsx (1360 KB) -> "
+    "uploads/e0c232b5-d8b9-43b7-a94a-9f.xlsx]\nAnaliza el archivo Datos.xlsx, que contiene dos hojas: Hoja OT "
     "y Hoja Solicitudes. Objetivo: determinar la existencia de reprocesos. Hazlo directo."
 )
 
@@ -51,9 +51,14 @@ def _servicio(activas):
 
 
 class TestTituloDelTrabajoEnSegundoPlano(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        parche = patch("hermeshq.services.ejecucion_aprobada.avisos_pendientes", AsyncMock(return_value=None))
+        parche.start()
+        self.addCleanup(parche.stop)
+
     def test_caso_real_el_titulo_no_trae_la_nota_de_adjuntos(self):
         titulo = _title_from(PEDIDO)
-        self.assertTrue(titulo.startswith("Analiza el archivo ReprocesosMtto.xlsx"), titulo)
+        self.assertTrue(titulo.startswith("Analiza el archivo Datos.xlsx"), titulo)
         self.assertNotIn("uploads/", titulo)
         self.assertNotIn("[Archivos adjuntos", titulo)
 

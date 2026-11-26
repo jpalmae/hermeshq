@@ -33,8 +33,8 @@ def _editar(plugin, nombre):
 
 
 def test_un_nombre_sin_carpeta_se_resuelve_en_outputs(plugin, tmp_path):
-    _deck(tmp_path / "outputs" / "gobernanza-datos_3.pptx")
-    r = _editar(plugin, "gobernanza-datos_3.pptx")
+    _deck(tmp_path / "outputs" / "equipo-datos_3.pptx")
+    r = _editar(plugin, "equipo-datos_3.pptx")
     assert r["success"] is True, r
     assert r["path"].startswith("outputs/") and r["original_intacto"] is True
 
