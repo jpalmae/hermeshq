@@ -1,5 +1,5 @@
 name: hermeshq_sharepoint
-version: "1.3.0"
+version: "1.4.0"
 description: SharePoint and OneDrive tools using delegated Microsoft 365 user permissions (Files.Read.All; Files.ReadWrite para subir archivos al OneDrive propio)
 author: HermesHQ
 provides_tools:

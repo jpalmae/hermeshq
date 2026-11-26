@@ -5,3 +5,4 @@ author: HermesHQ
 provides_tools:
   - hq_pptx_generate
   - hq_pptx_from_template
+  - hq_pptx_editar

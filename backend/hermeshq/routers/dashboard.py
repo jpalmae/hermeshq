@@ -2,7 +2,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import false, func, select
+from sqlalchemy import and_, false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hermeshq.core.security import get_accessible_agent_ids, get_current_user, is_admin
@@ -12,6 +12,7 @@ from hermeshq.models.agent import Agent
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.task import Task
 from hermeshq.models.user import User
+from hermeshq.routers.logs import actividad_visible_para
 from hermeshq.schemas.dashboard import (
     DashboardActivityItemRead,
     DashboardAgentSummaryRead,
@@ -22,6 +23,7 @@ from hermeshq.schemas.dashboard import (
     DashboardTaskStatsRead,
     DashboardTokenStatsRead,
 )
+from hermeshq.services.task_visibility import task_visibility_clause
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -39,6 +41,8 @@ async def overview(
     accessible_ids = await get_accessible_agent_ids(db, current_user)
     agent_scope = Agent.id.in_(accessible_ids) if accessible_ids else false()
     task_scope = Task.agent_id.in_(accessible_ids) if accessible_ids else false()
+    if not is_admin(current_user):
+        task_scope = and_(task_scope, task_visibility_clause(current_user.id))
     activity_scope = ActivityLog.agent_id.in_(accessible_ids) if accessible_ids else false()
     total_agents = await db.scalar(
         select(func.count()).select_from(Agent).where(_active_agent_clause(), agent_scope)
@@ -62,7 +66,9 @@ async def overview(
     )
     recent_activity_statement = select(ActivityLog).order_by(ActivityLog.created_at.desc()).limit(12)
     if not is_admin(current_user):
-        recent_activity_statement = recent_activity_statement.where(activity_scope)
+        recent_activity_statement = recent_activity_statement.where(
+            activity_scope, actividad_visible_para(current_user.id)
+        )
     recent_activity = (await db.execute(recent_activity_statement)).scalars().all()
     return {
         "stats": {
@@ -135,6 +141,7 @@ async def task_stats(
     if not is_admin(current_user):
         accessible_ids = await get_accessible_agent_ids(db, current_user)
         statement = statement.where(Task.agent_id.in_(accessible_ids)) if accessible_ids else statement.where(false())
+        statement = statement.where(task_visibility_clause(current_user.id))
     rows = (await db.execute(statement)).all()
     counts: dict[str, int] = {status: count for status, count in rows}
     return {"counts": counts, "total": sum(counts.values())}
@@ -151,6 +158,7 @@ async def activity(
         statement = (
             statement.where(ActivityLog.agent_id.in_(accessible_ids)) if accessible_ids else statement.where(false())
         )
+        statement = statement.where(actividad_visible_para(current_user.id))
     result = await db.execute(statement)
     return [
         {
@@ -243,7 +251,7 @@ async def fleet_health(
         .limit(10)
     )
     if not is_admin(current_user):
-        error_statement = error_statement.where(activity_scope)
+        error_statement = error_statement.where(activity_scope, actividad_visible_para(current_user.id))
     error_rows = (await db.execute(error_statement)).all()
 
     # Resolve agent names
@@ -278,6 +286,8 @@ async def task_analytics(
     """Task analytics: time-series, completion metrics, top failing agents."""
     accessible_ids = await get_accessible_agent_ids(db, current_user)
     task_scope = Task.agent_id.in_(accessible_ids) if accessible_ids else false()
+    if not is_admin(current_user):
+        task_scope = and_(task_scope, task_visibility_clause(current_user.id))
 
     days = max(1, min(days, 90))  # clamp 1-90
 

@@ -20,12 +20,43 @@ STANDARD_ENABLED_TOOLSETS = [
     "code_execution",
     # image_gen removed from defaults 2026-09-16: no usable backend is
     # configured anywhere in this deployment (no FAL_KEY, no Nous
-    # subscription; a self-hosted provider's key only has access to two text
     # models). With the tool listed but non-functional, agents were
     # fabricating fake "generated" images via code_execution + Pillow
     # instead of reporting the failure — worse than not having the tool at
     # all. Re-add once a real image-gen backend/key exists.
 ] + list_standard_compatible_toolsets()
+
+
+STANDARD_MANAGED_SKILLS = [
+    "local/catalogo-de-capacidades",
+    "local/crear-skill",
+]
+
+
+def missing_standard_skills(enabled_toolsets, skills) -> list[str]:
+    if "hermeshq_documentos" not in (enabled_toolsets or []):
+        return []
+    actuales = set(skills or [])
+    return [s for s in STANDARD_MANAGED_SKILLS if s not in actuales]
+
+
+TEAMS_INTEGRATION = "ms365-teams"
+TEAMS_TOOLSET = "hermeshq_ms365_teams"
+TEAMS_SKILL = "local/ms365-teams"
+
+
+def teams_for_mail_agents(integration_configs, enabled_toolsets, disabled_toolsets, skills) -> dict:
+    configs = dict(integration_configs or {})
+    if "ms365-mail" not in configs or TEAMS_TOOLSET in (disabled_toolsets or []):
+        return {}
+    cambios: dict = {}
+    if TEAMS_INTEGRATION not in configs:
+        cambios["integration_configs"] = {**configs, TEAMS_INTEGRATION: {}}
+    if TEAMS_TOOLSET not in (enabled_toolsets or []):
+        cambios["enabled_toolsets"] = [*(enabled_toolsets or []), TEAMS_TOOLSET]
+    if TEAMS_SKILL not in (skills or []):
+        cambios["skills"] = [*(skills or []), TEAMS_SKILL]
+    return cambios
 
 
 BUILTIN_RUNTIME_PROFILES: list[dict] = [

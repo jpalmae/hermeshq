@@ -153,6 +153,7 @@ export const toolProgressModeOptions = [
 export const thinkingModeOptions = [
   { value: "inherit", labelKey: "agent.interactionModeInherit" },
   { value: "on", labelKey: "agent.thinkingModeOn" },
+  { value: "adaptive", labelKey: "agent.thinkingModeAdaptive" },
   { value: "off", labelKey: "agent.thinkingModeOff" },
 ];
 

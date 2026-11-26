@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     # Max concurrent agent task executions.
     # Each isolated runtime is limited independently by Docker in production.
     concurrency_semaphore: int = 8
+    concurrency_interactive_reserve: int = 0
+    concurrency_background_max: int = 0
+    concurrency_aging_seconds: int = 300
+    task_parallel_lanes: bool = False
     # Max wall-clock seconds a single task execution may run.
     task_timeout_seconds: int = 3600
     task_queue_poll_seconds: float = Field(default=1.0, gt=0, le=60)
@@ -83,6 +87,49 @@ class Settings(BaseSettings):
     model_call_timeout_seconds: int = 120
     model_context_length: int = 0
     enrollment_llm_proxy: bool = True
+    execution_lease_ttl_seconds: int = 120
+    execution_lease_renew_interval_seconds: int = 30
+    runner_heartbeat_interval_seconds: int = 10
+    runner_heartbeat_stale_seconds: int = 60
+    runner_reserva_enabled: bool = False
+    runner_reserva_ttl_seconds: int = 300
+    runner_reserva_max: int = 4
+    execution_reconcile_interval_seconds: int = 60
+    execution_reconcile_grace_seconds: int = 120
+    scheduler_misfire_grace_seconds: int = 3600
+    approval_central_enabled: bool = False
+    approval_central_enforced: bool = False
+    approval_policy_default: str = ""
+    m365_agent_token_enabled: bool = False
+    m365_politica_compatibilidad: bool = True
+    tool_exposure_progressive_agents: str = ""
+    agent_token_mode: str = "dual"
+    approval_reconcile_wait_seconds: int = 1800
+    accion_narrada_guard: bool = True
+    runaway_guard_enabled: bool = True
+    runaway_guard_max_chars: int = 120000
+    runaway_guard_max_seconds: int = 900
+    runaway_guard_max_compactions: int = 25
+    cross_user_delegation_mode: str = "bloquear"
+    cross_user_delegation_exceptions: list[dict] = []
+    public_chat_total_budget_seconds: int = 570
+    public_chat_user_messages_per_minute: int = 20
+    public_chat_user_sessions_per_minute: int = 5
+    public_chat_bot_messages_per_minute: int = 600
+    public_chat_bot_sessions_per_minute: int = 150
+    public_chat_session_messages_per_minute: int = 10
+    public_chat_ip_messages_per_minute: int = 20
+    public_chat_ip_sessions_per_minute: int = 5
+    public_chat_ip_auth_failures_per_minute: int = 20
+    public_chat_trusted_proxies: list[str] = [
+        "127.0.0.0/8",
+        "::1/128",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+    ]
+    compression_threshold: float = 0.75
+    compression_target_ratio: float = 0.50
 
     model_config = SettingsConfigDict(
         env_file=".env",

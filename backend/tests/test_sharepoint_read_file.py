@@ -134,7 +134,7 @@ class TestReadFileTool(unittest.TestCase):
         self.assertIn("carpeta", out["error"])
 
     def test_too_big(self):
-        out = self._run({"file_path": "a.txt"}, {"name": "a.txt", "size": 11 * 1024 * 1024})
+        out = self._run({"file_path": "a.txt"}, {"name": "a.txt", "size": sp._MAX_DOWNLOAD_BYTES + 1})
         self.assertFalse(out["success"])
         self.assertIn("límite", out["error"])
 
@@ -213,7 +213,9 @@ class TestImagesAndDownload(unittest.TestCase):
         self.assertTrue(out["local_path"].endswith("_passwd.png"))
 
     def test_download_respects_size_limit(self):
-        out = self._run(sp._download_file_tool, {"file_path": "x"}, {"name": "big.png", "size": 11 * 1024 * 1024})
+        out = self._run(
+            sp._download_file_tool, {"file_path": "x"}, {"name": "big.png", "size": sp._MAX_DOWNLOAD_BYTES + 1}
+        )
         self.assertFalse(out["success"])
         self.assertFalse((Path(self._tmp.name) / "sharepoint_downloads").exists())
 

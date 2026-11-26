@@ -1,15 +1,3 @@
-"""Tests for the M365 plugins' three-tier _task_user_id() resolution.
-
-Regression coverage for the live-gateway user resolution added on top of the
-pre-existing task-payload and HERMESHQ_RESOLVED_USER_ID tiers:
-  1. Punctual tasks: thread_user_id/created_by_user_id from HERMESHQ_TASK_PAYLOAD.
-  2. Live gateway messages: HERMES_SESSION_PLATFORM/HERMES_SESSION_USER_ID
-     resolved via GET /control/resolve-channel-user (per-turn, contextvar-backed
-     — safe under concurrent messages in the same gateway process, unlike the
-     process-global fallback below).
-  3. Single-user channel / cron: HERMESHQ_RESOLVED_USER_ID set at gateway start.
-"""
-
 from __future__ import annotations
 
 import importlib.util
@@ -17,7 +5,6 @@ import io
 import json
 import os
 import unittest
-import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -88,51 +75,28 @@ class TaskUserIdResolutionTests(unittest.TestCase):
                     os.environ.pop("HERMES_SESSION_PLATFORM", None)
                     os.environ.pop("HERMES_SESSION_USER_ID", None)
 
-    def test_tier2_live_gateway_resolves_via_control_endpoint(self):
+    def test_gateway_session_env_is_not_trusted_as_identity(self):
         for name, path in PLUGIN_MODULES.items():
             with self.subTest(plugin=name):
                 module = _load_plugin(name, path)
                 os.environ["HERMES_SESSION_PLATFORM"] = "telegram"
                 os.environ["HERMES_SESSION_USER_ID"] = "123456"
-                body = json.dumps({"hermeshq_user_id": "resolved-user"}).encode("utf-8")
                 try:
-                    with patch("urllib.request.urlopen", return_value=_FakeResponse(body)) as mock_urlopen:
-                        self.assertEqual(module._task_user_id(), "resolved-user")
-                        request = mock_urlopen.call_args[0][0]
-                        self.assertIn("/control/resolve-channel-user", request.full_url)
-                        self.assertIn("platform=telegram", request.full_url)
-                        self.assertIn("sender_id=123456", request.full_url)
-                        self.assertEqual(request.headers.get("X-hermeshq-agent-id"), "agent-1")
+                    with patch("urllib.request.urlopen") as mock_urlopen:
+                        self.assertIsNone(module._task_user_id())
+                        mock_urlopen.assert_not_called()
                 finally:
                     os.environ.pop("HERMES_SESSION_PLATFORM", None)
                     os.environ.pop("HERMES_SESSION_USER_ID", None)
 
-    def test_tier3_fallback_used_for_single_user_channel_or_cron(self):
+    def test_process_wide_resolved_user_is_not_trusted_as_identity(self):
         for name, path in PLUGIN_MODULES.items():
             with self.subTest(plugin=name):
                 module = _load_plugin(name, path)
                 os.environ["HERMESHQ_RESOLVED_USER_ID"] = "single-user-channel"
                 try:
-                    with patch("urllib.request.urlopen") as mock_urlopen:
-                        self.assertEqual(module._task_user_id(), "single-user-channel")
-                        mock_urlopen.assert_not_called()
+                    self.assertIsNone(module._task_user_id())
                 finally:
-                    os.environ.pop("HERMESHQ_RESOLVED_USER_ID", None)
-
-    def test_tier3_fallback_used_when_control_endpoint_has_no_match(self):
-        for name, path in PLUGIN_MODULES.items():
-            with self.subTest(plugin=name):
-                module = _load_plugin(name, path)
-                os.environ["HERMES_SESSION_PLATFORM"] = "telegram"
-                os.environ["HERMES_SESSION_USER_ID"] = "999999"
-                os.environ["HERMESHQ_RESOLVED_USER_ID"] = "fallback-user"
-                error = urllib.error.HTTPError("url", 404, "not found", None, None)
-                try:
-                    with patch("urllib.request.urlopen", side_effect=error):
-                        self.assertEqual(module._task_user_id(), "fallback-user")
-                finally:
-                    os.environ.pop("HERMES_SESSION_PLATFORM", None)
-                    os.environ.pop("HERMES_SESSION_USER_ID", None)
                     os.environ.pop("HERMESHQ_RESOLVED_USER_ID", None)
 
     def test_none_when_nothing_resolves(self):

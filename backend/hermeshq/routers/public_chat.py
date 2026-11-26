@@ -1,16 +1,18 @@
 import asyncio
+import ipaddress
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from hermeshq.config import get_settings
 from hermeshq.core.security import require_admin
 from hermeshq.database import get_db_session
-from hermeshq.models.public_chat import PublicChatNotification
+from hermeshq.models.public_chat import PublicChatApiKey, PublicChatNotification, PublicChatSession
 from hermeshq.models.task import Task
 from hermeshq.models.user import User
 from hermeshq.routers.attachments import _resolve_media_type
@@ -28,9 +30,40 @@ from hermeshq.schemas.public_chat import (
     UpdateApiKeyRequest,
 )
 from hermeshq.services.public_chat_service import BindingError
-from hermeshq.services.schedule_notifications import NOTIFICATION_DELIVERY_WINDOW, purge_old_notifications
+from hermeshq.services.schedule_notifications import (
+    NOTIFICATION_DELIVERY_WINDOW,
+    friendly_error_text,
+    purge_old_notifications,
+)
+from hermeshq.services.texto_chat import PREFIJO_CLAVE_TEAMS, respuesta_para_canal
 
 logger = logging.getLogger(__name__)
+
+TEXTO_RESPUESTA_TARDIA = (
+    "⏳ Tu solicitud sigue en curso y tarda más de lo habitual. Te envío la respuesta por aquí apenas "
+    "termine; no hace falta reenviarla."
+)
+
+
+async def _entregar_por_notificacion_si_hace_falta(request: Request, task_id: str) -> None:
+    from hermeshq.services.schedule_notifications import enqueue_respuesta_tardia
+
+    try:
+        async with request.app.state.supervisor.session_factory() as db:
+            task = await db.get(Task, task_id)
+            if task is None or (task.metadata_json or {}).get("respuesta_tardia"):
+                return
+            metadata = dict(task.metadata_json or {})
+            metadata["respuesta_tardia"] = True
+            task.metadata_json = metadata
+            if task.status == "completed":
+                await enqueue_respuesta_tardia(db, task, success=True, summary=task.response)
+            elif task.status == "failed":
+                await enqueue_respuesta_tardia(db, task, success=False, summary=task.error_message)
+            await db.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("No se pudo marcar la respuesta tardía de la tarea %s", task_id)
+
 
 public_router = APIRouter(prefix="/api/public/chat", tags=["public-chat"])
 management_router = APIRouter(prefix="/settings/public-chat-keys", tags=["public-chat-management"])
@@ -40,20 +73,16 @@ def _friendly_task_error(event: dict) -> str:
     error_type = str(event.get("error_type") or "")
     raw_error = str(event.get("error") or "")
     if error_type == "QueueTimeout":
-        return "Todos los agentes están ocupados en este momento. Intenta de nuevo en unos minutos."
+        return (
+            "Tu solicitud anterior sigue en curso, así que este mensaje no se procesó. "
+            "Espera a que te responda y vuelve a enviarlo, o escribe «cancela» para detener lo anterior."
+        )
     if event.get("auto_background"):
         return (
             "Tu solicitud es larga y no alcanzó a terminar aquí. La sigo en segundo plano y te aviso por este chat "
             "apenas esté lista; no hace falta reenviarla. Si prefieres detenerla, escribe «cancela»."
         )
-    if "exceeded the task timeout" in raw_error or "produced no output" in raw_error:
-        return "Tu solicitud tardó demasiado y se detuvo. Intenta con una petición más acotada o con menos archivos."
-    if "invalid tool call" in raw_error or "stopped early" in raw_error:
-        return (
-            "El agente generó una llamada inválida y se detuvo. Reintenta el mensaje; "
-            "si pedías un informe grande, pídelo por partes (de a 2 capítulos)."
-        )
-    return "The agent encountered an error processing your message."
+    return friendly_error_text(raw_error)
 
 
 _PUBLIC_ERROR_MAP = {
@@ -74,8 +103,69 @@ def _get_service(request: Request):
     return request.app.state.public_chat_service
 
 
+def _proxy_de_confianza(ip: str) -> bool:
+    try:
+        direccion = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    for red in get_settings().public_chat_trusted_proxies:
+        try:
+            if direccion in ipaddress.ip_network(red, strict=False):
+                return True
+        except ValueError:
+            logger.warning("Proxy de confianza inválido en public_chat_trusted_proxies: %s", red)
+    return False
+
+
 def _get_client_ip(request: Request) -> str:
-    return request.headers.get("x-real-ip") or (request.client.host if request.client else "")
+    client = getattr(request, "client", None)
+    ip_socket = (getattr(client, "host", "") or "") if client else ""
+    real_ip = (request.headers.get("x-real-ip") or "").strip()
+    if real_ip and _proxy_de_confianza(ip_socket):
+        return real_ip
+    return ip_socket
+
+
+VENTANA_CLAVE_COMPARTIDA = timedelta(minutes=5)
+
+
+def _error_con_codigo(status: int, code: str, mensaje: str) -> HTTPException:
+    return HTTPException(status_code=status, detail={"code": code, "codigo": code, "error": mensaje})
+
+
+async def validar_canal(request: Request, db: AsyncSession, api_key):
+    from hermeshq.services.canales_bot import canal_de_clave
+
+    slug = (request.headers.get("x-bot-channel") or "").strip()
+    if not slug and not getattr(api_key, "bot_channel_id", None):
+        return None
+    canal = await canal_de_clave(db, api_key)
+    if canal is None:
+        if getattr(api_key, "bot_channel_id", None):
+            raise _error_con_codigo(403, "canal_incorrecto", "El canal de la clave no existe")
+        return None
+    if slug:
+        if slug != canal.slug:
+            logger.warning("Clave %s usada desde el canal %s; su canal es %s", api_key.id, slug, canal.slug)
+            raise _error_con_codigo(403, "canal_incorrecto", "La clave no pertenece a este canal de bot")
+    elif canal.require_channel_header:
+        raise _error_con_codigo(403, "canal_incorrecto", "Falta la cabecera X-Bot-Channel")
+    else:
+        logger.info("Clave %s usada sin X-Bot-Channel (canal %s)", api_key.id, canal.slug)
+    return canal
+
+
+def _registrar_instancia(request: Request, api_key, canal) -> None:
+    instancia = (request.headers.get("x-bridge-instance") or "").strip()[:64]
+    if not instancia:
+        return
+    anterior = getattr(api_key, "last_poll_instance", None)
+    ultimo = getattr(api_key, "last_notification_poll_at", None)
+    if anterior and anterior != instancia and ultimo and datetime.now(UTC) - ultimo < VENTANA_CLAVE_COMPARTIDA:
+        logger.error("clave_compartida: la clave %s la sondean dos bridges (%s y %s)", api_key.id, anterior, instancia)
+        if canal is not None and canal.require_channel_header:
+            raise _error_con_codigo(409, "clave_compartida", "Esta clave ya la usa otro bridge")
+    api_key.last_poll_instance = instancia
 
 
 def _public_error(exc: ValueError) -> HTTPException:
@@ -100,14 +190,29 @@ async def create_session(
     origin = request.headers.get("origin")
     client_ip = _get_client_ip(request)
     try:
-        api_key = await service.validate_api_key(x_api_key, db, origin=origin)
+        api_key = await service.validate_api_key(x_api_key, db, origin=origin, client_ip=client_ip)
     except ValueError as e:
         raise _public_error(e)
+    await validar_canal(request, db, api_key)
     try:
-        result = await service.create_session(api_key, db, client_ip=client_ip, sender_id=payload.sender_id)
+        result = await service.create_session(
+            api_key, db, client_ip=client_ip, sender_id=payload.sender_id, aad_object_id=payload.aad_object_id
+        )
     except ValueError as e:
+        if str(e) == "Sender is not the bound user":
+            raise _error_con_codigo(403, "remitente_no_vinculado", "El remitente no es el usuario de esta clave")
         raise _public_error(e)
     return result
+
+
+async def _es_clave_teams(db: AsyncSession, session_id: str) -> bool:
+    fila = await db.execute(
+        select(PublicChatApiKey.label)
+        .join(PublicChatSession, PublicChatSession.api_key_id == PublicChatApiKey.id)
+        .where(PublicChatSession.id == session_id)
+    )
+    etiqueta = fila.scalar_one_or_none()
+    return isinstance(etiqueta, str) and etiqueta.startswith(PREFIJO_CLAVE_TEAMS)
 
 
 @public_router.post("/sessions/{session_id}/messages")
@@ -139,7 +244,16 @@ async def send_message(
         )
     except ValueError as e:
         raise _public_error(e)
+    es_teams = task_id is not None and await _es_clave_teams(db, session_id)
     await db.close()
+
+    if task_id is None:
+        inflight_reply = agent_id
+
+        async def inflight_stream():
+            yield f"data: {json.dumps({'type': 'done', 'content': inflight_reply, 'attachments': []})}\n\n"
+
+        return StreamingResponse(inflight_stream(), media_type="text/event-stream")
 
     async def sse_stream():
         broker = request.app.state.event_broker
@@ -181,7 +295,9 @@ async def send_message(
                 except TimeoutError:
                     keepalive_count += 1
                     if keepalive_count >= _MAX_KEEPALIVES_BEFORE_TIMEOUT:
-                        yield f"data: {json.dumps({'type': 'timeout'})}\n\n"
+                        await _entregar_por_notificacion_si_hace_falta(request, task_id)
+                        await service.save_assistant_message(session_id, TEXTO_RESPUESTA_TARDIA)
+                        yield f"data: {json.dumps({'type': 'done', 'content': TEXTO_RESPUESTA_TARDIA, 'attachments': []})}\n\n"
                         break
                     yield ": keepalive\n\n"
                     continue
@@ -200,6 +316,7 @@ async def send_message(
                     # to the joined stream if the completion event somehow
                     # carried no response at all. Fixed 2026-09-15.
                     full_response = data if data else "".join(final_response)
+                    texto_canal = respuesta_para_canal(full_response, es_teams)
                     safe_attachments = [
                         {
                             "file_id": att.get("file_id"),
@@ -212,7 +329,7 @@ async def send_message(
                     ]
                     yield (
                         "data: "
-                        f"{json.dumps({'type': 'done', 'content': full_response, 'attachments': safe_attachments})}"
+                        f"{json.dumps({'type': 'done', 'content': texto_canal, 'attachments': safe_attachments})}"
                         "\n\n"
                     )
                     await service.save_assistant_message(session_id, full_response)
@@ -223,6 +340,7 @@ async def send_message(
                     break
                 elif event_type == "error":
                     yield f"data: {json.dumps({'type': 'error', 'content': data})}\n\n"
+                    await service.renovar_actividad(session_id)
                     break
         finally:
             broker.unsubscribe(event_handler)
@@ -239,26 +357,114 @@ async def list_notifications(
 ):
     service = _get_service(request)
     try:
-        api_key = await service.validate_api_key(x_api_key, db, origin=request.headers.get("origin"))
+        api_key = await service.validate_api_key(
+            x_api_key, db, origin=request.headers.get("origin"), client_ip=_get_client_ip(request)
+        )
     except ValueError as e:
         raise _public_error(e)
     if not service.notification_limiter.check(api_key.id):
         raise HTTPException(status_code=429, detail="Too many requests, please wait")
+    canal = await validar_canal(request, db, api_key)
+    _registrar_instancia(request, api_key, canal)
     api_key.last_notification_poll_at = datetime.now(UTC)
     await purge_old_notifications(db, api_key.id)
+    filtros = [
+        PublicChatNotification.api_key_id == api_key.id,
+        PublicChatNotification.status == "pending",
+        PublicChatNotification.created_at > datetime.now(UTC) - NOTIFICATION_DELIVERY_WINDOW,
+    ]
+    usuario_fijo = getattr(api_key, "bound_user_id", None)
+    if usuario_fijo:
+        filtros.append(PublicChatNotification.recipient_user_id == usuario_fijo)
     result = await db.execute(
-        select(PublicChatNotification)
-        .where(
-            PublicChatNotification.api_key_id == api_key.id,
-            PublicChatNotification.status == "pending",
-            PublicChatNotification.created_at > datetime.now(UTC) - NOTIFICATION_DELIVERY_WINDOW,
-        )
-        .order_by(PublicChatNotification.created_at.asc())
-        .limit(limit)
+        select(PublicChatNotification).where(*filtros).order_by(PublicChatNotification.created_at.asc()).limit(limit)
     )
-    items = [NotificationRead.model_validate(item, from_attributes=True) for item in result.scalars().all()]
+    notificaciones = list(result.scalars().all())
+    tareas = await _tareas_de(db, [n.task_id for n in notificaciones if n.task_id])
+    items = []
+    for notificacion in notificaciones:
+        item = NotificationRead.model_validate(notificacion, from_attributes=True)
+        item.attachments = _adjuntos_publicos(tareas.get(notificacion.task_id))
+        items.append(item)
     await db.commit()
     return items
+
+
+@public_router.get("/notifications/{notification_id}/attachments/{file_id}")
+async def download_notification_attachment(
+    notification_id: str,
+    file_id: str,
+    request: Request,
+    x_api_key: str = Header(..., alias="X-Api-Key"),
+    db: AsyncSession = Depends(get_db_session),
+):
+    service = _get_service(request)
+    try:
+        api_key = await service.validate_api_key(
+            x_api_key, db, origin=request.headers.get("origin"), client_ip=_get_client_ip(request)
+        )
+    except ValueError as e:
+        raise _public_error(e)
+    if not service.notification_limiter.check(api_key.id):
+        raise HTTPException(status_code=429, detail="Too many requests, please wait")
+    await validar_canal(request, db, api_key)
+    notificacion = await db.get(PublicChatNotification, notification_id)
+    if notificacion is None or notificacion.api_key_id != api_key.id or not notificacion.task_id:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    usuario_fijo = getattr(api_key, "bound_user_id", None)
+    if usuario_fijo and str(notificacion.recipient_user_id or "") != str(usuario_fijo):
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    tareas = await _tareas_de(db, [notificacion.task_id])
+    adjunto = next(
+        (a for a in _adjuntos_publicos(tareas.get(notificacion.task_id)) if a.get("file_id") == file_id), None
+    )
+    if adjunto is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    workspace = request.app.state.workspace_manager.build_workspace_path(notificacion.agent_id)
+    matches = list((workspace / "uploads").glob(f"{file_id}.*"))
+    if not matches:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    filename = adjunto.get("filename") or matches[0].name
+    media_type = adjunto.get("media_type") or _resolve_media_type(filename)
+    return FileResponse(matches[0], media_type=media_type, filename=filename)
+
+
+async def _tareas_de(db: AsyncSession, task_ids: list[str]) -> dict:
+    if not task_ids:
+        return {}
+    result = await db.execute(select(Task).where(Task.id.in_(task_ids)))
+    return {tarea.id: tarea for tarea in result.scalars().all()}
+
+
+def _adjuntos_publicos(tarea) -> list[dict]:
+    if tarea is None:
+        return []
+    return [
+        {
+            "file_id": att.get("file_id"),
+            "filename": att.get("filename"),
+            "media_type": att.get("media_type"),
+            "size": att.get("size"),
+        }
+        for att in (tarea.metadata_json or {}).get("response_attachments") or []
+        if att.get("file_id")
+    ]
+
+
+async def _renovar_sesion_de_la_entrega(service, db: AsyncSession, notification, api_key_id: str) -> None:
+    if not getattr(notification, "task_id", None):
+        return
+    try:
+        tarea = await db.get(Task, notification.task_id)
+        metadata = getattr(tarea, "metadata_json", None)
+        session_id = str((metadata if isinstance(metadata, dict) else {}).get("public_session_id") or "")
+        if not session_id:
+            return
+        sesion = await db.get(PublicChatSession, session_id)
+        if sesion is not None and getattr(sesion, "api_key_id", None) == api_key_id:
+            await service.renovar_actividad(session_id, db)
+    except Exception:  # noqa: BLE001
+        logger.exception("No se pudo renovar la sesión de la notificación %s", notification.id)
 
 
 @public_router.post("/notifications/{notification_id}/ack")
@@ -270,17 +476,21 @@ async def acknowledge_notification(
 ):
     service = _get_service(request)
     try:
-        api_key = await service.validate_api_key(x_api_key, db, origin=request.headers.get("origin"))
+        api_key = await service.validate_api_key(
+            x_api_key, db, origin=request.headers.get("origin"), client_ip=_get_client_ip(request)
+        )
     except ValueError as e:
         raise _public_error(e)
     if not service.notification_limiter.check(api_key.id):
         raise HTTPException(status_code=429, detail="Too many requests, please wait")
+    await validar_canal(request, db, api_key)
     notification = await db.get(PublicChatNotification, notification_id)
     if not notification or notification.api_key_id != api_key.id:
         raise HTTPException(status_code=404, detail="Notification not found")
     if notification.status != "delivered":
         notification.status = "delivered"
         notification.delivered_at = datetime.now(UTC)
+        await _renovar_sesion_de_la_entrega(service, db, notification, api_key.id)
         await db.commit()
     return {"acknowledged": True, "id": notification.id}
 
@@ -400,6 +610,7 @@ async def create_api_key(
             widget_position=payload.widget_position,
             bound_user_id=payload.bound_user_id,
             trust_sender_id=payload.trust_sender_id,
+            bot_channel_id=payload.bot_channel_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

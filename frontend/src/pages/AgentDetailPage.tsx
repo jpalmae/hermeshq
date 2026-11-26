@@ -489,15 +489,17 @@ export function AgentDetailPage() {
         onToggle={() => toggleSection("devices")}
       />
 
-      <SectionShell
-        eyebrow={t("agent.workspace")}
-        title={t("agent.filesystemEditor")}
-        meta={agent.workspace_path}
-        isOpen={sectionState.workspace}
-        onToggle={() => toggleSection("workspace")}
-      >
-        <WorkspacePanel agentId={agent.id} />
-      </SectionShell>
+      {isAdmin ? (
+        <SectionShell
+          eyebrow={t("agent.workspace")}
+          title={t("agent.filesystemEditor")}
+          meta={agent.workspace_path}
+          isOpen={sectionState.workspace}
+          onToggle={() => toggleSection("workspace")}
+        >
+          <WorkspacePanel agentId={agent.id} />
+        </SectionShell>
+      ) : null}
     </div>
   );
 }

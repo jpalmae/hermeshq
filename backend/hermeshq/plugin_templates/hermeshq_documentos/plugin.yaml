@@ -1,0 +1,7 @@
+name: hermeshq_documentos
+version: "1.0.0"
+description: Lee documentos locales (PDF, Word, Excel, PowerPoint y texto) y edita un .docx existente de forma segura en el servidor
+author: HermesHQ
+provides_tools:
+  - hq_docx_editar
+  - hq_leer_documento

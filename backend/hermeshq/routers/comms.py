@@ -19,6 +19,10 @@ from hermeshq.routers.agents_shared import _load_agent_map
 from hermeshq.schemas.message import BroadcastCreate, MessageCreate, MessageRead
 from hermeshq.schemas.topology import CommsTopologyRead
 from hermeshq.services.agent_hierarchy import validate_delegate_hierarchy
+from hermeshq.services.autorizacion_comunicacion import exigir_con_duenos
+from hermeshq.services.delegacion_entre_usuarios import duenos_humanos_por_agente
+
+MENSAJE_COMUNICACION_BLOQUEADA = "Ese agente pertenece a otro usuario; no puedo contactarlo. Pídele al usuario que se lo solicite directamente a su agente."
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/comms", tags=["comms"])
@@ -37,9 +41,19 @@ async def send_message(
         target_agent = await session.get(Agent, payload.to_agent_id)
         if not target_agent or target_agent.is_archived:
             raise HTTPException(status_code=404, detail="Destination agent not found")
+        exigir_con_duenos(
+            await duenos_humanos_por_agente(session),
+            source_agent,
+            target_agent,
+            MENSAJE_COMUNICACION_BLOQUEADA,
+            operacion=payload.message_type if payload.message_type in ("direct", "delegate") else "direct",
+        )
         if payload.message_type == "delegate":
             agent_map = await _load_agent_map(session)
             validate_delegate_hierarchy(agent_map, source_agent, target_agent)
+    if payload.message_type == "delegate":
+        metadata = {k: v for k, v in (payload.metadata or {}).items() if k != "callback_delivery"}
+        payload = payload.model_copy(update={"metadata": metadata})
     message = await request.app.state.comms_router.send_message(payload)
     if payload.message_type == "delegate" and message.task_id:
         async with request.app.state.supervisor.session_factory() as session:
@@ -58,7 +72,12 @@ async def broadcast(
     current_user: User = Depends(get_current_user),
 ) -> list[MessageRead]:
     async with request.app.state.supervisor.session_factory() as session:
-        await ensure_agent_access(session, current_user, payload.from_agent_id)
+        origen = await ensure_agent_access(session, current_user, payload.from_agent_id)
+        destinos_todos = (await session.execute(select(Agent).where(Agent.is_archived.is_(False)))).scalars().all()
+        duenos = await duenos_humanos_por_agente(session)
+        for destino in destinos_todos:
+            if payload.team_tag in (destino.team_tags or []):
+                exigir_con_duenos(duenos, origen, destino, MENSAJE_COMUNICACION_BLOQUEADA, operacion="broadcast")
         if not is_admin(current_user):
             result = await session.execute(select(Agent).where(Agent.is_archived.is_(False)))
             target_ids = {agent.id for agent in result.scalars().all() if payload.team_tag in (agent.team_tags or [])}

@@ -65,13 +65,13 @@ class TestFormatosAntiguos(unittest.TestCase):
         import docx
 
         documento = docx.Document()
-        documento.add_paragraph("Procedimiento de transferencia de asfalto")
+        documento.add_paragraph("Procedimiento de transferencia de Demo")
         origen = self.carpeta / "proc.docx"
         documento.save(origen)
         antiguo = _a_formato(origen, "doc", self.carpeta)
         texto, error, _ = plugin._extract_text("proc.doc", antiguo.read_bytes(), 20000)
         self.assertEqual(error, "")
-        self.assertIn("transferencia de asfalto", texto)
+        self.assertIn("transferencia de Demo", texto)
 
     def test_without_a_converter_the_message_says_so(self):
         plugin = _cargar(

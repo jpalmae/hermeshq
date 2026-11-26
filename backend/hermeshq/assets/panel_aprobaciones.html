@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aprobaciones pendientes</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { margin: 0 auto; max-width: 860px; padding: 16px; }
+  h1 { font-size: 1.3rem; }
+  .tarjeta { border: 1px solid #8884; border-radius: 10px; padding: 14px; margin: 14px 0; }
+  .meta { font-size: .85rem; opacity: .8; margin-bottom: 8px; }
+  pre { white-space: pre-wrap; word-break: break-word; background: #8881; padding: 10px; border-radius: 8px; }
+  button { padding: 8px 14px; margin-right: 8px; border-radius: 8px; border: 1px solid #8886; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: progress; }
+  .ok { color: #1a7f37; } .error { color: #c62828; } .aviso { color: #b26a00; }
+</style>
+</head>
+<body>
+<h1>Aprobaciones</h1>
+<p id="estado">Cargando…</p>
+<div id="lista"></div>
+<script>
+"use strict";
+const API = "/api/aprobaciones";
+const token = (() => { try { return localStorage.getItem("hermeshq.token"); } catch (e) { return null; } })();
+const lista = document.getElementById("lista");
+const estado = document.getElementById("estado");
+
+function el(tag, texto, clase) {
+  const n = document.createElement(tag);
+  if (texto !== undefined) n.textContent = texto;
+  if (clase) n.className = clase;
+  return n;
+}
+
+async function llamar(metodo, ruta, cuerpo) {
+  const r = await fetch(API + ruta, {
+    method: metodo,
+    headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+    body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
+  });
+  let datos = null;
+  try { datos = await r.json(); } catch (e) { datos = null; }
+  if (!r.ok) {
+    const d = datos && datos.detail;
+    throw new Error((d && (d.error || d.codigo)) || ("HTTP " + r.status));
+  }
+  return datos;
+}
+
+function tarjeta(a) {
+  const caja = el("div", undefined, "tarjeta");
+  caja.dataset.id = a.id;
+  caja.appendChild(el("div", a.tipo_accion + " · " + a.estado + " · envío: " + a.envio_estado +
+    " · expira " + (a.expira_en || ""), "meta"));
+  caja.appendChild(el("pre", a.vista_previa));
+  const msg = el("p", "");
+  const acciones = el("div");
+  function boton(texto, fn) {
+    const b = el("button", texto);
+    b.addEventListener("click", async () => {
+      acciones.querySelectorAll("button").forEach(x => { x.disabled = true; });
+      msg.className = ""; msg.textContent = "Enviando…";
+      try { const r = await fn(); msg.className = "ok"; msg.textContent = r; setTimeout(cargar, 1200); }
+      catch (e) { msg.className = "error"; msg.textContent = e.message;
+        acciones.querySelectorAll("button").forEach(x => { x.disabled = false; }); }
+    });
+    acciones.appendChild(b);
+  }
+  const decision = { huella: a.huella, conversacion_id: a.conversacion_id };
+  if (a.estado === "pendiente") {
+    boton("Aprobar", async () => { await llamar("POST", "/" + a.id + "/aprobar", decision); return "Aprobado."; });
+    boton("Rechazar", async () => { await llamar("POST", "/" + a.id + "/rechazar", decision); return "Rechazado."; });
+  } else if (a.requiere_conciliacion) {
+    caja.appendChild(el("p", "Resultado incierto: no sé si se ejecutó. Hay que conciliarlo antes de repetir.", "aviso"));
+    const esCorreo = a.tipo_accion.indexOf("correo.") === 0;
+    if (esCorreo) {
+      boton("Revisar en Enviados", async () => (await llamar("POST", "/" + a.id + "/conciliar")).mensaje);
+    } else {
+      boton("Sí se aplicó", async () => (await llamar("POST", "/" + a.id + "/conciliar", { ejecutada: true })).mensaje);
+      boton("No se aplicó", async () => (await llamar("POST", "/" + a.id + "/conciliar", { ejecutada: false })).mensaje);
+    }
+  }
+  caja.appendChild(acciones);
+  caja.appendChild(msg);
+  return caja;
+}
+
+async function cargar() {
+  if (!token) { estado.textContent = "Inicia sesión en HermesHQ y vuelve a abrir esta página."; return; }
+  try {
+    const todas = await llamar("GET", "");
+    const vigentes = todas.filter(a => a.estado === "pendiente" || a.requiere_conciliacion);
+    lista.replaceChildren(...vigentes.map(tarjeta));
+    estado.textContent = vigentes.length ? "" : "No tienes aprobaciones pendientes.";
+  } catch (e) { estado.className = "error"; estado.textContent = e.message; }
+}
+cargar();
+</script>
+</body>
+</html>

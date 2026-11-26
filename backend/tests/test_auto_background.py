@@ -67,7 +67,7 @@ class TestCreateContinuation(unittest.IsolatedAsyncioTestCase):
         self.assertIn("60 minutos", job.prompt)
         self.assertEqual(task.metadata_json[auto_background.AUTO_MARKER], job.id)
 
-    async def test_history_skips_system_replies_and_keeps_the_substantial_request(self):
+    async def test_history_skips_system_replies_and_keeps_only_the_last_messages(self):
         largo = "necesito el informe interactivo del procedimiento de incidentes con roles y pasos " * 2
         recientes = [SimpleNamespace(role="user", content="genera el entregable")]
         recientes += [SimpleNamespace(role="assistant", content="⚠️ Mi intento anterior se agotó")]
@@ -79,8 +79,61 @@ class TestCreateContinuation(unittest.IsolatedAsyncioTestCase):
         sesion.execute = AsyncMock(return_value=resultado)
         historial = await auto_background._recent_history(sesion, "s1")
         self.assertNotIn("Mi intento anterior", historial)
-        self.assertTrue(historial.startswith("Pedido de fondo anterior del usuario: necesito el informe"))
-        self.assertIn("Usuario: genera el entregable", historial)
+        self.assertNotIn("Pedido de fondo anterior", historial)
+        self.assertEqual(len(historial.splitlines()), auto_background.HISTORY_MESSAGES)
+
+    async def test_recent_history_cuts_at_the_most_recent_reset(self):
+        msgs = [
+            SimpleNamespace(role="user", content="dale"),
+            SimpleNamespace(
+                role="assistant", content="🧹 Listo, conversación reiniciada: empezamos de cero. ¿Qué necesitas?"
+            ),
+            SimpleNamespace(role="user", content="/reset"),
+            SimpleNamespace(role="assistant", content="ok, preparo el informe de Norte"),
+            SimpleNamespace(
+                role="user",
+                content="necesito el informe de incidentes y accidentes de Norte de los ultimos 5 anos",
+            ),
+        ]
+        sesion = MagicMock()
+        resultado = MagicMock()
+        resultado.scalars.return_value.all.return_value = msgs
+        sesion.execute = AsyncMock(return_value=resultado)
+        historial = await auto_background._recent_history(sesion, "s1")
+        self.assertIn("dale", historial)
+        self.assertNotIn("Norte", historial)
+        self.assertNotIn("informe de incidentes", historial)
+        self.assertNotIn("/reset", historial)
+
+    async def test_without_a_theme_after_the_reset_it_asks_to_restate_instead_of_reusing(self):
+        msgs = [
+            SimpleNamespace(role="user", content="dale"),
+            SimpleNamespace(
+                role="assistant", content="🧹 Listo, conversación reiniciada: empezamos de cero. ¿Qué necesitas?"
+            ),
+            SimpleNamespace(role="user", content="/reset"),
+            SimpleNamespace(
+                role="user",
+                content="necesito el informe de incidentes y accidentes de Norte de los ultimos 5 anos",
+            ),
+        ]
+        task = _task()
+        task.prompt = "dale"
+        session = _session(mensajes=msgs)
+        job = await self._crear(task, session)
+        self.assertIsNotNone(job)
+        self.assertNotIn("reutiliza", job.prompt)
+        self.assertNotIn("Norte", job.prompt)
+        self.assertIn("vuelva a indicar", job.prompt)
+
+    async def test_with_a_theme_it_keeps_reusing_only_the_matching_artifacts(self):
+        msgs = [SimpleNamespace(role="user", content="necesito un informe de incidentes de la planta de Norte")]
+        task = _task()
+        session = _session(mensajes=msgs)
+        job = await self._crear(task, session)
+        self.assertIsNotNone(job)
+        self.assertIn("reutiliza solo", job.prompt)
+        self.assertIn("ignora cualquier archivo de un tema distinto", job.prompt)
 
     async def test_no_second_job_while_the_user_already_has_one(self):
         activo = SimpleNamespace(metadata_json={"background_job": True, "thread_user_id": "u1"})

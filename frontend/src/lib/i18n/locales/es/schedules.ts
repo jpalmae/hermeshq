@@ -29,6 +29,11 @@ const ns: Record<string, string> = {
   "schedules.notifyOn": "Avisar en el chat: Sí",
   "schedules.notifyOff": "Avisar en el chat: No",
   "schedules.notifyHint": "Envía el resultado al chat (Teams) del usuario dueño",
+  "schedules.outputFormat": "Formato de salida (opcional)",
+  "schedules.outputFormatHint": "Plantilla fija del resultado: títulos, secciones y columnas en orden. Se envía igual en cada ejecución para que el resultado sea consistente entre días.",
+  "schedules.version": "versión {value}",
+  "schedules.approveConfirmFormat": "\n\nFormato de salida (versión {version}):\n{format}",
+  "schedules.noFormat": "Sin formato fijo",
 };
 
 export default ns;

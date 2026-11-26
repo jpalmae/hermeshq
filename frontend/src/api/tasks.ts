@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient } from "./client";
 import type { Task, TaskBoardUpdate } from "../types/api";
@@ -13,6 +13,42 @@ export function useTasks(agentId?: string) {
       return data;
     },
     refetchInterval: 5000,
+  });
+}
+
+const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
+
+function needsMessageDetails(task: Task): boolean {
+  if (task.messages_json || task.response?.trim()) {
+    return false;
+  }
+  return task.status === "running" || TERMINAL_STATUSES.has(task.status);
+}
+
+export function useConversationTaskDetails(tasks: Task[]): Record<string, Task> {
+  const pending = tasks.filter(needsMessageDetails);
+  return useQueries({
+    queries: pending.map((task) => {
+      const isRunning = task.status === "running";
+      return {
+        queryKey: ["task", task.id] as const,
+        queryFn: async () => {
+          const { data } = await apiClient.get<Task>(`/tasks/${task.id}`);
+          return data;
+        },
+        staleTime: isRunning ? 0 : Infinity,
+        refetchInterval: isRunning ? 2000 : false,
+      };
+    }),
+    combine: (results) => {
+      const details: Record<string, Task> = {};
+      for (const result of results) {
+        if (result.data) {
+          details[result.data.id] = result.data;
+        }
+      }
+      return details;
+    },
   });
 }
 

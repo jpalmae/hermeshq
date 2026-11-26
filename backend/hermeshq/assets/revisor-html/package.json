@@ -1,0 +1,8 @@
+{
+  "name": "hermeshq-revisor-html",
+  "private": true,
+  "description": "Revisa que el JavaScript de un HTML entregado por un agente cargue y responda a los clics",
+  "dependencies": {
+    "jsdom": "30.0.1"
+  }
+}

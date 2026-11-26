@@ -4,6 +4,41 @@
  */
 
 export interface paths {
+    "/api/admin/bot-channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar Canales */
+        get: operations["listar_canales_api_admin_bot_channels_get"];
+        put?: never;
+        /** Crear Canal */
+        post: operations["crear_canal_api_admin_bot_channels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/bot-channels/{canal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Editar Canal */
+        patch: operations["editar_canal_api_admin_bot_channels__canal_id__patch"];
+        trace?: never;
+    };
     "/api/agent-builder/sessions": {
         parameters: {
             query?: never;
@@ -186,6 +221,41 @@ export interface paths {
         post?: never;
         /** Delete Agent */
         delete: operations["delete_agent_api_agents__agent_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/aprobacion-central": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ver Modo */
+        get: operations["ver_modo_api_agents__agent_id__aprobacion_central_get"];
+        /** Cambiar Modo */
+        put: operations["cambiar_modo_api_agents__agent_id__aprobacion_central_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/aprobacion-central/politica": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Cambiar Politica */
+        put: operations["cambiar_politica_api_agents__agent_id__aprobacion_central_politica_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -564,6 +634,91 @@ export interface paths {
         /** Write Workspace File */
         put: operations["write_workspace_file_api_agents__agent_id__workspace__file_path__put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/aprobaciones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar */
+        get: operations["listar_api_aprobaciones_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/aprobaciones/{approval_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ver */
+        get: operations["ver_api_aprobaciones__approval_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/aprobaciones/{approval_id}/aprobar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Aprobar */
+        post: operations["aprobar_api_aprobaciones__approval_id__aprobar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/aprobaciones/{approval_id}/conciliar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Conciliar */
+        post: operations["conciliar_api_aprobaciones__approval_id__conciliar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/aprobaciones/{approval_id}/rechazar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rechazar */
+        post: operations["rechazar_api_aprobaciones__approval_id__rechazar_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2172,6 +2327,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/public/chat/aprobaciones/pendientes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bridge Pendientes */
+        get: operations["bridge_pendientes_api_public_chat_aprobaciones_pendientes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/chat/aprobaciones/{approval_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bridge Decision */
+        post: operations["bridge_decision_api_public_chat_aprobaciones__approval_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/public/chat/notifications": {
         parameters: {
             query?: never;
@@ -2200,6 +2389,23 @@ export interface paths {
         put?: never;
         /** Acknowledge Notification */
         post: operations["acknowledge_notification_api_public_chat_notifications__notification_id__ack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/chat/notifications/{notification_id}/attachments/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Notification Attachment */
+        get: operations["download_notification_attachment_api_public_chat_notifications__notification_id__attachments__file_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2402,7 +2608,8 @@ export interface paths {
         delete: operations["delete_scheduled_task_api_scheduled_tasks__scheduled_task_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Scheduled Task Delivery */
+        patch: operations["update_scheduled_task_delivery_api_scheduled_tasks__scheduled_task_id__patch"];
         trace?: never;
     };
     "/api/scheduled-tasks/{scheduled_task_id}/approve": {
@@ -2713,6 +2920,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/skills/agents/{agent_id}/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Adopt Agent Shared Skill */
+        post: operations["adopt_agent_shared_skill_api_skills_agents__agent_id__adopt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/skills/agents/{agent_id}/installed": {
         parameters: {
             query?: never;
@@ -2870,6 +3094,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks/{task_id}/external-actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List External Actions */
+        get: operations["list_external_actions_api_tasks__task_id__external_actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{task_id}/external-actions/{action_id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconcile Task External Action */
+        post: operations["reconcile_task_external_action_api_tasks__task_id__external_actions__action_id__reconcile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/templates": {
         parameters: {
             query?: never;
@@ -2973,6 +3231,41 @@ export interface paths {
         post: operations["upload_user_avatar_api_users__user_id__avatar_post"];
         /** Delete User Avatar */
         delete: operations["delete_user_avatar_api_users__user_id__avatar_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{user_id}/channel-identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar Identidades */
+        get: operations["listar_identidades_api_users__user_id__channel_identities_get"];
+        put?: never;
+        /** Crear Identidad */
+        post: operations["crear_identidad_api_users__user_id__channel_identities_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{user_id}/channel-identities/{identidad_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Borrar Identidad */
+        delete: operations["borrar_identidad_api_users__user_id__channel_identities__identidad_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3807,6 +4100,8 @@ export interface components {
             agent_id: string;
             /** Allowed Domains */
             allowed_domains: string[];
+            /** Bot Channel Id */
+            bot_channel_id?: string | null;
             /** Bound User Id */
             bound_user_id?: string | null;
             /**
@@ -4138,6 +4433,89 @@ export interface components {
             /** Passphrase */
             passphrase?: string | null;
         };
+        /** BotChannelCreate */
+        BotChannelCreate: {
+            /** Azure App Id */
+            azure_app_id?: string | null;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /**
+             * Platform
+             * @default microsoft_teams
+             */
+            platform: string;
+            /**
+             * Require Channel Header
+             * @default false
+             */
+            require_channel_header: boolean;
+            /** Service User Id */
+            service_user_id?: string | null;
+            /** Slug */
+            slug: string;
+            /** Tenant Id */
+            tenant_id?: string | null;
+        };
+        /** BotChannelRead */
+        BotChannelRead: {
+            /** Azure App Id */
+            azure_app_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Display Name */
+            display_name: string;
+            /** Id */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Is Default */
+            is_default: boolean;
+            /** Platform */
+            platform: string;
+            /** Require Channel Header */
+            require_channel_header: boolean;
+            /** Service User Id */
+            service_user_id?: string | null;
+            /** Slug */
+            slug: string;
+            /** Tenant Id */
+            tenant_id?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** BotChannelUpdate */
+        BotChannelUpdate: {
+            /** Azure App Id */
+            azure_app_id?: string | null;
+            /** Display Name */
+            display_name?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Is Default */
+            is_default?: boolean | null;
+            /** Require Channel Header */
+            require_channel_header?: boolean | null;
+            /** Service User Id */
+            service_user_id?: string | null;
+            /** Tenant Id */
+            tenant_id?: string | null;
+        };
         /** BroadcastCreate */
         BroadcastCreate: {
             /** Content */
@@ -4385,12 +4763,19 @@ export interface components {
             /** Nodes */
             nodes: components["schemas"]["TopologyNode"][];
         };
+        /** ConciliacionManual */
+        ConciliacionManual: {
+            /** Ejecutada */
+            ejecutada: boolean;
+        };
         /** CreateApiKeyRequest */
         CreateApiKeyRequest: {
             /** Agent Id */
             agent_id: string;
             /** Allowed Domains */
             allowed_domains?: string[];
+            /** Bot Channel Id */
+            bot_channel_id?: string | null;
             /** Bound User Id */
             bound_user_id?: string | null;
             /** Label */
@@ -4424,8 +4809,12 @@ export interface components {
         };
         /** CreateSessionRequest */
         CreateSessionRequest: {
+            /** Aad Object Id */
+            aad_object_id?: string | null;
             /** Sender Id */
             sender_id?: string | null;
+            /** Tenant Id */
+            tenant_id?: string | null;
         };
         /** CreateSessionResponse */
         CreateSessionResponse: {
@@ -4600,6 +4989,30 @@ export interface components {
             /** Fail Count */
             fail_count: number;
         };
+        /** DecisionBridge */
+        DecisionBridge: {
+            /** Aad Object Id */
+            aad_object_id: string;
+            /** Activity Id */
+            activity_id?: string | null;
+            /** Decision */
+            decision: string;
+            /** Huella */
+            huella: string;
+            /** Session Id */
+            session_id: string;
+            /** Session Token */
+            session_token: string;
+            /** Tenant Id */
+            tenant_id?: string | null;
+        };
+        /** DecisionWeb */
+        DecisionWeb: {
+            /** Conversacion Id */
+            conversacion_id: string;
+            /** Huella */
+            huella: string;
+        };
         /** DeviceRead */
         DeviceRead: {
             /** Agent Id */
@@ -4667,6 +5080,13 @@ export interface components {
             os_info?: {
                 [key: string]: unknown;
             };
+        };
+        /** ExternalActionReconcile */
+        ExternalActionReconcile: {
+            /** Ejecutada */
+            ejecutada: boolean;
+            /** Nota */
+            nota?: string | null;
         };
         /** ForgotPasswordRequest */
         ForgotPasswordRequest: {
@@ -4806,6 +5226,48 @@ export interface components {
             description?: string | null;
             /** Release Tag */
             release_tag?: string | null;
+        };
+        /** IdentidadCreate */
+        IdentidadCreate: {
+            /** Aad Object Id */
+            aad_object_id?: string | null;
+            /** Bot Channel Id */
+            bot_channel_id: string;
+            /** External User Id */
+            external_user_id?: string | null;
+            /** Tenant Id */
+            tenant_id?: string | null;
+            /**
+             * Verified
+             * @default false
+             */
+            verified: boolean;
+        };
+        /** IdentidadRead */
+        IdentidadRead: {
+            /** Aad Object Id */
+            aad_object_id?: string | null;
+            /** Bot Channel Id */
+            bot_channel_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By User Id */
+            created_by_user_id?: string | null;
+            /** External User Id */
+            external_user_id?: string | null;
+            /** Id */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Tenant Id */
+            tenant_id?: string | null;
+            /** User Id */
+            user_id: string;
+            /** Verified At */
+            verified_at?: string | null;
         };
         /** InstanceBackupCreateRequest */
         InstanceBackupCreateRequest: {
@@ -5507,6 +5969,11 @@ export interface components {
             /** Mfa Token */
             mfa_token: string;
         };
+        /** ModoAprobacion */
+        ModoAprobacion: {
+            /** Modo */
+            modo: string;
+        };
         /** NodeCreate */
         NodeCreate: {
             /** Hostname */
@@ -5630,8 +6097,17 @@ export interface components {
         };
         /** NotificationRead */
         NotificationRead: {
+            /**
+             * Attachments
+             * @default []
+             */
+            attachments: {
+                [key: string]: unknown;
+            }[];
             /** Body */
             body: string;
+            /** Bot Channel Id */
+            bot_channel_id?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -5639,6 +6115,12 @@ export interface components {
             created_at: string;
             /** Id */
             id: string;
+            /** Origin */
+            origin?: string | null;
+            /** Recipient Aad Object Id */
+            recipient_aad_object_id?: string | null;
+            /** Recipient External Id */
+            recipient_external_id?: string | null;
             /** Schedule Id */
             schedule_id?: string | null;
             /** Sender Id */
@@ -5846,6 +6328,13 @@ export interface components {
              * @default false
              */
             requires_approval: boolean;
+        };
+        /** PoliticaPorOperacion */
+        PoliticaPorOperacion: {
+            /** Politica */
+            politica: {
+                [key: string]: string | null;
+            };
         };
         /** ProviderRead */
         ProviderRead: {
@@ -6122,6 +6611,8 @@ export interface components {
         ScheduledTaskApprove: {
             /** Cron Expression */
             cron_expression: string;
+            /** Output Format */
+            output_format?: string | null;
             /** Prompt */
             prompt: string;
         };
@@ -6143,6 +6634,8 @@ export interface components {
              * @default false
              */
             notify_public_chat: boolean;
+            /** Output Format */
+            output_format?: string | null;
             /** Prompt */
             prompt: string;
             /**
@@ -6150,6 +6643,11 @@ export interface components {
              * @default America/Santiago
              */
             timezone: string;
+        };
+        /** ScheduledTaskDelivery */
+        ScheduledTaskDelivery: {
+            /** Delivery Key Id */
+            delivery_key_id?: string | null;
         };
         /** ScheduledTaskRead */
         ScheduledTaskRead: {
@@ -6166,6 +6664,13 @@ export interface components {
             created_by_agent_id: string | null;
             /** Cron Expression */
             cron_expression: string;
+            /**
+             * Definition Version
+             * @default 1
+             */
+            definition_version: number;
+            /** Delivery Key Id */
+            delivery_key_id?: string | null;
             /** Enabled */
             enabled: boolean;
             /** Id */
@@ -6178,6 +6683,8 @@ export interface components {
             next_run: string | null;
             /** Notify Public Chat */
             notify_public_chat: boolean;
+            /** Output Format */
+            output_format?: string | null;
             /** Owner User Id */
             owner_user_id: string | null;
             /** Prompt */
@@ -6200,6 +6707,8 @@ export interface components {
             name?: string | null;
             /** Notify Public Chat */
             notify_public_chat?: boolean | null;
+            /** Output Format */
+            output_format?: string | null;
             /** Prompt */
             prompt?: string | null;
             /** Timezone */
@@ -6393,6 +6902,50 @@ export interface components {
             system_override?: string | null;
             /** Title */
             title?: string | null;
+        };
+        /** TaskListRead */
+        TaskListRead: {
+            /** Agent Id */
+            agent_id: string;
+            /** Board Column */
+            board_column: string;
+            /** Board Manual */
+            board_manual: boolean;
+            /** Board Order */
+            board_order: number;
+            /** Completed At */
+            completed_at: string | null;
+            /** Created By User Id */
+            created_by_user_id?: string | null;
+            /** Error Message */
+            error_message: string | null;
+            /** Id */
+            id: string;
+            /** Iterations */
+            iterations: number;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Priority */
+            priority: number;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Response */
+            response: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string | null;
+            /** Tokens Used */
+            tokens_used: number;
         };
         /** TaskQueueStateRead */
         TaskQueueStateRead: {
@@ -6602,6 +7155,8 @@ export interface components {
         UpdateApiKeyRequest: {
             /** Allowed Domains */
             allowed_domains?: string[] | null;
+            /** Bot Channel Id */
+            bot_channel_id?: string | null;
             /** Bound User Id */
             bound_user_id?: string | null;
             /** Is Active */
@@ -6818,6 +7373,109 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listar_canales_api_admin_bot_channels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotChannelRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crear_canal_api_admin_bot_channels_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotChannelCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotChannelRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    editar_canal_api_admin_bot_channels__canal_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                canal_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotChannelUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotChannelRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_session_api_agent_builder_sessions_post: {
         parameters: {
             query?: never;
@@ -7257,6 +7915,119 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ver_modo_api_agents__agent_id__aprobacion_central_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cambiar_modo_api_agents__agent_id__aprobacion_central_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModoAprobacion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cambiar_politica_api_agents__agent_id__aprobacion_central_politica_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoliticaPorOperacion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
             };
             /** @description Validation Error */
             422: {
@@ -8130,6 +8901,193 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceFileWriteResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_api_aprobaciones_get: {
+        parameters: {
+            query?: {
+                estado?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ver_api_aprobaciones__approval_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    aprobar_api_aprobaciones__approval_id__aprobar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionWeb"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    conciliar_api_aprobaciones__approval_id__conciliar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ConciliacionManual"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rechazar_api_aprobaciones__approval_id__rechazar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionWeb"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -12012,6 +12970,81 @@ export interface operations {
             };
         };
     };
+    bridge_pendientes_api_public_chat_aprobaciones_pendientes_get: {
+        parameters: {
+            query: {
+                session_id: string;
+                session_token: string;
+            };
+            header: {
+                "X-Api-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_decision_api_public_chat_aprobaciones__approval_id__decision_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Api-Key": string;
+            };
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionBridge"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_notifications_api_public_chat_notifications_get: {
         parameters: {
             query?: {
@@ -12053,6 +13086,40 @@ export interface operations {
             };
             path: {
                 notification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_notification_attachment_api_public_chat_notifications__notification_id__attachments__file_id__get: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Api-Key": string;
+            };
+            path: {
+                notification_id: string;
+                file_id: string;
             };
             cookie?: never;
         };
@@ -12495,6 +13562,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_scheduled_task_delivery_api_scheduled_tasks__scheduled_task_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scheduled_task_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduledTaskDelivery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduledTaskRead"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -13371,6 +14475,41 @@ export interface operations {
             };
         };
     };
+    adopt_agent_shared_skill_api_skills_agents__agent_id__adopt_post: {
+        parameters: {
+            query: {
+                name: string;
+            };
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSkillsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_agent_installed_skill_api_skills_agents__agent_id__installed_delete: {
         parameters: {
             query: {
@@ -13597,7 +14736,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TaskRead"][];
+                    "application/json": components["schemas"]["TaskListRead"][];
                 };
             };
             /** @description Validation Error */
@@ -13798,6 +14937,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_external_actions_api_tasks__task_id__external_actions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_task_external_action_api_tasks__task_id__external_actions__action_id__reconcile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                action_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExternalActionReconcile"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -14204,6 +15418,108 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UserManagedRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_identidades_api_users__user_id__channel_identities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentidadRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crear_identidad_api_users__user_id__channel_identities_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentidadCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentidadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    borrar_identidad_api_users__user_id__channel_identities__identidad_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                identidad_id: string;
+            };
+            cookie?: {
+                hermeshq_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

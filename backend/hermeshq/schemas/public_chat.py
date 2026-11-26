@@ -35,6 +35,8 @@ def _sanitize_title(v: str | None) -> str | None:
 
 class CreateSessionRequest(BaseModel):
     sender_id: str | None = Field(default=None, max_length=255)
+    aad_object_id: str | None = Field(default=None, max_length=64)
+    tenant_id: str | None = Field(default=None, max_length=64)
 
 
 class CreateSessionResponse(BaseModel):
@@ -77,6 +79,7 @@ class CreateApiKeyRequest(BaseModel):
     widget_position: WidgetPosition = WidgetPosition.right
     bound_user_id: str | None = None
     trust_sender_id: bool = False
+    bot_channel_id: str | None = None
 
     @field_validator("widget_accent")
     @classmethod
@@ -102,6 +105,7 @@ _UPDATE_ALLOWED_FIELDS = frozenset(
         "widget_position",
         "bound_user_id",
         "trust_sender_id",
+        "bot_channel_id",
     }
 )
 
@@ -118,6 +122,7 @@ class UpdateApiKeyRequest(BaseModel):
     widget_position: WidgetPosition | None = None
     bound_user_id: str | None = None
     trust_sender_id: bool | None = None
+    bot_channel_id: str | None = None
 
     @field_validator("widget_accent")
     @classmethod
@@ -152,6 +157,7 @@ class ApiKeyRead(ORMModel):
     widget_position: str
     bound_user_id: str | None = None
     trust_sender_id: bool = False
+    bot_channel_id: str | None = None
     created_at: datetime
 
 
@@ -178,3 +184,8 @@ class NotificationRead(BaseModel):
     sender_id: str | None = None
     task_id: str | None = None
     schedule_id: str | None = None
+    attachments: list[dict] = []
+    bot_channel_id: str | None = None
+    recipient_external_id: str | None = None
+    recipient_aad_object_id: str | None = None
+    origin: str | None = None

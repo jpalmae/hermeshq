@@ -2,7 +2,7 @@ import unittest
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from hermeshq.services.cron_schedule import build_scheduled_prompt, current_time_context
+from hermeshq.services.cron_schedule import ENTREGA_AUTOMATICA, build_scheduled_prompt, current_time_context
 
 
 class CurrentTimeContextTests(unittest.TestCase):
@@ -30,7 +30,7 @@ class CurrentTimeContextTests(unittest.TestCase):
         now = datetime(2026, 10, 6, 20, 30, tzinfo=UTC)
         prompt = build_scheduled_prompt(schedule, now)
         self.assertTrue(prompt.startswith("Ejecuta la skill informe.\n\n[Hora actual:"))
-        self.assertTrue(prompt.endswith("saber la hora.]"))
+        self.assertTrue(prompt.endswith("saber la hora.]\n\n" + ENTREGA_AUTOMATICA))
 
     def test_stored_schedule_prompt_is_not_modified(self):
         schedule = SimpleNamespace(prompt="Ejecuta", timezone="America/Santiago")
@@ -58,9 +58,28 @@ class ToolDescriptionTests(unittest.TestCase):
                 ctx = MagicMock()
                 module.register(ctx)
                 descriptions = " ".join(c.kwargs["schema"]["description"] for c in ctx.register_tool.call_args_list)
-                self.assertIn("ALWAYS use this tool", descriptions)
+                if slug == "hermeshq_pptx":
+                    self.assertIn("instead of python-pptx scripts", descriptions)
+                else:
+                    self.assertIn("ALWAYS use this tool", descriptions)
                 self.assertIn(marker, descriptions)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_caso_real_recordatorio_se_escribe_y_no_se_envia_con_herramientas():
+    from types import SimpleNamespace
+
+    from hermeshq.services.cron_schedule import ENTREGA_AUTOMATICA
+
+    cron = SimpleNamespace(
+        prompt="Envía al usuario un recordatorio breve que diga «Batería P1».",
+        timezone="America/Santiago",
+        output_format=None,
+    )
+    prompt = build_scheduled_prompt(cron)
+    assert prompt.startswith("Envía al usuario un recordatorio")
+    assert prompt.endswith(ENTREGA_AUTOMATICA)
+    assert "no uses herramientas de correo ni de Teams" in prompt

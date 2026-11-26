@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from hermeshq.core.security import ensure_agent_access, get_current_user, is_admin
 from hermeshq.database import get_db_session
@@ -198,7 +199,13 @@ async def list_runtime_ledger(
     task_filter = [Task.agent_id == agent_id]
     if not is_admin(current_user):
         task_filter.append(Task.created_by_user_id == current_user.id)
-    task_result = await db.execute(select(Task).where(*task_filter).order_by(desc(Task.queued_at)).limit(limit))
+    task_result = await db.execute(
+        select(Task)
+        .options(defer(Task.messages_json), defer(Task.tool_calls))
+        .where(*task_filter)
+        .order_by(desc(Task.queued_at))
+        .limit(limit)
+    )
     tasks = task_result.scalars().all()
 
     message_result = await db.execute(

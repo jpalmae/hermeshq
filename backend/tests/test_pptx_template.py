@@ -135,7 +135,7 @@ class PptxTemplateTests(unittest.TestCase):
 
         ctx = Ctx()
         plugin.register(ctx)
-        self.assertEqual(sorted(ctx.nombres), ["hq_pptx_from_template", "hq_pptx_generate"])
+        self.assertEqual(sorted(ctx.nombres), ["hq_pptx_editar", "hq_pptx_from_template", "hq_pptx_generate"])
         manifiesto = PLUGIN.with_name("plugin.yaml").read_text(encoding="utf-8")
         for nombre in ctx.nombres:
             self.assertIn(nombre, manifiesto)
@@ -205,21 +205,15 @@ class PptxBaseSlideTests(unittest.TestCase):
             self.assertGreater(len(imagenes[0].image.blob), 100)
         self.assertEqual(prs.slides[0].shapes[0].text_frame.paragraphs[0].runs[0].font.size.pt, 40)
 
-    def test_boxes_add_new_text_and_must_fit_in_the_slide(self):
-        caja = {"x": 1, "y": 2.5, "w": 6, "h": 2, "bullets": ["Uno", "Dos"], "size": 20, "color": "#123456"}
-        r = self._llamar(slides=[{"base": 1, "boxes": [caja]}])
-        self.assertTrue(r["success"], r)
-        textos = [f.text_frame.text for f in self._abrir(r).slides[0].shapes if f.has_text_frame]
-        self.assertIn("Uno\nDos", textos)
-        fuera = self._llamar(slides=[{"base": 1, "boxes": [{**caja, "x": 9.5}]}])
-        self.assertFalse(fuera["success"])
-        self.assertIn("se sale", fuera["error"])
-
     def test_wrong_keys_and_bases_are_explained(self):
         r = self._llamar(slides=[{"base": 1, "replace": {"INEXISTENTE": "x"}}])
         self.assertFalse(r["success"])
         self.assertIn("Disponibles", r["error"])
         self.assertIn("TITULO PORTADA", r["error"])
+        self.assertIn("no se inventa", r["error"])
+        self.assertIn("inspect=true", r["error"])
+        self.assertIn("No repitas", r["error"])
+        self.assertFalse(list(self.dir.rglob("*.pptx"))[1:], "no debe quedar una presentación a medias")
         r = self._llamar(slides=[{"base": 9}])
         self.assertFalse(r["success"])
         self.assertIn("1 a 2", r["error"])
@@ -230,6 +224,16 @@ class PptxBaseSlideTests(unittest.TestCase):
         r = self._llamar(slides=[{"base": 1, "replace": {"Titulo": "Portada"}}, {"layout": 1, "title": "Nueva"}])
         self.assertTrue(r["success"], r)
         self.assertEqual(len(self._abrir(r).slides), 2)
+
+    def test_boxes_add_new_text_and_must_fit_in_the_slide(self):
+        caja = {"x": 1, "y": 2.5, "w": 6, "h": 2, "bullets": ["Uno", "Dos"], "size": 20, "color": "#123456"}
+        r = self._llamar(slides=[{"base": 1, "boxes": [caja]}])
+        self.assertTrue(r["success"], r)
+        textos = [f.text_frame.text for f in self._abrir(r).slides[0].shapes if f.has_text_frame]
+        self.assertIn("Uno\nDos", textos)
+        fuera = self._llamar(slides=[{"base": 1, "boxes": [{**caja, "x": 9.5}]}])
+        self.assertFalse(fuera["success"])
+        self.assertIn("se sale", fuera["error"])
 
 
 if __name__ == "__main__":

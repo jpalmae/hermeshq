@@ -18,6 +18,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from hermeshq.models.base import Base, utcnow
 
+DEFAULT_EXECUTION_LANE = "default"
+
 
 def default_board_order() -> int:
     return int(datetime.now(UTC).timestamp() * 1000)
@@ -56,6 +58,9 @@ class Task(Base):
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    execution_lane: Mapped[str] = mapped_column(
+        String(16), default=DEFAULT_EXECUTION_LANE, server_default=DEFAULT_EXECUTION_LANE, nullable=False
+    )
     metadata_json: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
     __table_args__ = (
@@ -70,8 +75,15 @@ class Task(Base):
         Index(
             "uq_tasks_one_running_per_agent",
             "agent_id",
+            "execution_lane",
             unique=True,
             postgresql_where=text("status = 'running'"),
+        ),
+        Index(
+            "uq_tasks_scheduled_fire_key",
+            text("(metadata->>'scheduled_fire_key')"),
+            unique=True,
+            postgresql_where=text("metadata->>'scheduled_fire_key' IS NOT NULL"),
         ),
     )
 

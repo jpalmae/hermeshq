@@ -1,6 +1,7 @@
 import base64
 import importlib.util
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -36,12 +37,20 @@ class InlineImageTests(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def _send(self, args):
+        def correr(argumentos, actual):
+            with (
+                patch.object(self.plugin, "_current_task_id", return_value=actual),
+                patch.dict(os.environ, {"HERMESHQ_TASK_PAYLOAD": json.dumps({"task_id": actual, "mensaje": "sí"})}),
+            ):
+                return json.loads(self.plugin._send_email_tool(argumentos))
+
         with (
             patch.object(self.plugin, "_task_user_id", return_value="u1"),
             patch.object(self.plugin, "_get_m365_token", return_value=("tok", "")),
             patch.object(self.plugin, "_graph", return_value={}) as graph,
         ):
-            result = json.loads(self.plugin._send_email_tool(args))
+            correr(args, "tarea-1")
+            result = correr({**args, "aprobado_por_el_usuario": True}, "tarea-2")
         return result, graph
 
     def test_sends_inline_attachments_with_cid(self):

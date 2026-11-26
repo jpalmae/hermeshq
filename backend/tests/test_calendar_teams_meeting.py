@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import os
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -21,22 +23,40 @@ def _load():
     return module
 
 
+def _isolate_previews(test):
+    test.tmp = tempfile.TemporaryDirectory()
+    test.addCleanup(test.tmp.cleanup)
+    env = patch.dict(os.environ, {"HERMES_SESSION_CWD": test.tmp.name})
+    env.start()
+    test.addCleanup(env.stop)
+
+
 class TestCalendarTeamsMeeting(unittest.TestCase):
     def setUp(self):
         self.mod = _load()
         self.calls = []
+        _isolate_previews(self)
 
     def _run(self, tool, args, response):
         def graph(method, path, token, payload=None):
             self.calls.append((method, path, payload))
             return response
 
+        def correr(argumentos, actual):
+            with (
+                patch.object(self.mod, "_current_task_id", return_value=actual),
+                patch.dict(os.environ, {"HERMESHQ_TASK_PAYLOAD": json.dumps({"task_id": actual, "mensaje": "sí"})}),
+            ):
+                return json.loads(tool(argumentos))
+
         with (
             patch.object(self.mod, "_task_user_id", return_value="u1"),
             patch.object(self.mod, "_get_m365_token", return_value=("tok", "")),
             patch.object(self.mod, "_graph", side_effect=graph),
         ):
-            return json.loads(tool(args))
+            correr(args, "tarea-1")
+            self.calls.clear()
+            return correr({**args, "aprobado_por_el_usuario": True}, "tarea-2")
 
     def test_create_without_flag_does_not_request_teams(self):
         self._run(
@@ -92,6 +112,7 @@ class TestUpdateAttendees(unittest.TestCase):
     def setUp(self):
         self.mod = _load()
         self.calls = []
+        _isolate_previews(self)
 
     def _run(self, args):
         def graph(method, path, token, payload=None):
@@ -100,12 +121,21 @@ class TestUpdateAttendees(unittest.TestCase):
                 return {"attendees": CURRENT}
             return {"id": "E1"}
 
+        def correr(payload_args, actual):
+            with (
+                patch.object(self.mod, "_current_task_id", return_value=actual),
+                patch.dict(os.environ, {"HERMESHQ_TASK_PAYLOAD": json.dumps({"task_id": actual, "mensaje": "sí"})}),
+            ):
+                return json.loads(self.mod._update_event_tool(payload_args))
+
         with (
             patch.object(self.mod, "_task_user_id", return_value="u1"),
             patch.object(self.mod, "_get_m365_token", return_value=("tok", "")),
             patch.object(self.mod, "_graph", side_effect=graph),
         ):
-            return json.loads(self.mod._update_event_tool({"event_id": "E1", **args}))
+            correr({"event_id": "E1", **args}, "tarea-1")
+            self.calls.clear()
+            return correr({"event_id": "E1", **args, "aprobado_por_el_usuario": True}, "tarea-2")
 
     def _patched(self):
         return [c for c in self.calls if c[0] == "PATCH"][0][2]["attendees"]
@@ -146,6 +176,7 @@ class TestEditEverything(unittest.TestCase):
     def setUp(self):
         self.mod = _load()
         self.calls = []
+        _isolate_previews(self)
 
     def _run(self, tool, args, current=None):
         def graph(method, path, token, payload=None):
@@ -154,12 +185,21 @@ class TestEditEverything(unittest.TestCase):
                 return current or {}
             return {"id": "E1"}
 
+        def correr(argumentos, actual):
+            with (
+                patch.object(self.mod, "_current_task_id", return_value=actual),
+                patch.dict(os.environ, {"HERMESHQ_TASK_PAYLOAD": json.dumps({"task_id": actual, "mensaje": "sí"})}),
+            ):
+                return json.loads(tool(argumentos))
+
         with (
             patch.object(self.mod, "_task_user_id", return_value="u1"),
             patch.object(self.mod, "_get_m365_token", return_value=("tok", "")),
             patch.object(self.mod, "_graph", side_effect=graph),
         ):
-            return json.loads(tool(args))
+            correr(args, "tarea-1")
+            self.calls.clear()
+            return correr({**args, "aprobado_por_el_usuario": True}, "tarea-2")
 
     def _patch(self):
         return [c for c in self.calls if c[0] == "PATCH"][0][2]
@@ -328,3 +368,45 @@ class TestListEventsDates(unittest.TestCase):
         self.assertFalse(out["success"])
         self.assertIn("ISO 8601", out["error"])
         self.assertEqual(self.paths, [])
+
+
+class TestImportanciaYRecordatorio(unittest.TestCase):
+    def setUp(self):
+        self.mod = _load()
+        _isolate_previews(self)
+
+    def _esquemas(self):
+        registradas = {}
+
+        class Ctx:
+            def register_tool(self, name, schema, **_kw):
+                registradas[name] = schema
+
+        self.mod.register(Ctx())
+        return registradas
+
+    def test_crear_y_cambiar_exponen_importancia_y_recordatorio(self):
+        esquemas = self._esquemas()
+        for nombre in ("ms365_calendar_create_event", "ms365_calendar_update_event"):
+            props = esquemas[nombre]["parameters"]["properties"]
+            self.assertEqual(props["importance"]["enum"], ["low", "normal", "high"], nombre)
+            self.assertEqual(props["reminder_minutes"]["type"], "integer", nombre)
+
+    def test_la_vista_previa_muestra_importancia_y_recordatorio(self):
+        args = {
+            "subject": "Comité",
+            "start": "2026-11-12T10:00:00",
+            "end": "2026-11-12T11:00:00",
+            "importance": "high",
+            "reminder_minutes": 60,
+        }
+        with (
+            patch.object(self.mod, "_task_user_id", return_value="u1"),
+            patch.object(self.mod, "_get_m365_token", return_value=("tok", "")),
+            patch.object(self.mod, "_graph", return_value={"value": []}),
+            patch.object(self.mod, "_current_task_id", return_value="t1"),
+            patch.object(self.mod, "_central_activa", return_value=False),
+        ):
+            vista = json.dumps(json.loads(self.mod._create_event_tool(args)), ensure_ascii=False)
+        self.assertIn('"importancia": "high"', vista)
+        self.assertIn('"recordatorio_minutos": 60', vista)

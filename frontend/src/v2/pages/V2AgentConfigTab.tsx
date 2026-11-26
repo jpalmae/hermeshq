@@ -300,6 +300,7 @@ export function V2AgentConfigTab({
             <select className="v2-select" value={thinkingMode} onChange={(e) => setThinkingMode(e.target.value)} disabled={!isAdmin}>
               <option value="inherit">{t("v2.inherit")}</option>
               <option value="on">{t("v2.on")}</option>
+              <option value="adaptive">{t("v2.adaptive")}</option>
               <option value="off">{t("v2.off")}</option>
             </select>
           </div>

@@ -8,11 +8,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hermeshq.core.security import ensure_agent_access, get_accessible_agent_ids, get_current_user, is_admin
 from hermeshq.database import get_db_session
 from hermeshq.models.activity import ActivityLog
+from hermeshq.models.task import Task
 from hermeshq.models.user import User
 from hermeshq.schemas.activity import ActivityPageRead, ActivityRead
+from hermeshq.services.task_visibility import task_visibility_clause
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/logs", tags=["logs"])
+
+EVENTOS_SENSIBLES_SIN_TAREA = ("agent.output",)
+PREFIJOS_SENSIBLES_SIN_TAREA = ("terminal.",)
+
+
+def actividad_visible_para(user_id: str):
+    evento_sensible = or_(
+        ActivityLog.event_type.in_(EVENTOS_SENSIBLES_SIN_TAREA),
+        *(ActivityLog.event_type.startswith(prefijo) for prefijo in PREFIJOS_SENSIBLES_SIN_TAREA),
+    )
+    tareas_visibles = select(Task.id).where(task_visibility_clause(user_id))
+    return or_(
+        and_(ActivityLog.task_id.is_(None), ~evento_sensible),
+        ActivityLog.task_id.in_(tareas_visibles),
+    )
 
 
 @router.get("", response_model=ActivityPageRead)
@@ -35,6 +52,8 @@ async def list_logs(
         statement = (
             statement.where(ActivityLog.agent_id.in_(accessible_ids)) if accessible_ids else statement.where(false())
         )
+    if not is_admin(current_user):
+        statement = statement.where(actividad_visible_para(current_user.id))
     if task_id:
         statement = statement.where(ActivityLog.task_id == task_id)
     normalized_query = (query or "").strip()

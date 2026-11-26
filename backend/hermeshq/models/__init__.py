@@ -2,8 +2,10 @@ from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
 from hermeshq.models.agent_assignment import AgentAssignment
 from hermeshq.models.app_settings import AppSettings
+from hermeshq.models.aprobacion import Aprobacion, EventoAprobacion
 from hermeshq.models.audit_log import AuditLog
 from hermeshq.models.base import Base
+from hermeshq.models.bot_channel import BotChannel, PublicChatDeliveryPref, UserChannelIdentity
 from hermeshq.models.capability_request import CapabilityRequest
 from hermeshq.models.cloud import CloudBinding, CloudPlatform, CloudTenant
 from hermeshq.models.conversation_thread import ConversationThread
@@ -30,6 +32,7 @@ from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.secret import Secret
 from hermeshq.models.ssh_destination import SshDestination
 from hermeshq.models.task import Task
+from hermeshq.models.task_execution import ExternalActionRecord, TaskExecutionAttempt
 from hermeshq.models.template import AgentTemplate
 from hermeshq.models.terminal_session import TerminalSession
 from hermeshq.models.user import User
@@ -44,10 +47,13 @@ __all__ = [
     "AppSettings",
     "AuditLog",
     "Base",
+    "BotChannel",
     "CapabilityRequest",
     "CloudBinding",
     "CloudPlatform",
     "CloudTenant",
+    "PublicChatDeliveryPref",
+    "UserChannelIdentity",
     "ConversationThread",
     "EnrolledDevice",
     "HermesVersion",
@@ -65,10 +71,15 @@ __all__ = [
     "PublicChatNotification",
     "PublicChatSession",
     "PublicChatTranscript",
+    "CapabilityRequest",
     "ScheduledTask",
     "Secret",
     "SshDestination",
     "Task",
+    "TaskExecutionAttempt",
+    "ExternalActionRecord",
+    "Aprobacion",
+    "EventoAprobacion",
     "TerminalSession",
     "User",
     "UserM365Token",

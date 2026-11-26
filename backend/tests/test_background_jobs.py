@@ -37,7 +37,7 @@ class ToolTests(unittest.TestCase):
         ):
             resultado = json.loads(
                 self.plugin.hq_trabajo_largo_tool(
-                    args or {"titulo": "Análisis de ventas", "instrucciones": "Cruza las hojas"}
+                    args or {"titulo": "Análisis HSE", "instrucciones": "Cruza las hojas"}
                 )
             )
         return resultado, api
@@ -48,7 +48,7 @@ class ToolTests(unittest.TestCase):
         api.assert_called_once_with(
             "POST",
             "/agents/self/background-jobs",
-            {"task_id": "t1", "title": "Análisis de ventas", "instructions": "Cruza las hojas"},
+            {"task_id": "t1", "title": "Análisis HSE", "instructions": "Cruza las hojas"},
         )
 
     def test_it_is_refused_inside_scheduled_or_background_runs(self):
@@ -91,7 +91,7 @@ def _request():
 class EndpointTests(unittest.IsolatedAsyncioTestCase):
     def _payload(self):
         return internal_agents.InternalBackgroundJob(
-            task_id="t1", title="Análisis de ventas", instructions="Cruza las hojas y entrega el resumen."
+            task_id="t1", title="Análisis HSE", instructions="Cruza las hojas y entrega el resumen."
         )
 
     async def test_it_creates_the_job_and_submits_it(self):
@@ -107,10 +107,25 @@ class EndpointTests(unittest.IsolatedAsyncioTestCase):
         job = next(c.args[0] for c in db.add.call_args_list if c.args[0].__class__.__name__ == "Task")
         self.assertTrue(job.metadata_json["background_job"])
         self.assertEqual(job.metadata_json["thread_user_id"], "u1")
-        self.assertEqual(job.metadata_json["background_title"], "Análisis de ventas")
+        self.assertEqual(job.metadata_json["background_title"], "Análisis HSE")
         self.assertIn("TRABAJO EN SEGUNDO PLANO", job.prompt)
         self.assertNotIn("conversation", job.metadata_json)
         supervisor.submit_task.assert_awaited_once_with("job1")
+
+    async def test_the_job_carries_the_users_own_words_and_respects_a_no_upload(self):
+        pedido = "Crea un dashboard con estos datos. Adjúntalo aquí, no lo subas a OneDrive."
+        db = _db(_origin(mensaje_usuario=pedido), SimpleNamespace(id="u1", is_active=True), [])
+        request, _ = _request()
+        payload = internal_agents.InternalBackgroundJob(
+            task_id="t1", title="Dashboard", instructions="Crea el HTML y guárdalo en OneDrive del usuario."
+        )
+        with patch.object(internal_agents, "can_access_agent", AsyncMock(return_value=True)):
+            await internal_agents.start_background_job(payload, request, agent=SimpleNamespace(id="a1"), db=db)
+        job = next(c.args[0] for c in db.add.call_args_list if c.args[0].__class__.__name__ == "Task")
+        self.assertIn(f"«{pedido}»", job.prompt)
+        self.assertIn("manda este pedido", job.prompt)
+        self.assertIn("salvo que el usuario haya pedido no subirlo", job.prompt)
+        self.assertEqual(job.metadata_json["pedido_del_usuario"], pedido)
 
     async def test_only_one_background_job_per_user_at_a_time(self):
         user = SimpleNamespace(id="u1", is_active=True)
@@ -159,7 +174,7 @@ class NotificationTests(unittest.IsolatedAsyncioTestCase):
         return session
 
     def _tarea(self, **extra):
-        metadata = {"background_job": True, "thread_user_id": "u1", "background_title": "Análisis de ventas"}
+        metadata = {"background_job": True, "thread_user_id": "u1", "background_title": "Análisis HSE"}
         metadata.update(extra)
         return SimpleNamespace(id="job1", agent_id="a1", title="x", metadata_json=metadata)
 
@@ -176,17 +191,38 @@ class NotificationTests(unittest.IsolatedAsyncioTestCase):
         cantidad = await enqueue_schedule_notification(sesion, self._tarea(), success=True, summary="846 casos únicos")
         self.assertEqual(cantidad, 1)
         notificacion = sesion.add.call_args.args[0]
-        self.assertIn("Análisis de ventas", notificacion.title)
+        self.assertIn("Análisis HSE", notificacion.title)
         self.assertIn("846 casos únicos", notificacion.body)
         self.assertTrue(notificacion.body.startswith("✅"))
         self.assertIsNone(notificacion.schedule_id)
 
+    async def test_a_result_with_only_attachments_still_says_something(self):
+        sesion = self._sesion(SimpleNamespace(id="u1", is_active=True, teams_id="29:abc"), [self._llave()])
+        await enqueue_schedule_notification(
+            sesion, self._tarea(), success=True, summary="MEDIA: uploads/30801855-b795-4d3e-826b-dd7e723ad7af.html"
+        )
+        cuerpo = sesion.add.call_args.args[0].body
+        self.assertNotIn("MEDIA:", cuerpo)
+        self.assertTrue(cuerpo.rstrip().endswith("Te dejo el archivo adjunto."), cuerpo)
+
+    async def test_a_result_with_text_and_attachments_is_not_padded(self):
+        sesion = self._sesion(SimpleNamespace(id="u1", is_active=True, teams_id="29:abc"), [self._llave()])
+        await enqueue_schedule_notification(
+            sesion, self._tarea(), success=True, summary="Informe listo.\n\nMEDIA: uploads/a.html\nMEDIA: uploads/a.pdf"
+        )
+        cuerpo = sesion.add.call_args.args[0].body
+        self.assertIn("Informe listo.", cuerpo)
+        self.assertNotIn("Te dejo", cuerpo)
+
     async def test_a_failure_is_reported_too(self):
         sesion = self._sesion(SimpleNamespace(id="u1", is_active=True, teams_id=None), [self._llave()])
-        await enqueue_schedule_notification(sesion, self._tarea(), success=False, summary="se acabó el tiempo")
+        await enqueue_schedule_notification(
+            sesion, self._tarea(), success=False, summary="Hermes runtime exceeded the task timeout of 1800s"
+        )
         cuerpo = sesion.add.call_args.args[0].body
         self.assertTrue(cuerpo.startswith("❌"))
-        self.assertIn("se acabó el tiempo", cuerpo)
+        self.assertIn("tardó demasiado", cuerpo)
+        self.assertNotIn("exceeded the task timeout", cuerpo)
 
     async def test_without_an_identified_user_nothing_is_queued(self):
         sesion = self._sesion(SimpleNamespace(id="u1", is_active=True, teams_id=None), [self._llave()])
@@ -203,10 +239,10 @@ class StatusAndRuntimeTests(unittest.IsolatedAsyncioTestCase):
             started_at=ahora - timedelta(seconds=300),
             queued_at=ahora,
             prompt="instrucciones largas",
-            metadata_json={"background_job": True, "background_title": "Análisis de ventas"},
+            metadata_json={"background_job": True, "background_title": "Análisis HSE"},
         )
         texto = PublicChatService._status_reply([trabajo])
-        self.assertIn("Análisis de ventas", texto)
+        self.assertIn("Análisis HSE", texto)
         self.assertIn("5 min", texto)
         self.assertIn("Te aviso por aquí", texto)
 

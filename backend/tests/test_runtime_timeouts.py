@@ -57,3 +57,44 @@ class TestTimeoutEnv(unittest.TestCase):
     def test_idle_zero_disables(self):
         _, idle = self._env(task_idle_timeout_seconds=0)
         self.assertEqual(idle, 0)
+
+
+class TestPresupuestoDelChatConLaCola(unittest.TestCase):
+    def _task(self, cola_s, fuente="public_chat", fondo=False):
+        from datetime import UTC, datetime, timedelta
+        from types import SimpleNamespace
+
+        inicio = datetime(2026, 11, 17, 12, 0, tzinfo=UTC)
+        return SimpleNamespace(
+            metadata_json={"source": fuente, **({"background_job": True} if fondo else {})},
+            queued_at=inicio,
+            started_at=inicio + timedelta(seconds=cola_s),
+        )
+
+    def _timeout(self, task):
+        settings = Settings(debug=True, jwt_secret="x" * 40)
+        with patch("hermeshq.config.get_settings", return_value=settings):
+            return HermesRuntime._task_timeout_for(task)
+
+    def test_sin_espera_el_chat_conserva_540_segundos(self):
+        self.assertEqual(self._timeout(self._task(0)), 540)
+
+    def test_con_240_segundos_de_cola_quedan_330_y_la_suma_no_pasa_de_600(self):
+        t = self._timeout(self._task(240))
+        self.assertEqual(t, 330)
+        self.assertLess(240 + t, 600)
+
+    def test_con_mucha_cola_queda_el_minimo_de_60(self):
+        self.assertEqual(self._timeout(self._task(540)), 60)
+
+    def test_control_negativo_un_trabajo_en_segundo_plano_no_se_recorta_por_la_cola(self):
+        self.assertEqual(self._timeout(self._task(240, fondo=True)), 3600)
+
+    def test_control_negativo_otras_fuentes_no_se_recortan(self):
+        self.assertEqual(self._timeout(self._task(240, fuente="web")), 3600)
+
+    def test_sin_marcas_de_tiempo_no_descuenta(self):
+        from types import SimpleNamespace
+
+        t = SimpleNamespace(metadata_json={"source": "public_chat"}, queued_at=None, started_at=None)
+        self.assertEqual(self._timeout(t), 540)

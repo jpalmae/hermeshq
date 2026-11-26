@@ -21,6 +21,7 @@ Usa esta skill cuando el usuario necesite ver, crear, editar o eliminar eventos 
 - Para crear reuniones, incluye `attendees` con lista de emails
 - Si piden reunión por Teams (o enlace de Teams), pasa `online_meeting: true` en `ms365_calendar_create_event` (o en `ms365_calendar_update_event` para agregarlo a un evento existente) y entrega el enlace de `teams_join_url` de la respuesta. Si no viene `teams_join_url`, avisa que no se pudo generar; no lo inventes
 - Usa `ms365_calendar_list_events` con rango de fechas para ver disponibilidad
+- Para reservar una sala pasa su nombre en `sala` (ej. `sala: "Sala Sur"`), al crear o al modificar: la herramienta la busca en el directorio, la invita como recurso y la deja como lugar. No la pongas en `location` (eso es solo texto y no la reserva) ni en `add_attendees`. Si hay varias salas con ese nombre o no la encuentra, pregúntale al usuario cuál
 - Todo se puede editar en una reunión ya creada con `ms365_calendar_update_event` y el `event_id` devuelto al crearla (guárdalo; no uses el enlace de Teams ni el ID de reunión). Solo envía los campos que cambian:
   - **Horario y día:** `start` y `end`; o `start` solo (conserva la duración actual); o `duration_minutes`. Indica `timezone` (ej. `America/Santiago`) o usa UTC con `Z`.
   - **Asistentes:** `add_attendees` / `add_optional_attendees` suman gente conservando a los actuales; `remove_attendees` quita (reciben cancelación); `attendees` define la lista completa que debe quedar.

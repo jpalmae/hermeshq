@@ -46,6 +46,16 @@ def _api_request(method: str, path: str, payload: dict | None = None) -> str:
         return json.dumps({"success": False, "error": str(exc)})
 
 
+def _tarea_actual(kwargs) -> str | None:
+    task_id = kwargs.get("task_id")
+    if isinstance(task_id, str) and task_id.strip():
+        return task_id.strip()
+    try:
+        return str(json.loads(os.environ.get("HERMESHQ_TASK_PAYLOAD") or "{}").get("task_id") or "") or None
+    except (ValueError, AttributeError):
+        return None
+
+
 def hq_list_agents_tool(args, **_kwargs):
     return _api_request("GET", "/agents/self/roster")
 
@@ -62,6 +72,7 @@ def hq_direct_message_tool(args, **_kwargs):
             "target_agent": target_agent,
             "content": message,
             "metadata": args.get("metadata") or {},
+            "origin_task_id": _tarea_actual(_kwargs),
         },
     )
 
@@ -72,9 +83,9 @@ def hq_delegate_task_tool(args, **_kwargs):
     if not target_agent or not instruction:
         return json.dumps({"success": False, "error": "Both 'target_agent' and 'instruction' are required"})
     metadata = dict(args.get("metadata") or {})
-    task_id = _kwargs.get("task_id")
-    if isinstance(task_id, str) and task_id.strip():
-        metadata.setdefault("parent_task_id", task_id.strip())
+    task_id = _tarea_actual(_kwargs)
+    if task_id:
+        metadata.setdefault("parent_task_id", task_id)
     policy_master = os.environ.get("HERMESHQ_POLICY_MASTER", "").strip()
     if policy_master:
         metadata.setdefault("policy_master_agent_id", policy_master)
@@ -98,6 +109,7 @@ def hq_delegate_task_tool(args, **_kwargs):
             "instruction": instruction,
             "title": args.get("title"),
             "metadata": metadata,
+            "origin_task_id": task_id,
         },
     )
 
@@ -132,7 +144,7 @@ def register(ctx):
         toolset="hermeshq_comms",
         schema={
             "name": "hq_direct_message",
-            "description": "Send a non-task direct message to another HermesHQ agent by id, slug, friendly name, or technical name.",
+            "description": "Send a non-task direct message to another HermesHQ agent by id, slug, friendly name, or technical name. Agents that belong to ANOTHER person need your user's explicit approval first: ask them and wait for their yes.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -162,7 +174,7 @@ def register(ctx):
         toolset="hermeshq_comms",
         schema={
             "name": "hq_delegate_task",
-            "description": "Delegate executable work to another HermesHQ agent by id, slug, friendly name, or technical name. HermesHQ will enforce hierarchy rules.",
+            "description": "Delegate executable work to another HermesHQ agent by id, slug, friendly name, or technical name. HermesHQ will enforce hierarchy rules. Agents that belong to ANOTHER person need your user's explicit approval first: ask them and wait for their yes. Never delegate just because you are stuck: tell your user instead.",
             "parameters": {
                 "type": "object",
                 "properties": {

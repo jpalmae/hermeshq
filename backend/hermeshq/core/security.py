@@ -1,6 +1,7 @@
+import re
 from datetime import UTC, datetime, timedelta
 
-from fastapi import Cookie, Depends, HTTPException, WebSocket, status
+from fastapi import Cookie, Depends, HTTPException, Request, WebSocket, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -153,7 +154,24 @@ async def _resolve_token_from_request(
     return bearer_token or cookie_token or ""
 
 
+PREFIJO_CUENTA_DE_SERVICIO = "bridge-"
+RUTAS_CUENTA_DE_SERVICIO = (
+    re.compile(r"^/agents/[^/]+/attachments/?$"),
+    re.compile(r"^/agents/[^/]+/attachments/[^/]+/?$"),
+)
+
+
+def es_cuenta_de_servicio_de_bridge(username: str | None) -> bool:
+    return str(username or "").startswith(PREFIJO_CUENTA_DE_SERVICIO)
+
+
+def ruta_permitida_a_cuenta_de_servicio(ruta: str, prefijo_api: str) -> bool:
+    relativa = ruta[len(prefijo_api) :] if prefijo_api and ruta.startswith(prefijo_api) else ruta
+    return any(patron.match(relativa) for patron in RUTAS_CUENTA_DE_SERVICIO)
+
+
 async def get_current_user(
+    request: Request = None,
     bearer_token: str | None = Depends(oauth2_scheme),
     cookie_token: str | None = Cookie(default=None, alias="hermeshq_token"),
     db: AsyncSession = Depends(get_db_session),
@@ -170,6 +188,12 @@ async def get_current_user(
     user = await get_user_by_subject(db, subject, subject_kind)
     if not user or not user.is_active:
         raise credentials_error
+    if request is not None and es_cuenta_de_servicio_de_bridge(user.username):
+        if not ruta_permitida_a_cuenta_de_servicio(request.url.path, get_settings().api_prefix):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Las cuentas de servicio del bridge solo pueden entregar y recibir adjuntos",
+            )
     return user
 
 

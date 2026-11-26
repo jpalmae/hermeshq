@@ -4,3 +4,4 @@ description: Excel spreadsheet (.xlsx) generation tool for agents. Create workbo
 author: HermesHQ
 provides_tools:
   - hq_xlsx_generate
+  - hq_xlsx_editar

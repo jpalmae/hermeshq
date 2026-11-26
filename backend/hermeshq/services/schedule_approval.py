@@ -9,11 +9,49 @@ from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.services.cron_schedule import (
     APPROVAL_CODE_TTL,
     DEFAULT_TIMEZONE,
+    codigo_eliminacion,
     compute_next_run,
     resolve_timezone,
 )
 
 APPROVAL_COMMAND = re.compile(r"^\s*aprobar\s+([A-Za-z0-9]{4,12})\s*[.!]?\s*$", re.IGNORECASE)
+DELETE_COMMAND = re.compile(r"^\s*eliminar\s+([A-Za-z0-9]{4,12})\s*[.!]?\s*$", re.IGNORECASE)
+
+
+def deletion_code_from(text: str | None) -> str | None:
+    match = DELETE_COMMAND.match(text or "")
+    return match.group(1).upper() if match else None
+
+
+async def delete_by_code(db: AsyncSession, agent_id: str, user_id: str, code: str, channel: str) -> str | None:
+    result = await db.execute(
+        select(ScheduledTask).where(
+            ScheduledTask.agent_id == agent_id,
+            ScheduledTask.owner_user_id == user_id,
+            ScheduledTask.approval_status == "approved",
+        )
+    )
+    propios = list(result.scalars().all())
+    if not propios:
+        return None
+    match = next((item for item in propios if codigo_eliminacion(item).upper() == code.upper()), None)
+    if match is None:
+        return (
+            f"⚠️ El código {code} no corresponde a ninguna de tus programaciones, así que no eliminé nada. "
+            "Pídeme de nuevo que la elimine para recibir el código correcto."
+        )
+    nombre = match.name
+    db.add(
+        ActivityLog(
+            agent_id=agent_id,
+            event_type="schedule.deleted_by_agent",
+            message=nombre,
+            details={"schedule_id": match.id, "deleted_by": user_id, "channel": channel, "by": "chat_command"},
+        )
+    )
+    await db.delete(match)
+    await db.commit()
+    return f"🗑️ Eliminé la programación «{nombre}». Ya no se ejecutará."
 
 
 def approval_code_from(text: str | None) -> str | None:
@@ -51,6 +89,9 @@ async def approve_by_code(db: AsyncSession, agent_id: str, user_id: str, code: s
     match.enabled = True
     match.approval_code = None
     match.next_run = compute_next_run(match.cron_expression, match.timezone)
+    from hermeshq.services.reemplazo_cron import aplicar_reemplazo
+
+    reemplazada = await aplicar_reemplazo(db, match, user_id)
     db.add(
         ActivityLog(
             agent_id=agent_id,
@@ -61,6 +102,8 @@ async def approve_by_code(db: AsyncSession, agent_id: str, user_id: str, code: s
     )
     await db.commit()
     proximo = _local(match.next_run)
-    return f"✅ Activada la programación «{match.name}»." + (
-        f" Primera ejecución: {proximo} (hora de Chile)." if proximo else ""
+    return (
+        f"✅ Activada la programación «{match.name}»."
+        + (f" Reemplaza a «{reemplazada}», que quedó eliminada." if reemplazada else "")
+        + (f" Primera ejecución: {proximo} (hora de Chile)." if proximo else "")
     )

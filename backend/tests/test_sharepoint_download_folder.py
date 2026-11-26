@@ -93,12 +93,12 @@ class DownloadFolderTests(unittest.TestCase):
         self.assertIn("sub__dentro.png", dentro["local_path"])
 
     def test_limits_are_reported_instead_of_failing(self):
-        archivos = [_file(f"f{i}.png", size=1024) for i in range(5)] + [_file("grande.pdf", size=11 * 1024 * 1024)]
+        archivos = [_file(f"f{i}.png", size=1024) for i in range(5)] + [_file("grande.pdf", size=21 * 1024 * 1024)]
         carpetas = [("/me/drive/root:/Ref:/children", {"value": archivos})]
         out = self._run({"folder_path": "Ref", "max_files": 3}, carpetas)
         self.assertEqual(out["descargados"], 3)
         motivos = {o["name"]: o["motivo"] for o in out["omitidos"]}
-        self.assertIn("10 MB", motivos["grande.pdf"])
+        self.assertIn("20 MB", motivos["grande.pdf"])
         self.assertIn("máximo de 3 archivos", motivos["f3.png"])
 
     def test_total_size_budget_is_enforced(self):

@@ -224,7 +224,9 @@ async def bulk_config_update(
                 )
                 continue
 
-        runtime_profile_changed = "runtime_profile" in update_data
+        runtime_profile_changed = "runtime_profile" in update_data and normalize_runtime_profile_slug(
+            update_data["runtime_profile"]
+        ) != normalize_runtime_profile_slug(agent.runtime_profile)
 
         if "runtime_profile" in update_data:
             update_data["runtime_profile"] = normalize_runtime_profile_slug(update_data["runtime_profile"])

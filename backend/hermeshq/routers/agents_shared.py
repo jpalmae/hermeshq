@@ -226,6 +226,16 @@ async def _create_conversation_task(
         "thread_id": thread.id,
         "thread_user_id": current_user.id,
     }
+    from hermeshq.services.aprobacion_central import aprobar_texto_si_corresponde
+
+    aprobada = await aprobar_texto_si_corresponde(db, agent.id, current_user.id, thread.id, prompt, "web")
+    if aprobada:
+        task_metadata["aprobacion_id"] = aprobada
+    from hermeshq.services import ejecucion_aprobada
+
+    aviso = await ejecucion_aprobada.avisos_pendientes(db, agent.id, current_user.id, thread.id)
+    if aviso:
+        task_metadata["aprobacion_aviso"] = aviso
     task = Task(
         agent_id=agent.id,
         title="Chat message",

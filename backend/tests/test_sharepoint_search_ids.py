@@ -4,6 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from _sp_busqueda import adaptar_busqueda
+
 _PLUGIN = (
     Path(__file__).resolve().parents[1] / "hermeshq" / "integration_packages" / "sharepoint" / "plugin" / "__init__.py"
 )
@@ -21,7 +23,7 @@ class SearchIdsTests(unittest.TestCase):
         with (
             patch.object(sp, "_task_user_id", return_value="u1"),
             patch.object(sp, "_get_m365_token", return_value=("tok", None, "")),
-            patch.object(sp, "_graph", return_value=_search_response(resources)),
+            patch.object(sp, "_graph", side_effect=adaptar_busqueda(lambda *a, **k: _search_response(resources))),
         ):
             return json.loads(sp._search_tool({"query": "SGSI"}))
 
@@ -61,7 +63,7 @@ class SearchIdsTests(unittest.TestCase):
         with (
             patch.object(sp, "_task_user_id", return_value="u1"),
             patch.object(sp, "_get_m365_token", return_value=("tok", "https://x.sharepoint.com/sites/y", "")),
-            patch.object(sp, "_graph", side_effect=fake_graph),
+            patch.object(sp, "_graph", side_effect=adaptar_busqueda(fake_graph)),
             patch.object(sp, "_download_bytes", return_value=(b"hello", "")),
         ):
             error, info = sp._fetch_item({"item_id": "01ABC", "drive_id": "b!drive"})

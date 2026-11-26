@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import unittest
 from pathlib import Path
 
@@ -87,6 +88,42 @@ class StdoutSwapTests(unittest.TestCase):
         self.assertIn("Listo ✅", contenido)
 
 
+class UsageForwardingTests(unittest.TestCase):
+    def test_usage_is_forwarded_and_iterations_use_api_calls(self):
+        result = {
+            "api_calls": 5,
+            "input_tokens": 1200,
+            "output_tokens": 800,
+            "reasoning_tokens": 400,
+            "cache_read_tokens": 0,
+            "total_tokens": 2000,
+            "turn_exit_reason": "stop",
+            "messages": [{"role": "assistant", "content": "a"}] * 9,
+        }
+        payload = runner.build_result_payload(result, "Listo", result["messages"], [])
+        self.assertEqual(payload["event"], "result")
+        self.assertEqual(payload["iterations"], 5)
+        self.assertEqual(payload["usage"]["total_tokens"], 2000)
+        self.assertEqual(payload["usage"]["reasoning_tokens"], 400)
+        self.assertEqual(payload["usage"]["cache_read_tokens"], 0)
+        self.assertNotIn("estimated_cost_usd", payload["usage"])
+
+    def test_tokens_used_stays_a_word_count_for_the_quota(self):
+        result = {"api_calls": 3, "total_tokens": 999999}
+        payload = runner.build_result_payload(result, "ok", [], [])
+        self.assertEqual(payload["tokens_used"], max(256, len(str(result).split())))
+        self.assertNotEqual(payload["tokens_used"], 999999)
+
+    def test_iterations_fall_back_to_assistant_messages_without_api_calls(self):
+        messages = [{"role": "assistant"}, {"role": "user"}, {"role": "assistant"}]
+        payload = runner.build_result_payload({}, "", messages, [])
+        self.assertEqual(payload["iterations"], 2)
+        self.assertEqual(payload["usage"], {})
+
+    def test_usage_from_result_drops_missing_keys(self):
+        self.assertEqual(runner.usage_from_result({"input_tokens": 5, "output_tokens": None}), {"input_tokens": 5})
+
+
 class PreviousFilesNoteTests(unittest.TestCase):
     def test_recent_downloads_and_data_files_are_listed_and_old_ones_are_not(self):
         import os
@@ -126,5 +163,175 @@ class PreviousFilesNoteTests(unittest.TestCase):
             (raiz / "sharepoint_downloads" / "a.xlsx").write_bytes(b"x")
             self.assertEqual(HermesRuntime._prompt_with_previous_files("hola", raiz, []), "hola")
             self.assertEqual(HermesRuntime._prompt_with_previous_files("hola", raiz, None), "hola")
-            con = HermesRuntime._prompt_with_previous_files("hola", raiz, [{"role": "user", "content": "x"}])
+            con = HermesRuntime._prompt_with_previous_files(
+                "hola", raiz, [{"role": "user", "content": "usa sharepoint_downloads/a.xlsx"}]
+            )
             self.assertTrue(con.startswith("hola\n\n[Archivos de turnos anteriores"))
+            sin_mencion = HermesRuntime._prompt_with_previous_files("hola", raiz, [{"role": "user", "content": "x"}])
+            self.assertEqual(sin_mencion, "hola")
+
+
+class RegistroTiemposTests(unittest.TestCase):
+    def test_writes_one_line_per_step_event_under_the_workspace(self):
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as cwd:
+            registro = runner.RegistroTiempos(cwd, "tarea-1")
+            registro.paso_iniciado(1)
+            registro.texto_visible()
+            registro.texto_visible()
+            registro.herramienta("read_file", 120, True)
+            registro.paso_iniciado(2)
+            registro.fin()
+            lineas = (Path(cwd) / ".hermes" / "tiempos" / "tarea-1.jsonl").read_text(encoding="utf-8").splitlines()
+            eventos = [json.loads(linea) for linea in lineas]
+        self.assertEqual([e["evento"] for e in eventos], ["paso", "primer_texto", "herramienta", "paso", "fin"])
+        self.assertEqual(eventos[1]["paso"], 1)
+        self.assertEqual(eventos[2]["ms"], 120)
+        self.assertTrue(all("t" in e for e in eventos))
+
+    def test_a_workspace_that_cannot_be_written_never_breaks_the_task(self):
+        registro = runner.RegistroTiempos("/proc/no-existe-aqui", "tarea-2")
+        registro.paso_iniciado(1)
+        registro.texto_visible()
+        registro.fin()
+        self.assertIsNone(registro.ruta)
+
+
+class RecorteContextoTests(unittest.TestCase):
+    def _herramienta(self, id_llamada, nombre, contenido):
+        return {"role": "tool", "tool_call_id": id_llamada, "name": nombre, "content": contenido}
+
+    def _llamada(self, id_llamada, nombre):
+        return {"role": "assistant", "content": "", "tool_calls": [{"id": id_llamada, "function": {"name": nombre}}]}
+
+    def test_small_histories_are_sent_unchanged(self):
+        mensajes = [
+            {"role": "user", "content": "hola"},
+            self._llamada("a", "read_file"),
+            self._herramienta("a", "read_file", "x" * 100),
+        ]
+        nuevos, recortados = runner.recortar_resultados(mensajes)
+        self.assertEqual(recortados, 0)
+        self.assertEqual(nuevos, mensajes)
+
+    def test_old_results_are_cut_and_the_last_two_keep_more_room(self):
+        grande = "x" * 20000
+        corto = "y" * 10000
+        mensajes = [
+            self._llamada("a", "read_file"),
+            self._herramienta("a", "read_file", grande),
+            self._llamada("b", "read_file"),
+            self._herramienta("b", "read_file", grande),
+            self._llamada("c", "read_file"),
+            self._herramienta("c", "read_file", corto),
+        ]
+        nuevos, recortados = runner.recortar_resultados(mensajes)
+        self.assertEqual(recortados, 2)
+        self.assertIn("caracteres omitidos", nuevos[1]["content"])
+        self.assertLess(len(nuevos[1]["content"]), runner.LIMITE_RESULTADO_ANTIGUO + 200)
+        self.assertEqual(
+            nuevos[3]["content"][: runner.LIMITE_RESULTADO_RECIENTE], "x" * runner.LIMITE_RESULTADO_RECIENTE
+        )
+        self.assertGreater(len(nuevos[3]["content"]), runner.LIMITE_RESULTADO_ANTIGUO)
+        self.assertEqual(nuevos[5]["content"], corto)
+
+    def test_skill_instructions_are_never_cut(self):
+        grande = "x" * 20000
+        mensajes = [
+            self._llamada("s", "skill_view"),
+            self._herramienta("s", "skill_view", grande),
+            self._llamada("b", "read_file"),
+            self._herramienta("b", "read_file", grande),
+            self._llamada("c", "read_file"),
+            self._herramienta("c", "read_file", grande),
+        ]
+        nuevos, _ = runner.recortar_resultados(mensajes)
+        self.assertEqual(nuevos[1]["content"], grande)
+
+    def test_tool_call_ids_and_the_original_history_are_preserved(self):
+        grande = "x" * 20000
+        mensajes = [
+            self._llamada("a", "read_file"),
+            self._herramienta("a", "read_file", grande),
+            self._llamada("b", "read_file"),
+            self._herramienta("b", "read_file", grande),
+            self._llamada("c", "read_file"),
+            self._herramienta("c", "read_file", grande),
+        ]
+        nuevos, _ = runner.recortar_resultados(mensajes)
+        self.assertEqual(nuevos[1]["tool_call_id"], "a")
+        self.assertEqual(mensajes[1]["content"], grande)
+
+    def test_name_is_resolved_from_the_call_when_the_result_has_none(self):
+        grande = "x" * 20000
+        mensajes = [
+            self._llamada("s", "skill_view"),
+            {"role": "tool", "tool_call_id": "s", "content": grande},
+            self._llamada("b", "read_file"),
+            self._herramienta("b", "read_file", grande),
+            self._llamada("c", "read_file"),
+            self._herramienta("c", "read_file", grande),
+        ]
+        nuevos, _ = runner.recortar_resultados(mensajes)
+        self.assertEqual(nuevos[1]["content"], grande)
+
+
+class RegistroRecorteTests(unittest.TestCase):
+    def test_each_trim_is_recorded_with_its_step(self):
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as cwd:
+            registro = runner.RegistroTiempos(cwd, "tarea-3")
+            registro.paso_iniciado(4)
+            registro.recorte(2, 17)
+            lineas = (Path(cwd) / ".hermes" / "tiempos" / "tarea-3.jsonl").read_text(encoding="utf-8").splitlines()
+            evento = json.loads(lineas[-1])
+        self.assertEqual(evento["evento"], "recorte")
+        self.assertEqual((evento["paso"], evento["recortados"], evento["mensajes"]), (4, 2, 17))
+
+
+class SkillRepetidaTests(unittest.TestCase):
+    def _llamada_skill(self, id_llamada, skill):
+        return {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"id": id_llamada, "function": {"name": "skill_view", "arguments": json.dumps({"name": skill})}}
+            ],
+        }
+
+    def _resultado(self, id_llamada, contenido):
+        return {"role": "tool", "tool_call_id": id_llamada, "name": "skill_view", "content": contenido}
+
+    def test_second_load_of_the_same_skill_is_replaced_and_the_first_is_kept(self):
+        texto = "instrucciones " * 500
+        mensajes = [
+            self._llamada_skill("a", "composicion-visual"),
+            self._resultado("a", texto),
+            self._llamada_skill("b", "composicion-visual"),
+            self._resultado("b", texto),
+        ]
+        nuevos, recortados = runner.recortar_resultados(mensajes)
+        self.assertEqual(nuevos[1]["content"], texto)
+        self.assertIn("ya se cargó antes en esta tarea", nuevos[3]["content"])
+        self.assertIn("composicion-visual", nuevos[3]["content"])
+        self.assertEqual(recortados, 1)
+
+    def test_different_skills_are_never_replaced(self):
+        mensajes = [
+            self._llamada_skill("a", "correo-unificado-bruno"),
+            self._resultado("a", "uno"),
+            self._llamada_skill("b", "redactar-correos"),
+            self._resultado("b", "dos"),
+        ]
+        nuevos, recortados = runner.recortar_resultados(mensajes)
+        self.assertEqual([nuevos[1]["content"], nuevos[3]["content"]], ["uno", "dos"])
+        self.assertEqual(recortados, 0)
+
+    def test_the_skill_name_is_read_from_the_arguments(self):
+        self.assertEqual(runner._nombre_skill('{"name": "pptx"}'), "pptx")
+        self.assertEqual(runner._nombre_skill({"name": "pptx"}), "pptx")
+        self.assertEqual(runner._nombre_skill("no es json"), "")

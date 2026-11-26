@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from hermeshq.models.base import Base, TimestampMixin
@@ -28,3 +28,8 @@ class ScheduledTask(TimestampMixin, Base):
     )
     approval_code: Mapped[str | None] = mapped_column(String(12), nullable=True)
     notify_public_chat: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    output_format: Mapped[str | None] = mapped_column(Text, nullable=True)
+    definition_version: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
+    delivery_key_id: Mapped[str | None] = mapped_column(
+        ForeignKey("public_chat_api_keys.id", ondelete="SET NULL"), nullable=True
+    )
