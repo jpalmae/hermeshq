@@ -3,8 +3,8 @@ import re
 from hermeshq.services.respuesta_corta import pedido_original
 
 _CONFIRMACION = re.compile(
-    r"^\W*(s[ií]|ok|okay|dale|listo|confirmo|confirmado|adelante|hazlo|apruebo|aprobado|env[ií]a(lo|la)?|"
-    r"m[aá]nda(lo|la)?|eliminar\s+\w{4,8})(\W+(s[ií]|por favor|gracias|env[ií]a(lo|la)?|dale))*\W*$",
+    r"^\W*(s[ií]|ok|okay|dale|listo|confirmo|confirmado|adelante|hazlo|apruebo|aprobado|env[ií]a(lo|la)?|reenv[ií]a(lo|la)?|resp[oó]nde(lo|le)?|contesta(lo|le)?|"
+    r"m[aá]nda(lo|la)?|eliminar\s+\w{4,8})(\W+(s[ií]|por favor|gracias|env[ií]a(lo|la)?|reenv[ií]a(lo|la)?|resp[oó]nde(lo|le)?|contesta(lo|le)?|dale|con todo))*\W*$",
     re.IGNORECASE,
 )
 
