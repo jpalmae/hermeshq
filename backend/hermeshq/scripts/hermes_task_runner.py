@@ -3716,6 +3716,29 @@ def _rastro_del_turno(mensajes, inicio: int) -> str:
     return " ".join(partes)
 
 
+_COPIA_RECIENTE_S = 3600
+
+
+def _copia_al_espacio(ruta: str, base: Path, rastro: str) -> str | None:
+    if not _fuera_del_espacio(ruta, str(base)) or ruta not in rastro:
+        return None
+    origen = Path(ruta)
+    try:
+        if time.time() - origen.stat().st_mtime > _COPIA_RECIENTE_S:
+            return None
+        destino_dir = base / "outputs"
+        destino_dir.mkdir(parents=True, exist_ok=True)
+        destino = destino_dir / origen.name
+        n = 2
+        while destino.exists():
+            destino = destino_dir / f"{origen.stem}_{n}{origen.suffix}"
+            n += 1
+        shutil.copy2(origen, destino)
+    except OSError:
+        return None
+    return destino.relative_to(base).as_posix()
+
+
 def rutas_media_corregidas(texto: str, cwd: str | None, mensajes, inicio: int = 0) -> str:
     if not texto or not cwd:
         return texto
@@ -3737,6 +3760,9 @@ def rutas_media_corregidas(texto: str, cwd: str | None, mensajes, inicio: int = 
     def corregir(coincidencia):
         ruta = coincidencia.group(1)
         limpia = ruta.strip().strip("`'\"")
+        copia = _copia_al_espacio(limpia, base, rastro)
+        if copia:
+            return coincidencia.group(0).replace(ruta, copia)
         if re.match(r"https?://", limpia) or _archivo_existe(limpia, cwd):
             return coincidencia.group(0)
         partes = [p for p in re.split(r"[\\/]+", limpia) if p]

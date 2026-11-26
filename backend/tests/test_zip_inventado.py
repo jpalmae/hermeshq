@@ -121,3 +121,47 @@ class TestAdjuntoFueraDelEspacio:
         interna.parent.mkdir(parents=True)
         interna.write_text("x", encoding="utf-8")
         assert not runner._fuera_del_espacio(str(interna), str(espacio))
+
+
+class TestCopiaAlEspacio:
+    def _turno(self, ruta):
+        argumentos = '{"code": "zip_path = \\"' + str(ruta) + '\\""}'
+        return [
+            {"role": "user", "content": "envíame el ZIP"},
+            {"role": "assistant", "tool_calls": [{"function": {"name": "execute_code", "arguments": argumentos}}]},
+            {"role": "tool", "content": '{"status": "success"}'},
+        ]
+
+    def test_prueba_en_vivo_el_zip_escrito_fuera_se_copia_a_outputs(self, tmp_path):
+        espacio = tmp_path / "agente"
+        espacio.mkdir()
+        afuera = tmp_path / "app" / "output" / "skill.zip"
+        afuera.parent.mkdir(parents=True)
+        afuera.write_bytes(b"PK")
+        texto = f"Aquí está.\n\nMEDIA: {afuera}"
+        corregido = runner.rutas_media_corregidas(texto, str(espacio), self._turno(afuera), 0)
+        assert corregido.endswith("MEDIA: outputs/skill.zip")
+        assert (espacio / "outputs" / "skill.zip").read_bytes() == b"PK"
+        assert runner.verificar_afirmaciones(corregido, [], 0, cwd=str(espacio), mensaje="envíame el ZIP") == []
+
+    def test_control_negativo_un_archivo_que_no_escribio_en_el_turno(self, tmp_path):
+        espacio = tmp_path / "agente"
+        espacio.mkdir()
+        ajeno = tmp_path / "otro" / "secreto.txt"
+        ajeno.parent.mkdir(parents=True)
+        ajeno.write_text("x", encoding="utf-8")
+        texto = f"MEDIA: {ajeno}"
+        assert runner.rutas_media_corregidas(texto, str(espacio), self._turno(tmp_path / "otro.zip"), 0) == texto
+        assert not (espacio / "outputs").exists()
+
+    def test_control_negativo_un_archivo_viejo(self, tmp_path):
+        import os
+
+        espacio = tmp_path / "agente"
+        espacio.mkdir()
+        viejo = tmp_path / "app" / "viejo.zip"
+        viejo.parent.mkdir(parents=True)
+        viejo.write_bytes(b"PK")
+        os.utime(viejo, (1, 1))
+        texto = f"MEDIA: {viejo}"
+        assert runner.rutas_media_corregidas(texto, str(espacio), self._turno(viejo), 0) == texto
