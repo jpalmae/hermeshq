@@ -17,13 +17,87 @@ logger = logging.getLogger(__name__)
 PROGRESS_NOTICE_SECONDS = 180
 SCHEDULED_RETRY_WINDOW_MINUTES = 45
 
+
+def clave_sesion_runtime(clave: str, epoca) -> str:
+    try:
+        numero = int(epoca or 0)
+    except (TypeError, ValueError):
+        numero = 0
+    return f"{clave}#e{numero}" if numero > 0 else clave
+
+
 HISTORY_USER_MARKER = "[Mensaje anterior, ya respondido; no lo repitas] "
+HISTORY_FAILED_MARKER = (
+    "[Solicitud anterior que NO se completó ni se entregó. Si el usuario pregunta por el informe, entregable o "
+    "resultado, se refiere a esta solicitud y no a entregas anteriores] "
+)
+HISTORY_PENDING_MIN_CHARS = 60
+HISTORY_MAX_TURNS = 6
+HISTORY_MAX_TURNS_CADENA = 4
+HISTORY_CANDIDATE_LIMIT = 200
+
+CONVERSATION_KEY_FIELDS = ("thread_id", "public_session_id", "thread_user_id")
 
 
-def history_assistant_text(content: str, max_chars: int) -> str:
+def conversation_key(metadata: dict | None) -> str:
+    metadata = metadata or {}
+    for field in CONVERSATION_KEY_FIELDS:
+        value = str(metadata.get(field) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def history_assistant_text(task: Task, content: str, max_chars: int) -> str:
+    if task.status in ("failed", "cancelled"):
+        reason = (task.error_message or "").strip().splitlines()[0][:160] if task.error_message else ""
+        suffix = f": {reason}" if reason else ""
+        return f"(Turno anterior sin completar{suffix}. No se entregó una respuesta final.)"
+    content = sin_avisos_de_la_plataforma(content) or content
     if max_chars > 0 and len(content) > max_chars:
-        return content[:max_chars].rstrip() + "\n…(respuesta anterior recortada)"
+        cabeza = int(max_chars * 0.6)
+        cola = max_chars - cabeza
+        omitidos = len(content) - max_chars
+        return (
+            content[:cabeza].rstrip()
+            + f"\n…(respuesta anterior recortada: {omitidos} caracteres omitidos)…\n"
+            + content[-cola:].lstrip()
+        )
     return content
+
+
+def apply_usage_metadata(task: Task, usage: dict | None) -> None:
+    if not usage:
+        return
+    metadata = dict(task.metadata_json or {})
+    metadata["usage"] = usage
+    task.metadata_json = metadata
+
+
+def apply_failure_telemetry(task: Task, exc: BaseException, default_reason: str = "runtime_error") -> None:
+    partial = getattr(exc, "hq_partial", None)
+    metadata = dict(task.metadata_json or {})
+    if isinstance(partial, dict):
+        tool_calls = partial.get("tool_calls")
+        if tool_calls:
+            task.tool_calls = tool_calls
+        iterations = partial.get("iterations")
+        if iterations:
+            task.iterations = max(int(task.iterations or 0), int(iterations))
+        metadata["end_reason"] = partial.get("end_reason") or default_reason
+        if partial.get("error_type"):
+            metadata["error_type"] = partial["error_type"]
+        if partial.get("error_trace"):
+            metadata["error_trace"] = partial["error_trace"]
+        if partial.get("run"):
+            metadata["run"] = partial["run"]
+        run_usage = (partial.get("run") or {}).get("usage")
+        if run_usage:
+            metadata["usage"] = run_usage
+    else:
+        metadata["end_reason"] = default_reason
+    metadata.setdefault("error_type", type(exc).__name__)
+    task.metadata_json = metadata
 
 
 class _ResizableLimiter:
@@ -92,6 +166,7 @@ class _StreamBuffer:
         await self.flush()
 
     async def push(self, delta: str, index: int | None = None) -> None:
+        delta = delta if isinstance(delta, str) else ""
         """Append a delta to the buffer and publish an event immediately."""
         self._deltas.append((delta, index))
         event = {
@@ -189,8 +264,13 @@ from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.node import Node
 from hermeshq.models.secret import Secret
 from hermeshq.models.task import DEFAULT_EXECUTION_LANE, Task
-from hermeshq.services import admision
-from hermeshq.services.auto_background import create_continuation
+from hermeshq.services import admision, desglose_tiempos, referencias_correo
+from hermeshq.services.auto_background import (
+    create_background_continuation,
+    create_continuation,
+    error_de_incompleto,
+    motivo_resultado_incompleto,
+)
 from hermeshq.services.execution_lease import (
     INSTANCE_OWNER,
     ExecutionLeaseError,
@@ -203,11 +283,59 @@ from hermeshq.services.execution_lease import (
     mensaje_de_fallo,
 )
 from hermeshq.services.hermes_runtime import HermesRuntime
-from hermeshq.services.schedule_notifications import enqueue_progress_notice, enqueue_schedule_notification
+from hermeshq.services.respuesta_sin_repeticion import filtrar_respuesta
+from hermeshq.services.respuesta_verificada import (
+    con_aviso_accion_graph_no_confirmada,
+    con_aviso_de_adjunto,
+    con_aviso_descarte_o_marcado_no_confirmado,
+    con_aviso_envio_no_confirmado,
+    con_aviso_sin_herramienta,
+    con_borrador_canonico,
+    con_informe_sin_lectura,
+    con_tablas_de_correo,
+    sin_avisos_de_la_plataforma,
+)
+from hermeshq.services.schedule_notifications import (
+    enqueue_delegation_notice,
+    enqueue_handoff_notice,
+    enqueue_progress_notice,
+    enqueue_respuesta_tardia,
+    enqueue_schedule_notification,
+    es_tarea_de_delegacion_del_servidor,
+)
 from hermeshq.services.secret_vault import SecretVault
 from hermeshq.services.task_board import sync_board_with_runtime
 from hermeshq.services.task_lanes import task_class, task_class_expression
 from hermeshq.services.task_visibility import task_event_audience
+
+
+class HistorialConversacion(list):
+    herramientas: list[str] = []
+    omitidos: int = 0
+    por_antiguedad: int = 0
+
+
+def _termina_en_pregunta(turno) -> bool:
+    texto = str(getattr(turno, "response", "") or "").rstrip().rstrip("*_)\"'» ").rstrip()
+    return texto.endswith("?")
+
+
+def aviso_de_corte_del_historial(historial) -> str | None:
+    omitidos = int(getattr(historial, "omitidos", 0) or 0)
+    antiguos = int(getattr(historial, "por_antiguedad", 0) or 0)
+    if omitidos <= 0 and antiguos <= 0:
+        return None
+    partes = []
+    if omitidos > 0:
+        partes.append(f"{omitidos} turno(s) anterior(es) quedaron fuera de lo que ves (solo conservas los últimos)")
+    if antiguos > 0:
+        partes.append(f"{antiguos} turno(s) son de hace demasiado tiempo y no los ves")
+    return (
+        "Esta conversación se cortó: "
+        + " y ".join(partes)
+        + ". Si el usuario se refiere a algo anterior que no aparece en lo que ves, díselo con claridad (que esa parte "
+        "de la conversación ya no la tienes a la vista) y pídele que lo repita; no lo inventes ni lo des por sabido."
+    )
 
 
 class AgentSupervisor:
@@ -293,37 +421,181 @@ class AgentSupervisor:
         metadata = task.metadata_json or {}
         if not metadata.get("conversation"):
             return []
-        thread_id = str(metadata.get("thread_id") or "").strip()
+        convo_key = conversation_key(metadata)
+        owner = getattr(task, "created_by_user_id", None)
 
         result = await session.execute(
-            select(Task).where(Task.agent_id == task.agent_id).order_by(desc(Task.queued_at)).limit(24)
+            select(Task)
+            .where(Task.agent_id == task.agent_id)
+            .order_by(desc(Task.queued_at))
+            .limit(HISTORY_CANDIDATE_LIMIT)
         )
         candidates = list(result.scalars().all())
         settings = get_settings()
         max_age = max(0, int(settings.conversation_history_max_age_hours))
         max_chars = max(0, int(settings.conversation_history_turn_max_chars))
         cutoff = utcnow() - timedelta(hours=max_age) if max_age else None
-        prior_turns = [
+        de_la_conversacion = [
             item
             for item in reversed(candidates)
             if item.id != task.id
-            and item.status == "completed"
             and (item.metadata_json or {}).get("conversation")
-            and (not thread_id or str((item.metadata_json or {}).get("thread_id") or "").strip() == thread_id)
-            and (cutoff is None or item.queued_at is None or item.queued_at >= cutoff)
+            and conversation_key(item.metadata_json) == convo_key
+            and (convo_key or getattr(item, "created_by_user_id", None) == owner)
         ]
+        prior_turns = [
+            item for item in de_la_conversacion if cutoff is None or item.queued_at is None or item.queued_at >= cutoff
+        ]
+        por_antiguedad = sum(
+            1 for item in de_la_conversacion if item.status not in ("failed", "cancelled") and item not in prior_turns
+        )
+        history: list[dict] = []
         for indice in range(len(prior_turns) - 1, -1, -1):
             if (prior_turns[indice].metadata_json or {}).get("reset"):
                 prior_turns = prior_turns[indice + 1 :]
                 break
-        history: list[dict] = []
-        for prior in prior_turns[-6:]:
+        ultimo = len(prior_turns) - 1
+        pendiente = None
+        for indice in range(ultimo, -1, -1):
+            item = prior_turns[indice]
+            if item.status not in ("failed", "cancelled"):
+                break
+            if len((item.prompt or "").strip()) >= HISTORY_PENDING_MIN_CHARS:
+                pendiente = indice
+                break
+        forzados = set()
+        if pendiente is not None:
+            forzados.add(pendiente)
+        if ultimo >= 0 and prior_turns[ultimo].status == "failed":
+            forzados.add(ultimo)
+        completados = [
+            indice
+            for indice, item in enumerate(prior_turns)
+            if item.status not in ("failed", "cancelled") and indice not in forzados
+        ]
+        conservar = set(completados[-HISTORY_MAX_TURNS:]) | forzados
+        posicion_mas_antigua = max(0, len(completados) - HISTORY_MAX_TURNS)
+        agregados = 0
+        while (
+            posicion_mas_antigua > 0
+            and agregados < HISTORY_MAX_TURNS_CADENA
+            and _termina_en_pregunta(prior_turns[completados[posicion_mas_antigua - 1]])
+        ):
+            posicion_mas_antigua -= 1
+            agregados += 1
+            conservar.add(completados[posicion_mas_antigua])
+        relevantes = [item for indice, item in enumerate(prior_turns) if indice in conservar]
+        resumen = await self._resumen_programado_entregado(session, task, candidates, convo_key, relevantes)
+        entradas: list[tuple] = [(prior, None) for prior in relevantes]
+        if resumen is not None:
+            entregado, cron_task = resumen
+            posicion = sum(1 for prior in relevantes if prior.queued_at is None or prior.queued_at <= entregado)
+            entradas.insert(posicion, (cron_task, entregado))
+        for prior, entregado in entradas:
+            if entregado is not None:
+                from hermeshq.services.cron_schedule import DEFAULT_TIMEZONE, resolve_timezone
+
+                contenido = self._build_conversation_assistant_content(prior)
+                nombre = " ".join(str(prior.title or "tarea programada").split())[:120]
+                fecha = entregado.astimezone(resolve_timezone(DEFAULT_TIMEZONE)).strftime("%Y-%m-%d %H:%M %Z")
+                history.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"[Resumen programado «{nombre}» task_id={prior.id}, {fecha}: resultado de una tarea "
+                            "programada que el sistema le entregó al usuario por este chat. Si el usuario se refiere "
+                            "a algo de ese resumen («el segundo», «respóndele», el formato), habla de este resumen; "
+                            "no lo repitas entero"
+                            + (
+                                ". Para saber a qué correo exacto se refiere llama ms365_correo_sync con "
+                                "accion='referencia' y su frase; no lo deduzcas de este texto]"
+                                if (prior.metadata_json or {}).get("resumen_correo")
+                                else "]"
+                            )
+                        ),
+                    }
+                )
+                texto = history_assistant_text(prior, contenido or "(sin contenido)", max_chars)
+                history.append({"role": "assistant", "content": texto})
+                continue
             if prior.prompt.strip():
-                history.append({"role": "user", "content": f"{HISTORY_USER_MARKER}{prior.prompt.strip()}"})
+                marker = HISTORY_FAILED_MARKER if prior.status in ("failed", "cancelled") else HISTORY_USER_MARKER
+                history.append({"role": "user", "content": f"{marker}{prior.prompt.strip()}"})
             assistant_content = self._build_conversation_assistant_content(prior)
-            if assistant_content:
-                history.append({"role": "assistant", "content": history_assistant_text(assistant_content, max_chars)})
-        return history
+            if prior.status in ("failed", "cancelled") or assistant_content:
+                history.append(
+                    {"role": "assistant", "content": history_assistant_text(prior, assistant_content, max_chars)}
+                )
+        historial = HistorialConversacion(history)
+        historial.omitidos = max(0, len(completados) - len([i for i in conservar if i in set(completados)]))
+        historial.por_antiguedad = por_antiguedad
+        historial.herramientas = sorted(
+            {
+                str(c.get("name"))
+                for p, _ in entradas
+                for c in (getattr(p, "tool_calls", None) or [])
+                if isinstance(c, dict) and c.get("name")
+            }
+        )
+        return historial
+
+    async def _resumen_programado_entregado(
+        self, session: AsyncSession, task: Task, candidatos: list, convo_key: str, relevantes: list
+    ) -> tuple | None:
+        from hermeshq.models.public_chat import PublicChatNotification
+
+        metadata = task.metadata_json or {}
+        user_id = str(metadata.get("thread_user_id") or "").strip()
+        if not user_id or user_id.startswith("__") or metadata.get("scheduled") or metadata.get("background_job"):
+            return None
+        ahora = utcnow()
+        limite_superior = getattr(task, "queued_at", None) or ahora
+        desde = ahora - referencias_correo.VENTANA_IMPLICITA
+        clave_propia = str(metadata.get("public_chat_api_key_id") or "")
+        for item in candidatos:
+            md = item.metadata_json or {}
+            if (md.get("reset") or md.get("auto_reset")) and item.queued_at is not None:
+                clave_del_reset = str(md.get("public_chat_api_key_id") or "")
+                otra_clave = bool(clave_propia and clave_del_reset and clave_del_reset != clave_propia)
+                if conversation_key(md) == convo_key or (md.get("thread_user_id") == user_id and not otra_clave):
+                    desde = max(desde, item.queued_at)
+        if len(relevantes) >= HISTORY_MAX_TURNS and relevantes[0].queued_at is not None:
+            desde = max(desde, relevantes[0].queued_at)
+        filtros = [
+            PublicChatNotification.agent_id == task.agent_id,
+            PublicChatNotification.recipient_user_id == user_id,
+            PublicChatNotification.schedule_id.isnot(None),
+            PublicChatNotification.status == "delivered",
+            PublicChatNotification.delivered_at > desde,
+            PublicChatNotification.delivered_at <= limite_superior,
+            Task.agent_id == task.agent_id,
+        ]
+        if clave_propia:
+            filtros.append(PublicChatNotification.api_key_id == clave_propia)
+        fila = (
+            await session.execute(
+                select(PublicChatNotification.delivered_at, PublicChatNotification.schedule_id, Task)
+                .join(Task, Task.id == PublicChatNotification.task_id)
+                .where(*filtros)
+                .order_by(desc(PublicChatNotification.delivered_at))
+                .limit(1)
+            )
+        ).first()
+        if fila is None:
+            return None
+        entregado, schedule_id, cron_task = fila
+        md = cron_task.metadata_json or {}
+        identidades = {
+            str(valor) for valor in (cron_task.created_by_user_id, md.get("thread_user_id")) if valor not in (None, "")
+        }
+        if (
+            cron_task.id == task.id
+            or not md.get("scheduled")
+            or str(md.get("scheduled_task_id") or "") != str(schedule_id)
+            or identidades != {user_id}
+        ):
+            return None
+        return entregado, cron_task
 
     async def bootstrap_runtime(self) -> None:
         async with self.session_factory() as session:
@@ -545,8 +817,20 @@ class AgentSupervisor:
                 summary="el servidor se reinició mientras lo trabajaba; vuelve a pedirlo",
             )
             return
+        await enqueue_respuesta_tardia(session, task, success=False, summary=mensaje_de_fallo(clase))
         if metadata.get("scheduled"):
             await enqueue_schedule_notification(session, task, success=False, summary=mensaje_de_fallo(clase))
+
+    @staticmethod
+    async def _schedule_still_authorized(session: AsyncSession, task: Task) -> bool:
+        metadata = task.metadata_json or {}
+        schedule_id = metadata.get("scheduled_task_id")
+        if not metadata.get("scheduled") or metadata.get("manual_trigger") or not schedule_id:
+            return True
+        from hermeshq.models.scheduled_task import ScheduledTask
+
+        schedule = await session.get(ScheduledTask, schedule_id)
+        return schedule is not None and bool(schedule.enabled) and schedule.approval_status == "approved"
 
     async def start_agent(self, agent_id: str) -> Agent:
         async with self.session_factory() as session:
@@ -624,6 +908,14 @@ class AgentSupervisor:
     async def restart_agent(self, agent_id: str) -> Agent:
         await self.stop_agent(agent_id)
         return await self.start_agent(agent_id)
+
+    def _workspace_de(self, agent):
+        if agent is None:
+            return None
+        try:
+            return self.runtime.installation_manager.resolve_workspace_path(agent.workspace_path)
+        except Exception:  # noqa: BLE001
+            return None
 
     async def submit_task(self, task_id: str) -> None:
         self._dispatch_wakeup.set()
@@ -949,7 +1241,7 @@ class AgentSupervisor:
                     return
                 minutes = max(1, seconds // 60)
                 body = (
-                    f"⏳ Sigo trabajando en tu solicitud (lleva más de {minutes} min). Te respondo apenas termine; "
+                    f"⏳ Sigo trabajando en tu solicitud (lleva más de {minutes} min). Te envío el resultado por aquí apenas termine; "
                     "no hace falta reenviarla. Si prefieres detenerla, escribe «cancela»."
                 )
                 if await enqueue_progress_notice(session, task, body):
@@ -979,6 +1271,17 @@ class AgentSupervisor:
                     return
                 if task.cancel_requested_at is not None:
                     raise asyncio.CancelledError
+                if not await self._schedule_still_authorized(session, task):
+                    task.status = "cancelled"
+                    await sync_board_with_runtime(session, task.id, task.status)
+                    task.completed_at = utcnow()
+                    task.error_message = (
+                        "La programación fue deshabilitada, eliminada o perdió su aprobación antes de ejecutarse."
+                    )
+                    task.metadata_json = {**(task.metadata_json or {}), "end_reason": "programacion_no_vigente"}
+                    self._release_claim(task)
+                    await session.commit()
+                    return
                 agent = await session.get(Agent, task.agent_id)
                 if not agent:
                     return
@@ -999,9 +1302,24 @@ class AgentSupervisor:
                 conversation_history = await self._build_conversation_history(session, task)
                 metadata = task.metadata_json or {}
                 if metadata.get("conversation"):
-                    candidate_session_id = str(metadata.get("thread_id") or "").strip()
+                    candidate_session_id = conversation_key(metadata)
                     if candidate_session_id:
-                        session_id = candidate_session_id
+                        session_id = clave_sesion_runtime(candidate_session_id, metadata.get("conversation_epoch"))
+                aviso_corte = aviso_de_corte_del_historial(conversation_history)
+                if aviso_corte:
+                    herramientas_previas = getattr(conversation_history, "herramientas", [])
+                    omitidos_previos = (
+                        getattr(conversation_history, "omitidos", 0),
+                        getattr(conversation_history, "por_antiguedad", 0),
+                    )
+                    conversation_history = HistorialConversacion(
+                        [
+                            {"role": "user", "content": f"[Sistema, no es del usuario] {aviso_corte}"},
+                            *conversation_history,
+                        ]
+                    )
+                    conversation_history.herramientas = herramientas_previas
+                    conversation_history.omitidos, conversation_history.por_antiguedad = omitidos_previos
 
             event = {
                 "type": "task.started",
@@ -1040,6 +1358,11 @@ class AgentSupervisor:
             finally:
                 progress_timer.cancel()
                 await stream_buffer.stop_flush_loop()
+            if execution.final_response is not None:
+                execution.final_response = filtrar_respuesta(
+                    task.prompt or "", execution.final_response or "", conversation_history
+                )
+            continuacion_id = None
             async with self.session_factory() as session:
                 task = (await session.execute(self._claimed(task_id, claim_token))).scalar_one_or_none()
                 agent = await session.get(Agent, task.agent_id) if task else None
@@ -1049,7 +1372,34 @@ class AgentSupervisor:
                 task.status = "completed"
                 await sync_board_with_runtime(session, task.id, task.status)
                 task.completed_at = utcnow()
-                task.response = execution.final_response
+                desglose_tiempos.adjuntar(task, self._workspace_de(agent))
+                messages = getattr(execution, "messages", None)
+                task.response = con_aviso_de_adjunto(
+                    con_aviso_descarte_o_marcado_no_confirmado(
+                        con_aviso_accion_graph_no_confirmada(
+                            con_aviso_envio_no_confirmado(
+                                con_borrador_canonico(
+                                    con_informe_sin_lectura(
+                                        con_tablas_de_correo(
+                                            con_aviso_sin_herramienta(
+                                                execution.final_response,
+                                                len(execution.tool_calls or []),
+                                                task.prompt,
+                                            ),
+                                            messages,
+                                        ),
+                                        messages,
+                                    ),
+                                    messages,
+                                ),
+                                messages,
+                                task.prompt,
+                            ),
+                            messages,
+                        ),
+                        messages,
+                    )
+                )
                 task.tokens_used = execution.tokens_used
                 task.iterations = max(task.iterations, execution.iterations)
                 task.messages_json = execution.messages or task.messages_json
@@ -1057,13 +1407,53 @@ class AgentSupervisor:
                 self._release_claim(task)
                 task.cancel_requested_at = None
 
+                metadata = dict(task.metadata_json or {})
+                usage = getattr(execution, "usage", None)
+                incompleto = motivo_resultado_incompleto(usage)
+                metadata["end_reason"] = incompleto or "completed"
+                if incompleto:
+                    metadata["resultado_incompleto"] = True
+                else:
+                    metadata.pop("resultado_incompleto", None)
+                if usage:
+                    metadata["usage"] = usage
+                for clave in ("exposicion", "compactacion"):
+                    valor = getattr(execution, clave, None)
+                    if isinstance(valor, dict) and valor:
+                        metadata[clave] = valor
+                for clave in ("accion_narrada", "generacion_desbocada", "verificacion"):
+                    valor = getattr(execution, clave, None)
+                    if isinstance(valor, dict) and valor:
+                        metadata[clave] = valor
+                    else:
+                        metadata.pop(clave, None)
+                correcciones = getattr(execution, "correcciones_aplicadas", None)
+                if isinstance(correcciones, int) and correcciones:
+                    metadata["correcciones_aplicadas"] = correcciones
                 response_attachments = getattr(execution, "response_attachments", [])
                 if response_attachments:
-                    metadata = dict(task.metadata_json or {})
                     metadata["response_attachments"] = [
                         {k: v for k, v in att.items() if k != "source_path"} for att in response_attachments
                     ]
-                    task.metadata_json = metadata
+                if metadata.get("scheduled"):
+                    try:
+                        resumen_correo = referencias_correo.extraer_resumen(
+                            task.response, messages, self._workspace_de(agent)
+                        )
+                    except Exception:  # noqa: BLE001
+                        logger.exception("Could not store the mail list of scheduled summary %s", task_id)
+                        resumen_correo = None
+                    if resumen_correo:
+                        metadata["resumen_correo"] = resumen_correo
+                elif metadata.get("conversation") and not metadata.get("background_job"):
+                    try:
+                        listado_chat = referencias_correo.extraer_listado_chat(task.response, messages)
+                    except Exception:  # noqa: BLE001
+                        logger.exception("Could not store the mail list of chat task %s", task_id)
+                        listado_chat = None
+                    if listado_chat:
+                        metadata[referencias_correo.CLAVE_LISTADO_CHAT] = listado_chat
+                task.metadata_json = metadata
 
                 agent.total_tasks += 1
                 agent.total_tokens_used += task.tokens_used
@@ -1074,14 +1464,19 @@ class AgentSupervisor:
                     agent=agent,
                     task=task,
                     message=task.title or "Task completed",
-                    details={"tokens_used": task.tokens_used, "engine": execution.engine},
+                    details={
+                        "tokens_used": task.tokens_used,
+                        "engine": execution.engine,
+                        "resultado_incompleto": bool(incompleto),
+                        "end_reason": metadata["end_reason"],
+                    },
                 )
                 await self._queue_delegate_result_callback(
                     session,
                     task=task,
                     agent=agent,
                     success=True,
-                    summary=execution.final_response,
+                    summary=execution.final_response or "",
                     callbacks=callbacks,
                 )
                 await self._queue_external_callback_delivery(
@@ -1089,18 +1484,33 @@ class AgentSupervisor:
                     task=task,
                     agent=agent,
                     success=True,
-                    summary=execution.final_response,
+                    summary=execution.final_response or "",
                     callbacks=callbacks,
                 )
-                await enqueue_schedule_notification(session, task, success=True, summary=execution.final_response)
+                if incompleto:
+                    try:
+                        continuacion = await create_background_continuation(
+                            session, task, error_de_incompleto(incompleto)
+                        )
+                        continuacion_id = continuacion.id if continuacion else None
+                    except Exception:  # noqa: BLE001
+                        logger.exception("Could not continue the incomplete task %s", task_id)
+                if continuacion_id is None:
+                    await enqueue_schedule_notification(
+                        session, task, success=True, summary=task.response or execution.final_response
+                    )
+                await enqueue_delegation_notice(session, task, success=True, summary=execution.final_response)
+                await enqueue_respuesta_tardia(session, task, success=True, summary=execution.final_response)
                 await session.commit()
                 await self._drain_callbacks(callbacks)
+            if continuacion_id:
+                await self.submit_task(continuacion_id)
 
             completed_event = {
                 "type": "task.completed",
                 "task_id": task_id,
                 "agent_id": task.agent_id,
-                "response": execution.final_response,
+                "response": task.response or execution.final_response,
                 "metadata": task.metadata_json or {},
             }
             if task_owner_id:
@@ -1109,7 +1519,7 @@ class AgentSupervisor:
 
             await self._run_post_task_hooks(task_id)
 
-        except asyncio.CancelledError:
+        except asyncio.CancelledError as cancel_exc:
             publish_event: dict | None = None
             audience = None
             async with self.session_factory() as session:
@@ -1127,6 +1537,8 @@ class AgentSupervisor:
                         await sync_board_with_runtime(session, task.id, task.status)
                         task.completed_at = utcnow()
                         self._release_claim(task)
+                        apply_failure_telemetry(task, cancel_exc, default_reason="cancelled")
+                        desglose_tiempos.adjuntar(task, self._workspace_de(agent))
                         event_type = "task.cancelled"
                 if task and agent:
                     agent.last_activity = utcnow()
@@ -1182,6 +1594,8 @@ class AgentSupervisor:
             failed_event: dict | None = None
             audience = None
             auto_job_id = None
+            continuacion_id = None
+            auto_job = None
             async with self.session_factory() as session:
                 task = (await session.execute(self._claimed(task_id, claim_token))).scalar_one_or_none()
                 agent = await session.get(Agent, task.agent_id) if task else None
@@ -1192,11 +1606,21 @@ class AgentSupervisor:
                     task.error_message = str(exc)
                     self._release_claim(task)
                     task.cancel_requested_at = None
+                    apply_failure_telemetry(task, exc)
+                    desglose_tiempos.adjuntar(task, self._workspace_de(agent))
                     try:
                         auto_job = await create_continuation(session, task, str(exc))
                         auto_job_id = auto_job.id if auto_job else None
+                        if auto_job is not None:
+                            handoff_title = (auto_job.metadata_json or {}).get("background_title") or task.title
+                            await enqueue_handoff_notice(session, task, handoff_title)
+                        else:
+                            auto_job = await create_background_continuation(session, task, str(exc))
+                            continuacion_id = auto_job.id if auto_job else None
                     except Exception:  # noqa: BLE001  # the continuation is best-effort
                         logger.exception("Could not start the automatic background continuation")
+                    if auto_job_id is None:
+                        await enqueue_respuesta_tardia(session, task, success=False, summary=str(exc))
                 if task and agent:
                     agent.last_activity = utcnow()
                     await self._log(
@@ -1227,11 +1651,14 @@ class AgentSupervisor:
                         summary=str(exc),
                         callbacks=callbacks,
                     )
-                    await enqueue_schedule_notification(session, task, success=False, summary=str(exc))
+                    if auto_job is None:
+                        await enqueue_schedule_notification(session, task, success=False, summary=str(exc))
+                    await enqueue_delegation_notice(session, task, success=False, summary=str(exc))
                 await session.commit()
                 await self._drain_callbacks(callbacks)
-                if auto_job_id:
-                    await self.submit_task(auto_job_id)
+                for nueva_id in (auto_job_id, continuacion_id):
+                    if nueva_id:
+                        await self.submit_task(nueva_id)
                 if task:
                     failed_event = {
                         "type": "task.failed",
@@ -1393,6 +1820,14 @@ class AgentSupervisor:
         callback_delivery = metadata.get("callback_delivery")
         if not isinstance(callback_delivery, dict):
             return
+        if not es_tarea_de_delegacion_del_servidor(task):
+            logger.warning("callback_delivery ignorado en la tarea %s: no lo fijó una delegación del servidor", task.id)
+            return
+        platform = str(callback_delivery.get("platform") or "").strip().lower()
+        chat_id = str(callback_delivery.get("chat_id") or "").strip()
+        thread_id = callback_delivery.get("thread_id")
+        if platform != "telegram" or not chat_id:
+            return
         platform = str(callback_delivery.get("platform") or "").strip().lower()
         chat_id = str(callback_delivery.get("chat_id") or "").strip()
         thread_id = callback_delivery.get("thread_id")
@@ -1495,7 +1930,7 @@ class AgentSupervisor:
             return
 
         # Find image files (png, jpg, jpeg, webp, svg) sorted newest first
-        image_extensions = {".png", ".jpg", ".jpeg", ".webp"}
+        image_extensions = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
         candidates = sorted(
             [f for f in operator_workspace.rglob("*") if f.is_file() and f.suffix.lower() in image_extensions],
             key=lambda f: f.stat().st_mtime,

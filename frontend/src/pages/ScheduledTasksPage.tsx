@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { useAgents } from "../api/agents";
 import {
+  formatoParaGuardar,
   useApproveScheduledTask,
   useCreateScheduledTask,
   useDeleteScheduledTask,
@@ -24,6 +25,7 @@ interface EditingSchedule {
   name: string;
   cron_expression: string;
   prompt: string;
+  output_format: string;
 }
 
 export function ScheduledTasksPage() {
@@ -48,6 +50,7 @@ export function ScheduledTasksPage() {
   const [scheduleName, setScheduleName] = useState("");
   const [cronExpression, setCronExpression] = useState("*/15 * * * *");
   const [schedulePrompt, setSchedulePrompt] = useState("");
+  const [scheduleFormat, setScheduleFormat] = useState("");
   const [editing, setEditing] = useState<EditingSchedule | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -103,10 +106,12 @@ export function ScheduledTasksPage() {
         name: scheduleName,
         cron_expression: cronExpression,
         prompt: schedulePrompt,
+        output_format: formatoParaGuardar(scheduleFormat),
         enabled: true,
       });
       setScheduleName("");
       setSchedulePrompt("");
+      setScheduleFormat("");
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Schedule creation failed");
     }
@@ -130,13 +135,17 @@ export function ScheduledTasksPage() {
 
   async function onApprove(schedule: ScheduledTask) {
     const zone = schedule.timezone === "UTC" ? "UTC" : t("schedules.chileTime");
+    const formato = formatoParaGuardar(schedule.output_format);
     const confirmed = window.confirm(
       t("schedules.approveConfirm", {
         name: schedule.name,
         cron: schedule.cron_expression,
         zone,
         prompt: schedule.prompt,
-      }),
+      }) +
+        (formato
+          ? t("schedules.approveConfirmFormat", { version: String(schedule.definition_version ?? 1), format: formato })
+          : ""),
     );
     if (!confirmed) {
       return;
@@ -168,6 +177,7 @@ export function ScheduledTasksPage() {
         name: editing.name,
         cron_expression: editing.cron_expression,
         prompt: editing.prompt,
+        output_format: formatoParaGuardar(editing.output_format),
       });
       setEditing(null);
     } catch (error) {
@@ -233,6 +243,11 @@ export function ScheduledTasksPage() {
             <span className="panel-label">{t("tasks.prompt")}</span>
             <textarea rows={6} value={schedulePrompt} onChange={(event) => setSchedulePrompt(event.target.value)} required />
           </label>
+          <label className="panel-field">
+            <span className="panel-label">{t("schedules.outputFormat")}</span>
+            <textarea rows={4} value={scheduleFormat} onChange={(event) => setScheduleFormat(event.target.value)} />
+            <span className="mt-1 block text-xs text-[var(--text-disabled)]">{t("schedules.outputFormatHint")}</span>
+          </label>
           {formError ? <p className="text-sm text-[var(--danger)]">{formError}</p> : null}
           <button type="submit" className="panel-button-primary w-full" disabled={createScheduledTask.isPending}>
             {createScheduledTask.isPending ? t("common.loading") : t("schedules.create")}
@@ -280,6 +295,15 @@ export function ScheduledTasksPage() {
                         onChange={(event) => setEditing({ ...editing, prompt: event.target.value })}
                       />
                     </label>
+                    <label className="panel-field">
+                      <span className="panel-label">{t("schedules.outputFormat")}</span>
+                      <textarea
+                        rows={4}
+                        value={editing.output_format}
+                        onChange={(event) => setEditing({ ...editing, output_format: event.target.value })}
+                      />
+                      <span className="mt-1 block text-xs text-[var(--text-disabled)]">{t("schedules.outputFormatHint")}</span>
+                    </label>
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -311,6 +335,14 @@ export function ScheduledTasksPage() {
                           </p>
                         ) : null}
                         <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--text-secondary)]">{schedule.prompt}</p>
+                        <p className="mt-3 panel-label">
+                          {t("schedules.outputFormat")} · {t("schedules.version", { value: String(schedule.definition_version ?? 1) })}
+                        </p>
+                        {formatoParaGuardar(schedule.output_format) ? (
+                          <pre className="mt-1 whitespace-pre-wrap text-xs text-[var(--text-secondary)]">{schedule.output_format}</pre>
+                        ) : (
+                          <p className="mt-1 text-xs text-[var(--text-disabled)]">{t("schedules.noFormat")}</p>
+                        )}
                       </div>
                       <div>
                         <p className="panel-label">{t("tasks.agent")}</p>
@@ -375,6 +407,7 @@ export function ScheduledTasksPage() {
                             name: schedule.name,
                             cron_expression: schedule.cron_expression,
                             prompt: schedule.prompt,
+                            output_format: schedule.output_format ?? "",
                           })
                         }
                       >

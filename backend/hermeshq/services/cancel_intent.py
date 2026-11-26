@@ -152,7 +152,8 @@ def _closest(token: str, vocabulary: set[str]) -> str | None:
         return token
     if len(token) < 3:
         return None
-    match = difflib.get_close_matches(token, vocabulary, n=1, cutoff=0.8)
+    candidatos = {palabra for palabra in vocabulary if abs(len(palabra) - len(token)) <= 1}
+    match = difflib.get_close_matches(token, candidatos, n=1, cutoff=0.8)
     return match[0] if match else None
 
 
@@ -180,6 +181,37 @@ def is_cancel_request(text: str | None) -> bool:
     return strong_hit or phrase_hit
 
 
+_OBJETOS = re.compile(
+    r"\b(reunion|reuniones|cita|evento|invitacion|correo|mail|borrador|cron|recordatorio|tarea programada|"
+    r"archivo|documento|presentacion|excel|informe|enlace|suscripcion)\b"
+)
+
+
+_CON_PRONOMBRE = {
+    "cancelala",
+    "cancelalo",
+    "cancelalas",
+    "cancelalos",
+    "parala",
+    "paralo",
+    "detenla",
+    "detenlo",
+    "abortala",
+    "abortalo",
+    "frenalo",
+    "interrumpelo",
+    "olvidalo",
+    "olvidala",
+}
+
+
+def apunta_a_un_objeto(text: str | None) -> bool:
+    normalized = _normalize(text or "")
+    if _OBJETOS.search(normalized):
+        return True
+    return any(token in _CON_PRONOMBRE for token in normalized.split())
+
+
 RESET_COMMANDS = {
     "/reset",
     "/nuevo",
@@ -202,6 +234,63 @@ RESET_PREFIX = re.compile(r"^\s*/(?:reset|nuevo|nueva|new|limpiar)\b[\s:,.-]*(.+
 def split_reset_prefix(text: str | None) -> str | None:
     match = RESET_PREFIX.match(text or "")
     return match.group(1).strip() if match and match.group(1).strip() else None
+
+
+INSTRUCTION_VERBS = frozenset(
+    {
+        "genera",
+        "generame",
+        "generanos",
+        "generar",
+        "haz",
+        "hazme",
+        "hagamos",
+        "crea",
+        "creame",
+        "crear",
+        "prepara",
+        "preparame",
+        "preparar",
+        "arma",
+        "armame",
+        "elabora",
+        "elaborame",
+        "redacta",
+        "redactame",
+        "escribe",
+        "escribeme",
+        "dame",
+        "entregame",
+        "muestrame",
+        "calcula",
+        "analiza",
+        "resume",
+        "resumeme",
+        "envia",
+        "enviame",
+        "manda",
+        "mandame",
+        "actualiza",
+        "modifica",
+        "agrega",
+        "descarga",
+        "busca",
+        "construye",
+        "disena",
+        "grafica",
+        "exporta",
+        "convierte",
+        "traduce",
+        "compara",
+        "extrae",
+    }
+)
+
+
+def has_actionable_instruction(text: str | None) -> bool:
+    if not text:
+        return False
+    return any(token in INSTRUCTION_VERBS for token in _normalize(text).split())
 
 
 STATUS_PHRASES = (
@@ -246,6 +335,8 @@ STATUS_MAX_WORDS = 10
 def is_status_request(text: str | None) -> bool:
     if not text:
         return False
+    if has_actionable_instruction(text):
+        return False
     normalized = _normalize(text).strip()
     tokens = normalized.split()
     if not tokens or len(tokens) > STATUS_MAX_WORDS:
@@ -282,6 +373,8 @@ ACK_MAX_WORDS = 2
 
 def is_ack_request(text: str | None) -> bool:
     if not text:
+        return False
+    if has_actionable_instruction(text):
         return False
     tokens = _normalize(text).strip().split()
     return 0 < len(tokens) <= ACK_MAX_WORDS and all(token in ACK_WORDS for token in tokens)

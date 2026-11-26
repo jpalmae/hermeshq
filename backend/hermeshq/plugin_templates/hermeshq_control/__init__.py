@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
+import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -76,6 +80,157 @@ def _delete_handler(path_builder, *, required: list[str]):
         return _api_request("DELETE", path_builder(args))
 
     return handler
+
+
+ACCIONES_QUE_PIDEN_CONFIRMACION = frozenset(
+    {
+        "hq_control_delete_user",
+        "hq_control_delete_provider",
+        "hq_control_delete_secret",
+        "hq_control_delete_schedule",
+        "hq_control_create_schedule",
+        "hq_control_update_schedule",
+        "hq_control_archive_agent",
+        "hq_control_uninstall_integration",
+        "hq_control_delete_integration_draft",
+    }
+)
+_VIGENCIA_CONFIRMACION = 1800
+_PALABRAS_SI = {
+    "si",
+    "sip",
+    "ok",
+    "okay",
+    "dale",
+    "confirmo",
+    "confirmado",
+    "adelante",
+    "procede",
+    "hazlo",
+    "apruebo",
+    "yes",
+}
+_PALABRAS_RELLENO = {
+    "de",
+    "acuerdo",
+    "por",
+    "favor",
+    "porfa",
+    "lo",
+    "la",
+    "el",
+    "ahora",
+    "elimina",
+    "eliminalo",
+    "borra",
+    "borralo",
+    "crea",
+    "crealo",
+    "archiva",
+    "archivalo",
+    "actualiza",
+    "actualizalo",
+    "desinstala",
+}
+_PALABRAS_QUE_ANULAN = {
+    "no",
+    "nunca",
+    "tampoco",
+    "espera",
+    "mejor",
+    "cancela",
+    "cancelar",
+    "cambia",
+    "pero",
+    "todavia",
+    "aun",
+}
+
+
+def _payload_tarea() -> dict:
+    try:
+        datos = json.loads(os.environ.get("HERMESHQ_TASK_PAYLOAD") or "{}")
+    except ValueError:
+        return {}
+    return datos if isinstance(datos, dict) else {}
+
+
+def _id_tarea() -> str:
+    return str(_payload_tarea().get("task_id") or "")
+
+
+def _usuario_confirma() -> bool:
+    texto = str(_payload_tarea().get("mensaje") or "").strip()
+    if not texto or len(texto) > 60 or "?" in texto:
+        return False
+    plano = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii").lower()
+    palabras = re.findall(r"[a-z]+", plano)
+    if not palabras or any(p in _PALABRAS_QUE_ANULAN for p in palabras) or not any(p in _PALABRAS_SI for p in palabras):
+        return False
+    return all(p in _PALABRAS_SI or p in _PALABRAS_RELLENO for p in palabras)
+
+
+def _pendiente_path():
+    from pathlib import Path
+
+    return Path(os.environ.get("HERMES_SESSION_CWD") or os.getcwd()) / "work" / ".control_pendiente.json"
+
+
+def _huella_accion(nombre: str, args: dict) -> str:
+    limpio = {k: v for k, v in (args or {}).items() if k != "confirmado_por_el_usuario"}
+    return hashlib.sha256(
+        json.dumps([nombre, limpio], sort_keys=True, ensure_ascii=False, default=str).encode()
+    ).hexdigest()
+
+
+def _con_confirmacion(nombre: str, handler):
+
+    def envuelto(args, **kwargs):
+        args = dict(args or {})
+        huella = _huella_accion(nombre, args)
+        ruta = _pendiente_path()
+        if args.get("confirmado_por_el_usuario"):
+            try:
+                pendiente = json.loads(ruta.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                pendiente = {}
+            vigente = time.time() - float(pendiente.get("ts") or 0) <= _VIGENCIA_CONFIRMACION
+            if (
+                pendiente.get("huella") == huella
+                and pendiente.get("task") != _id_tarea()
+                and vigente
+                and _usuario_confirma()
+            ):
+                resultado = handler({k: v for k, v in args.items() if k != "confirmado_por_el_usuario"}, **kwargs)
+                try:
+                    ruta.unlink()
+                except OSError:
+                    pass
+                return resultado
+        try:
+            ruta.parent.mkdir(parents=True, exist_ok=True)
+            ruta.write_text(
+                json.dumps({"huella": huella, "task": _id_tarea(), "ts": time.time(), "accion": nombre}),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+        limpio = {k: v for k, v in args.items() if k != "confirmado_por_el_usuario"}
+        return json.dumps(
+            {
+                "success": False,
+                "requiere_confirmacion": True,
+                "accion": nombre,
+                "parametros": limpio,
+                "error": "No se ejecutó: esta acción necesita la confirmación del usuario en un mensaje posterior.",
+                "siguiente": "Muéstrale al usuario exactamente qué vas a hacer (la acción y sus parámetros), pregunta si "
+                "confirma y termina tu respuesta. Cuando responda «sí», vuelve a llamar con los MISMOS argumentos y "
+                "confirmado_por_el_usuario=true. No lo ejecutes sin su «sí».",
+            },
+            ensure_ascii=False,
+        )
+
+    return envuelto
 
 
 def register(ctx):
@@ -937,6 +1092,16 @@ def register(ctx):
     ]
 
     for spec in specs:
+        if spec["name"] in ACCIONES_QUE_PIDEN_CONFIRMACION:
+            spec["handler"] = _con_confirmacion(spec["name"], spec["handler"])
+            propiedades = spec["parameters"].setdefault("properties", {})
+            propiedades["confirmado_por_el_usuario"] = {
+                "type": "boolean",
+                "description": "true solo cuando el usuario ya confirmó, en un mensaje posterior, la acción mostrada.",
+            }
+            spec["description"] = (
+                f"{spec['description']} Pide la confirmación del usuario: la primera llamada no ejecuta nada."
+            )
         ctx.register_tool(
             name=spec["name"],
             toolset="hermeshq_control",

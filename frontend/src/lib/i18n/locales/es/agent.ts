@@ -36,6 +36,7 @@ const ns: Record<string, string> = {
   "agent.thinkingMode": "Razonamiento del modelo",
   "agent.thinkingModeHint": "Desactivarlo hace que el agente responda mucho más rápido porque no \"piensa\" en silencio antes de contestar. Solo aplica a modelos Qwen servidos con chat_template_kwargs; en tareas complejas puede bajar la calidad.",
   "agent.thinkingModeOn": "Activado (más lento, más cuidadoso)",
+  "agent.thinkingModeAdaptive": "Adaptativo (piensa al planificar, no al leer resultados)",
   "agent.thinkingModeOff": "Desactivado (más rápido)",
   "agent.gatewayNotificationsMode": "Notificaciones del gateway",
   "agent.interactionModeInherit": "Heredar default de la instancia/runtime",

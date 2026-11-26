@@ -202,7 +202,7 @@ class SchedulePluginTests(unittest.TestCase):
         self.assertFalse(result["success"])
         api.assert_not_called()
 
-    def test_registers_its_tools_in_own_toolset(self):
+    def test_registers_the_tools_in_own_toolset(self):
         ctx = MagicMock()
         self.plugin.register(ctx)
         names = [call.kwargs["name"] for call in ctx.register_tool.call_args_list]
@@ -211,18 +211,41 @@ class SchedulePluginTests(unittest.TestCase):
             [
                 "hq_solicitar_capacidad",
                 "hq_trabajo_largo",
+                "hq_avance",
                 "hq_schedule_request",
                 "hq_schedule_approve",
                 "hq_schedule_list",
                 "hq_schedule_delete",
+                "hq_schedule_run",
+                "hq_schedule_pause",
+                "hq_schedule_resume",
+                "hq_schedule_runs",
             ],
         )
         self.assertTrue(all(call.kwargs["toolset"] == "hermeshq_schedule" for call in ctx.register_tool.call_args_list))
 
 
-def _db_with_existing(existing, user=None):
+def _sin_filas():
+    resultado = MagicMock()
+    resultado.scalars.return_value.all.return_value = []
+    return resultado
+
+
+def _live_task(user="u1", **metadata):
+    return SimpleNamespace(
+        id="t1",
+        agent_id="agent-1",
+        status="running",
+        created_by_user_id=None,
+        prompt="programa el informe",
+        metadata_json={"thread_user_id": user, "source": "public_chat", **metadata},
+    )
+
+
+def _db_with_existing(existing, user=None, task=None):
+    task = task if task is not None else _live_task()
     db = MagicMock()
-    db.get = AsyncMock(return_value=user)
+    db.get = AsyncMock(side_effect=lambda model, key: task if model.__name__ == "Task" else user)
     lock_result = MagicMock()
     existing_result = MagicMock()
     existing_result.scalars.return_value.all.return_value = existing
@@ -239,6 +262,7 @@ def _payload(**overrides):
         "cron_expression": "0 8 * * 1-5",
         "prompt": "Ejecuta la skill informe-diario-correos.",
         "requested_for_user_id": "u1",
+        "task_id": "t1",
     }
     data.update(overrides)
     return internal_agents.InternalScheduleCreate(**data)
@@ -267,10 +291,10 @@ class InternalScheduleEndpointTests(unittest.IsolatedAsyncioTestCase):
         db.commit.assert_awaited()
 
     async def test_rejects_without_user_context(self):
-        db = _db_with_existing([], self.user)
+        db = _db_with_existing([], self.user, task=_live_task(user=None))
         with self.assertRaises(HTTPException) as ctx:
             await self._create(db, _payload(requested_for_user_id=None))
-        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.status_code, 403)
 
     async def test_rejects_user_without_access_to_agent(self):
         db = _db_with_existing([], self.user)
@@ -322,6 +346,7 @@ class InternalScheduleEndpointTests(unittest.IsolatedAsyncioTestCase):
                 prompt="otro",
                 approval_status="pending",
                 created_by_agent_id="agent-1",
+                owner_user_id="u1",
             )
         ]
         db = _db_with_existing(existing, self.user)
@@ -331,23 +356,27 @@ class InternalScheduleEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("informe DIARIO", ctx.exception.detail)
         self.assertIn("Do not create it again", ctx.exception.detail)
 
-    async def test_delete_refuses_schedule_not_created_by_agent(self):
+    async def _delete(self, item):
+        task = _live_task()
+
+        def _get(model, key):
+            return {"Task": task, "User": self.user}.get(model.__name__, item)
+
         db = MagicMock()
-        db.get = AsyncMock(
-            return_value=SimpleNamespace(id="s1", agent_id="agent-1", created_by_agent_id=None, name="manual")
-        )
+        db.get = AsyncMock(side_effect=_get)
+        with patch.object(internal_agents, "can_access_agent", AsyncMock(return_value=True)):
+            return await internal_agents.delete_own_schedule("s1", self.agent, db, task_id="t1")
+
+    async def test_delete_refuses_schedule_not_created_by_agent(self):
+        item = SimpleNamespace(id="s1", agent_id="agent-1", created_by_agent_id=None, name="manual", owner_user_id="u1")
         with self.assertRaises(HTTPException) as ctx:
-            await internal_agents.delete_own_schedule("s1", self.agent, db)
+            await self._delete(item)
         self.assertEqual(ctx.exception.status_code, 403)
-        self.assertIn("delete or edit it themselves", ctx.exception.detail)
 
     async def test_delete_refuses_other_agents_schedule(self):
-        db = MagicMock()
-        db.get = AsyncMock(
-            return_value=SimpleNamespace(id="s1", agent_id="agent-2", created_by_agent_id="agent-2", name="x")
-        )
+        item = SimpleNamespace(id="s1", agent_id="agent-2", created_by_agent_id="agent-2", name="x", owner_user_id="u1")
         with self.assertRaises(HTTPException) as ctx:
-            await internal_agents.delete_own_schedule("s1", self.agent, db)
+            await self._delete(item)
         self.assertEqual(ctx.exception.status_code, 404)
 
 
@@ -370,6 +399,7 @@ class ChatApprovalTests(unittest.IsolatedAsyncioTestCase):
     async def _approve(self, item, task, task_id="t1"):
         db = MagicMock()
         db.get = AsyncMock(side_effect=lambda model, key: task if model.__name__ == "Task" else item)
+        db.execute = AsyncMock(return_value=_sin_filas())
         db.add = MagicMock()
         db.commit = AsyncMock()
         body = internal_agents.InternalScheduleApprove(task_id=task_id)
@@ -455,6 +485,7 @@ class ApprovalTests(unittest.IsolatedAsyncioTestCase):
     async def _approve(self, item, user_id, prompt=None, cron=None):
         db = MagicMock()
         db.get = AsyncMock(return_value=item)
+        db.execute = AsyncMock(return_value=_sin_filas())
         db.add = MagicMock()
         db.commit = AsyncMock()
         db.refresh = AsyncMock()
@@ -512,7 +543,7 @@ class ApprovalTests(unittest.IsolatedAsyncioTestCase):
             self.assertRaises(HTTPException) as ctx,
         ):
             await scheduled_tasks.update_scheduled_task(
-                "s1", ScheduledTaskUpdate(enabled=True), SimpleNamespace(id="u1"), db
+                "s1", ScheduledTaskUpdate(enabled=True), SimpleNamespace(id="u1", role="user"), db
             )
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertFalse(item.enabled)

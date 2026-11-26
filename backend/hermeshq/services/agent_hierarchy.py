@@ -84,4 +84,6 @@ def route_label(route: str) -> str:
         "source_blocked": "source cannot send tasks",
         "target_blocked": "target cannot receive tasks",
         "self": "self blocked",
+        "other_user_requires_user_approval": "another person's agent: ask your user first",
+        "other_user_blocked": "agente de otra persona: bloqueado, su usuario debe pedírselo a su propio agente",
     }.get(route, route)

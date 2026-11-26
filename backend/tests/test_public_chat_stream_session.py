@@ -55,3 +55,20 @@ class TestCancelRouteShortCircuits(unittest.IsolatedAsyncioTestCase):
         events = [json.loads(str(chunk).removeprefix("data: ")) for chunk in chunks if str(chunk).startswith("data: ")]
         self.assertEqual(events[0]["type"], "done")
         self.assertIn("cancelé", events[0]["content"])
+
+    async def test_inflight_followup_streams_done_without_a_task(self):
+        service = MagicMock()
+        service.handle_cancel_request = AsyncMock(return_value=None)
+        service.send_message = AsyncMock(
+            return_value=(None, "⏳ Sigo trabajando en tu solicitud anterior (llevo 4 min).")
+        )
+        db = AsyncMock()
+        with patch.object(public_chat, "_get_service", return_value=service):
+            response = await public_chat.send_message(
+                "s1", SendMessageRequest(content="y el informe?"), _request(service), "tok", db
+            )
+        db.close.assert_awaited_once()
+        chunks = [chunk async for chunk in response.body_iterator]
+        events = [json.loads(str(chunk).removeprefix("data: ")) for chunk in chunks if str(chunk).startswith("data: ")]
+        self.assertEqual(events[0]["type"], "done")
+        self.assertIn("solicitud anterior", events[0]["content"])

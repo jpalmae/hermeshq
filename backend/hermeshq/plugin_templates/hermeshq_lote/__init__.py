@@ -245,8 +245,96 @@ def _edit_many_tool(args: dict, **_kwargs) -> str:
         applied.append(number)
     if problems:
         return _answer({"success": False, "error": "No se cambió nada.", "problemas": problems})
-    path.write_text(updated, encoding="utf-8")
-    return _answer({"success": True, "ediciones_aplicadas": len(applied), "path": args["path"]})
+    destino = _siguiente_version(path)
+    destino.write_text(updated, encoding="utf-8")
+    return _answer(
+        {
+            "success": True,
+            "ediciones_aplicadas": len(applied),
+            "path": args["path"],
+            "archivo_nuevo": str(destino.relative_to(_workspace())),
+            "original_intacto": True,
+        }
+    )
+
+
+def _siguiente_version(path: Path) -> Path:
+    n = 2
+    while True:
+        candidato = path.with_name(f"{path.stem}_v{n}{path.suffix}")
+        if not candidato.exists():
+            return candidato
+        n += 1
+
+
+MAX_CAPTURE_PAGES = 6
+CAPTURE_DPI_DEFAULT = 70
+MAX_FIND_TEXTS = 8
+
+
+_CLAVES_DE_RUTA = ("path", "archivo", "file_path", "file", "ruta", "html")
+
+
+def _ruta_pedida(args: dict) -> str:
+    for clave in _CLAVES_DE_RUTA:
+        valor = args.get(clave)
+        if isinstance(valor, str) and valor.strip():
+            return valor.strip()
+    return ""
+
+
+def _html_capture_tool(args: dict, **_kwargs) -> str:
+    ruta_pedida = _ruta_pedida(args)
+    path = _resolve(ruta_pedida)
+    if not ruta_pedida:
+        return _answer({"success": False, "error": "Falta 'path' (archivo .html dentro de tu carpeta de trabajo)."})
+    if not _inside(path, _workspace()) or not path.is_file():
+        return _answer({"success": False, "error": "El archivo no existe o está fuera de tu carpeta de trabajo."})
+    try:
+        import pymupdf
+        import weasyprint
+    except ImportError:
+        return _answer({"success": False, "error": "No está disponible el motor de captura en este servidor."})
+    dpi = _bounded(args.get("dpi"), CAPTURE_DPI_DEFAULT, 40, 150)
+    try:
+        pdf = weasyprint.HTML(filename=str(path)).write_pdf()
+        document = pymupdf.open(stream=pdf, filetype="pdf")
+    except Exception as exc:  # noqa: BLE001
+        return _answer({"success": False, "error": f"No se pudo renderizar el HTML: {str(exc)[:200]}"})
+    total = len(document)
+    wanted = args.get("pages")
+    if isinstance(wanted, int):
+        wanted = [wanted]
+    if isinstance(wanted, list) and wanted:
+        numbers = [n for n in (_bounded(x, 0, 0, total) for x in wanted) if 1 <= n <= total]
+    else:
+        numbers = list(range(1, min(total, MAX_CAPTURE_PAGES) + 1))
+    numbers = list(dict.fromkeys(numbers))[:MAX_CAPTURE_PAGES]
+    folder = _workspace() / "work" / "capturas"
+    folder.mkdir(parents=True, exist_ok=True)
+    images = []
+    for number in numbers:
+        target = folder / f"{path.stem}-p{number}.png"
+        document[number - 1].get_pixmap(dpi=dpi).save(str(target))
+        images.append({"page": number, "path": str(target.relative_to(_workspace()))})
+    found = {}
+    texts = args.get("find") or []
+    if isinstance(texts, str):
+        texts = [texts]
+    for text in [str(t) for t in texts if str(t).strip()][:MAX_FIND_TEXTS]:
+        found[text] = [i + 1 for i in range(total) if text.lower() in document[i].get_text().lower()]
+    answer = {
+        "success": True,
+        "pages_total": total,
+        "images": images,
+        "note": (
+            "Es una captura estática (sin JavaScript): lo que la página arma con scripts puede no aparecer. "
+            "Revisa las imágenes con una sola llamada a vision_analyze por imagen."
+        ),
+    }
+    if found:
+        answer["found_on_pages"] = found
+    return _answer(answer)
 
 
 def register(ctx):
@@ -345,4 +433,36 @@ def register(ctx):
         },
         handler=_edit_many_tool,
         emoji="✏️",
+    )
+    ctx.register_tool(
+        name="hq_html_capturar",
+        toolset="hermeshq_lote",
+        schema={
+            "name": "hq_html_capturar",
+            "description": (
+                "Convierte un archivo HTML de tu carpeta en imágenes PNG de sus páginas (y, si quieres, dice en qué "
+                "página aparece cada texto) en UNA llamada. Úsala para revisar visualmente un informe HTML con "
+                "vision_analyze; no pruebes navegadores ni conversores. No ejecuta JavaScript."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Ruta del .html en tu carpeta de trabajo."},
+                    "pages": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Páginas a capturar (default: las primeras 6).",
+                    },
+                    "find": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Textos cuya página quieres ubicar.",
+                    },
+                    "dpi": {"type": "integer", "description": "Resolución (default 70, máx 150)."},
+                },
+                "required": ["path"],
+            },
+        },
+        handler=_html_capture_tool,
+        emoji="📸",
     )

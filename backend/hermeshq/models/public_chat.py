@@ -29,6 +29,10 @@ class PublicChatApiKey(TimestampMixin, Base):
     )
     trust_sender_id: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     last_notification_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    bot_channel_id: Mapped[str | None] = mapped_column(
+        ForeignKey("bot_channels.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    last_poll_instance: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class PublicChatSession(TimestampMixin, Base):
@@ -42,6 +46,8 @@ class PublicChatSession(TimestampMixin, Base):
     last_activity: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     ttl_minutes: Mapped[int] = mapped_column(Integer, default=10)
     sender_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    aad_object_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class PublicChatMessage(TimestampMixin, Base):
@@ -80,3 +86,9 @@ class PublicChatNotification(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    bot_channel_id: Mapped[str | None] = mapped_column(
+        ForeignKey("bot_channels.id", ondelete="SET NULL"), nullable=True
+    )
+    recipient_external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    recipient_aad_object_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    origin: Mapped[str | None] = mapped_column(String(32), nullable=True)

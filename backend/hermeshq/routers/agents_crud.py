@@ -157,7 +157,7 @@ async def create_agent(
         {
             "approval_mode": payload.approval_mode,
             "tool_progress_mode": payload.tool_progress_mode,
-            "thinking_mode": payload.thinking_mode,
+            "thinking_mode": payload.thinking_mode or "off",
             "gateway_notifications_mode": payload.gateway_notifications_mode,
         },
     )

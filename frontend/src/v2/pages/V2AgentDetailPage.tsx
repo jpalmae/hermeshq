@@ -197,7 +197,7 @@ export function V2AgentDetailPage() {
     { id: "permissions" as DetailTab, label: t("v2.permissions") },
     { id: "devices", label: t("v2.devices") },
     { id: "skills", label: t("v2.skills") },
-    { id: "workspace", label: t("v2.workspace") },
+    ...(isAdmin ? [{ id: "workspace" as DetailTab, label: t("v2.workspace") }] : []),
     { id: "ledger", label: t("v2.ledger") },
     { id: "activity", label: t("v2.activity") },
   ];
@@ -416,7 +416,7 @@ export function V2AgentDetailPage() {
         </section>
       ) : null}
 
-      {tab === "workspace" ? (
+      {tab === "workspace" && isAdmin ? (
         <section className="v2-card">
           <div className="v2-card-body">
             <WorkspacePanel agentId={agent.id} />

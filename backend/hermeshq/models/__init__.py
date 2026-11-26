@@ -4,6 +4,7 @@ from hermeshq.models.agent_assignment import AgentAssignment
 from hermeshq.models.app_settings import AppSettings
 from hermeshq.models.audit_log import AuditLog
 from hermeshq.models.base import Base
+from hermeshq.models.bot_channel import BotChannel, PublicChatDeliveryPref, UserChannelIdentity
 from hermeshq.models.capability_request import CapabilityRequest
 from hermeshq.models.cloud import CloudBinding, CloudPlatform, CloudTenant
 from hermeshq.models.conversation_thread import ConversationThread
@@ -45,10 +46,13 @@ __all__ = [
     "AppSettings",
     "AuditLog",
     "Base",
+    "BotChannel",
     "CapabilityRequest",
     "CloudBinding",
     "CloudPlatform",
     "CloudTenant",
+    "PublicChatDeliveryPref",
+    "UserChannelIdentity",
     "ConversationThread",
     "EnrolledDevice",
     "ExternalActionRecord",
@@ -67,6 +71,7 @@ __all__ = [
     "PublicChatNotification",
     "PublicChatSession",
     "PublicChatTranscript",
+    "CapabilityRequest",
     "ScheduledTask",
     "Secret",
     "SshDestination",

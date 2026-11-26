@@ -440,8 +440,8 @@ export interface Task {
   priority: number;
   response: string | null;
   error_message: string | null;
-  messages_json: Array<{ role: string; content: string }>;
-  tool_calls: Array<{ name: string; status: string; payload: Record<string, unknown> }>;
+  messages_json?: Array<{ role: string; content: string }>;
+  tool_calls?: Array<{ name: string; status: string; payload: Record<string, unknown> }>;
   tokens_used: number;
   iterations: number;
   queued_at: string;
@@ -502,6 +502,8 @@ export interface ScheduledTask {
   approval_status: "approved" | "pending";
   created_by_agent_id: string | null;
   notify_public_chat: boolean;
+  output_format?: string | null;
+  definition_version?: number;
   last_run: string | null;
   next_run: string | null;
   created_at: string;

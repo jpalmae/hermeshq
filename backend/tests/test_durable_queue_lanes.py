@@ -14,6 +14,7 @@ from hermeshq.config import get_settings
 from hermeshq.models.agent import Agent
 from hermeshq.models.base import utcnow
 from hermeshq.models.node import Node
+from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.task import Task
 from hermeshq.models.task_execution import ExternalActionRecord, TaskExecutionAttempt
 from hermeshq.services import admision
@@ -268,3 +269,38 @@ async def test_stale_scheduled_run_is_not_requeued(db_engine, db_session) -> Non
         stored = await session.get(Task, task.id)
     assert stored is not None and stored.status == "failed"
     assert stored.metadata_json["recovery"]["estado"] == "programada_vencida"
+
+
+async def test_claimed_run_of_a_revoked_schedule_is_cancelled(db_engine, db_session) -> None:
+    agent = await agent_fixture(db_session)
+    schedule = ScheduledTask(
+        agent_id=agent.id,
+        name="diario",
+        cron_expression="0 9 * * *",
+        prompt="resumen",
+        enabled=False,
+        approval_status="approved",
+    )
+    db_session.add(schedule)
+    await db_session.flush()
+    task = Task(
+        agent_id=agent.id,
+        prompt="resumen",
+        metadata_json={"scheduled": True, "scheduled_task_id": schedule.id},
+    )
+    db_session.add(task)
+    await db_session.commit()
+    engine, _ = db_engine
+    session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    runtime = BlockingRuntime()
+    supervisor = make_supervisor(session_factory, runtime)
+
+    claimed = await supervisor._claim_next_task()
+    assert claimed is not None
+    await supervisor._run_task(*claimed)
+
+    async with session_factory() as session:
+        stored = await session.get(Task, task.id)
+    assert runtime.started == []
+    assert stored is not None and stored.status == "cancelled"
+    assert stored.metadata_json["end_reason"] == "programacion_no_vigente"

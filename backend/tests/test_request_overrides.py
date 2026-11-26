@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from fastapi import HTTPException
 
 from hermeshq.routers.agents_shared import _apply_agent_runtime_behavior_settings
@@ -137,6 +138,39 @@ class MigrationChainTests(unittest.TestCase):
         self.assertEqual(len(revisions - downs), 1, sorted(revisions - downs))
 
 
+class TestScheduledTasksThinking(unittest.TestCase):
+    def _task(self, scheduled):
+        return SimpleNamespace(metadata_json={"scheduled": True} if scheduled else {"source": "public_chat"})
+
+    def _build(self, mode, task, setting="off"):
+        from unittest.mock import patch
+
+        with patch("hermeshq.config.get_settings", return_value=SimpleNamespace(scheduled_tasks_thinking=setting)):
+            return HermesRuntime._build_request_overrides(
+                SimpleNamespace(thinking_mode=mode), Path("/nonexistent"), task
+            )
+
+    def test_scheduled_task_runs_without_thinking_even_if_agent_has_it_on(self):
+        out = self._build("on", self._task(True))
+        self.assertEqual(out["extra_body"]["chat_template_kwargs"]["enable_thinking"], False)
+
+    def test_scheduled_task_with_inherit_agent_also_turns_it_off(self):
+        out = self._build(None, self._task(True))
+        self.assertEqual(out["extra_body"]["chat_template_kwargs"]["enable_thinking"], False)
+
+    def test_chat_task_keeps_the_agent_setting(self):
+        out = self._build("on", self._task(False))
+        self.assertEqual(out["extra_body"]["chat_template_kwargs"]["enable_thinking"], True)
+
+    def test_inherit_setting_leaves_scheduled_tasks_with_the_agent_mode(self):
+        out = self._build("on", self._task(True), setting="inherit")
+        self.assertEqual(out["extra_body"]["chat_template_kwargs"]["enable_thinking"], True)
+
+    def test_without_a_task_behaviour_is_unchanged(self):
+        out = self._build("off", None)
+        self.assertEqual(out["extra_body"]["chat_template_kwargs"]["enable_thinking"], False)
+
+
 class TestAdaptiveThinking(unittest.TestCase):
     def test_adaptive_starts_with_thinking_on_for_the_planning_call(self):
         self.assertEqual(
@@ -181,50 +215,114 @@ class TestAdaptiveThinking(unittest.TestCase):
         self.assertEqual(recibidas[2]["extra_body"], {"chat_template_kwargs": {"a": 1, "enable_thinking": False}})
 
 
+class TestWrapUpOverrides(unittest.TestCase):
+    def setUp(self):
+        pytest.importorskip("openai")
+
+    SUMMARY = [
+        {"role": "assistant", "content": "trabajé"},
+        {
+            "role": "user",
+            "content": (
+                "You've reached the maximum number of tool-calling iterations allowed. "
+                "Please provide a final response summarizing what you've found."
+            ),
+        },
+    ]
+
+    def _run(self, overrides, adaptativo, messages, extra_body=None, tools=None):
+        import importlib.util
+        from pathlib import Path
+
+        from openai.resources.chat.completions import Completions
+
+        runner_path = Path(__file__).resolve().parents[1] / "hermeshq" / "scripts" / "hermes_task_runner.py"
+        spec = importlib.util.spec_from_file_location("runner_wrapup_under_test", runner_path)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+
+        recibidas = []
+        original = Completions.create
+
+        def registrar(self, *args, **kwargs):
+            recibidas.append(kwargs)
+            return None
+
+        Completions.create = registrar
+        try:
+            runner._aplicar_overrides_resumen(overrides, adaptativo)
+            llamada = Completions.create
+            kwargs = {"messages": messages}
+            if extra_body is not None:
+                kwargs["extra_body"] = extra_body
+            if tools is not None:
+                kwargs["tools"] = tools
+            llamada(None, **kwargs)
+        finally:
+            Completions.create = original
+        return recibidas[0]
+
+    def test_wrapup_call_inherits_thinking_off_and_parallel_tool_calls(self):
+        overrides = {"parallel_tool_calls": False, "extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+        kwargs = self._run(overrides, False, self.SUMMARY, extra_body={"reasoning": {"effort": "medium"}})
+        self.assertIs(kwargs["parallel_tool_calls"], False)
+        self.assertEqual(kwargs["extra_body"]["chat_template_kwargs"]["enable_thinking"], False)
+        self.assertEqual(kwargs["extra_body"]["reasoning"], {"effort": "medium"})
+
+    def test_adaptive_forces_thinking_off_even_when_overrides_say_on(self):
+        overrides = {"extra_body": {"chat_template_kwargs": {"enable_thinking": True}}}
+        kwargs = self._run(overrides, True, self.SUMMARY)
+        self.assertEqual(kwargs["extra_body"]["chat_template_kwargs"]["enable_thinking"], False)
+
+    def test_a_normal_call_is_left_untouched(self):
+        overrides = {"parallel_tool_calls": False, "extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+        normal = [{"role": "user", "content": "hola"}, {"role": "tool", "content": "r"}]
+        kwargs = self._run(overrides, False, normal, extra_body={"x": 1})
+        self.assertNotIn("parallel_tool_calls", kwargs)
+        self.assertEqual(kwargs["extra_body"], {"x": 1})
+
+    def test_a_call_that_still_carries_tools_is_not_the_wrapup(self):
+        overrides = {"parallel_tool_calls": False}
+        kwargs = self._run(overrides, False, self.SUMMARY, tools=[{"type": "function"}])
+        self.assertNotIn("parallel_tool_calls", kwargs)
+
+
 class TestPlatformRules(unittest.TestCase):
     def test_every_agent_gets_the_same_rules(self):
-        text = HermesRuntime._with_platform_rules("# ROLE\nYou are an assistant.")
-        for phrase in ("Keep reasoning brief", "Codes, identifiers", "execute_code", "background"):
-            self.assertIn(phrase, text)
-        self.assertTrue(text.startswith("# ROLE\nYou are an assistant."))
+        texto = HermesRuntime._with_platform_rules("# ROL\nEres un asistente.")
+        for frase in (
+            "Razonamiento breve",
+            "Códigos, identificadores",
+            "hq_trabajo_largo",
+            "execute_code",
+            "hq_leer_varios",
+        ):
+            self.assertIn(frase, texto)
+        self.assertTrue(texto.startswith("# ROL\nEres un asistente."))
 
-    def test_the_rules_only_name_tools_that_exist_in_the_platform(self):
-        for name in ("hq_trabajo_largo", "hq_leer_varios", "hq_buscar_varios", "hq_skills_ver", "hq_editar_varios"):
-            self.assertNotIn(name, HermesRuntime._with_platform_rules(""))
+    def test_a_prompt_that_already_caps_reasoning_is_not_told_twice(self):
+        previo = "# ROL\nx\n\n# RAZONAMIENTO BREVE\nRazona en un máximo de 5 líneas."
+        texto = HermesRuntime._with_platform_rules(previo)
+        self.assertNotIn("- Razonamiento breve", texto)
+        self.assertIn("Códigos, identificadores", texto)
+
+    def test_rules_forbid_answering_an_instruction_with_only_a_greeting(self):
+        texto = HermesRuntime._with_platform_rules("# ROL\nEres un asistente.")
+        self.assertIn("nunca respondas solo con un saludo", texto)
+
+
+class TestPromptNoneSafety(unittest.TestCase):
+    def test_notices_tolerate_a_none_prompt(self):
+        ws = Path(tempfile.gettempdir())
+        texto = HermesRuntime._prompt_with_notices(None, {"conversation": True}, ws)
+        self.assertIsInstance(texto, str)
+
+    def test_previous_files_tolerate_a_none_prompt(self):
+        ws = Path(tempfile.gettempdir())
+        texto = HermesRuntime._prompt_with_previous_files(None, ws, [{"role": "user", "content": "hola"}])
+        self.assertIsInstance(texto, str)
+        self.assertNotIn("None", texto)
 
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class TestScheduledTasksThinking(unittest.TestCase):
-    def _task(self, scheduled):
-        return SimpleNamespace(metadata_json={"scheduled": True} if scheduled else {"source": "public_chat"})
-
-    def _build(self, mode, task, setting="off"):
-        from unittest.mock import patch
-
-        with patch("hermeshq.config.get_settings", return_value=SimpleNamespace(scheduled_tasks_thinking=setting)):
-            return HermesRuntime._build_request_overrides(
-                SimpleNamespace(thinking_mode=mode), Path("/nonexistent"), task
-            )
-
-    def test_scheduled_task_runs_without_thinking_even_if_agent_has_it_on(self):
-        out = self._build("on", self._task(True))
-        self.assertEqual(out["extra_body"]["chat_template_kwargs"]["enable_thinking"], False)
-
-    def test_scheduled_task_with_inherit_agent_also_turns_it_off(self):
-        out = self._build(None, self._task(True))
-        self.assertEqual(out["extra_body"]["chat_template_kwargs"]["enable_thinking"], False)
-
-    def test_chat_task_keeps_the_agent_setting(self):
-        out = self._build("on", self._task(False))
-        self.assertEqual(out["extra_body"]["chat_template_kwargs"]["enable_thinking"], True)
-
-    def test_inherit_setting_leaves_scheduled_tasks_with_the_agent_mode(self):
-        out = self._build("on", self._task(True), setting="inherit")
-        self.assertEqual(out["extra_body"]["chat_template_kwargs"]["enable_thinking"], True)
-
-    def test_without_a_task_behaviour_is_unchanged(self):
-        out = self._build("off", None)
-        self.assertEqual(out["extra_body"]["chat_template_kwargs"]["enable_thinking"], False)

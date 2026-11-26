@@ -1,5 +1,8 @@
+import datetime
+import hashlib
 import json
 import logging
+import os
 import re
 import shutil
 import stat
@@ -41,6 +44,153 @@ from .gateway_env import build_safe_env
 
 logger = logging.getLogger(__name__)
 
+ALCANCE_ARCHIVO = ".hermeshq-alcance.json"
+RECHAZADAS_ARCHIVO = ".hermeshq-rechazadas.json"
+PLANTILLA_MARCA = ".hermeshq-plantilla"
+NO_COMPARTIDA_MARCA = ".hermeshq-ya-no-compartida"
+TODOS = "todos"
+IGNORADOS_EN_HASH = (ALCANCE_ARCHIVO, PLANTILLA_MARCA, NO_COMPARTIDA_MARCA, "__pycache__")
+HASH_VERSION = "v2:"
+
+
+def _archivos_de(carpeta: Path, ignorados) -> list[Path]:
+    salida: list[Path] = []
+    for actual, dirs, archivos in os.walk(carpeta):
+        base = Path(actual)
+        visibles = [d for d in dirs if d not in ignorados]
+        salida.extend(base / d for d in visibles if (base / d).is_symlink())
+        dirs[:] = sorted(d for d in visibles if not (base / d).is_symlink())
+        salida.extend(base / a for a in archivos if a not in ignorados)
+    return sorted(salida)
+
+
+def _hash_skill_md(carpeta: Path) -> str:
+    archivo = carpeta / "SKILL.md"
+    try:
+        return hashlib.sha256(archivo.read_bytes()).hexdigest() if archivo.is_file() else ""
+    except OSError:
+        return ""
+
+
+def _hash_skill(carpeta: Path) -> str:
+    huella = hashlib.sha256()
+    try:
+        for archivo in _archivos_de(carpeta, IGNORADOS_EN_HASH):
+            huella.update(archivo.relative_to(carpeta).as_posix().encode("utf-8") + b"\0")
+            if archivo.is_symlink():
+                huella.update(b"enlace:" + os.readlink(archivo).encode("utf-8"))
+            elif archivo.is_file():
+                huella.update(hashlib.sha256(archivo.read_bytes()).digest())
+            huella.update(b"\0")
+    except OSError:
+        return ""
+    return HASH_VERSION + huella.hexdigest()
+
+
+def _marcar_plantilla(destino: Path) -> None:
+    try:
+        (destino / PLANTILLA_MARCA).write_text(_hash_skill(destino), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _es_fork(destino: Path) -> bool:
+    marca = destino / PLANTILLA_MARCA
+    if not marca.is_file():
+        return False
+    try:
+        guardado = marca.read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    if guardado.startswith(HASH_VERSION):
+        return guardado != _hash_skill(destino)
+    return guardado != _hash_skill_md(destino)
+
+
+def _conservar_fork(destino: Path, raiz_skills: Path) -> Path:
+    privadas = raiz_skills / "usuario"
+    privadas.mkdir(parents=True, exist_ok=True)
+    nombre = destino.name
+    final = privadas / nombre
+    n = 1
+    while final.exists():
+        final = privadas / (f"{nombre}-propia" if n == 1 else f"{nombre}-propia-{n}")
+        n += 1
+    shutil.move(str(destino), str(final))
+    try:
+        (final / PLANTILLA_MARCA).unlink(missing_ok=True)
+        (final / NO_COMPARTIDA_MARCA).write_text(
+            json.dumps({"origen": f"biblioteca/{nombre}", "fecha": f"{datetime.datetime.now():%Y-%m-%d}"}),
+            encoding="utf-8",
+        )
+        skill_md = final / "SKILL.md"
+        if final.name != nombre and skill_md.is_file():
+            texto = skill_md.read_text(encoding="utf-8")
+            skill_md.write_text(
+                re.sub(r"^name:\s*.*$", f"name: {final.name}", texto, count=1, flags=re.M), encoding="utf-8"
+            )
+    except OSError:
+        pass
+    logger.info("Skill compartida retirada; se conserva la copia editada en %s", final)
+    return final
+
+
+def _alcance_de_datos(datos):
+    if not isinstance(datos, dict) or "destinatarios" not in datos:
+        return []
+    valor = datos["destinatarios"]
+    if valor is None:
+        return TODOS if "autor" in datos else []
+    if isinstance(valor, str):
+        valor = [valor]
+    if not isinstance(valor, list) or not all(isinstance(v, str) for v in valor):
+        return []
+    ids = [v.strip() for v in valor if v.strip()]
+    if any(v.lower() in ("todos", "todas", "all") for v in ids):
+        return TODOS
+    return ids
+
+
+def _alcance_de_biblioteca(carpeta: Path):
+    archivo = carpeta / ALCANCE_ARCHIVO
+    if not archivo.is_file():
+        return []
+    try:
+        return _alcance_de_datos(json.loads(archivo.read_text(encoding="utf-8")))
+    except (ValueError, OSError):
+        return []
+
+
+def leer_rechazadas(skills_root: Path) -> set[str]:
+    archivo = skills_root / RECHAZADAS_ARCHIVO
+    try:
+        datos = json.loads(archivo.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return set()
+    if not isinstance(datos, list):
+        return set()
+    return {v for v in datos if isinstance(v, str) and v}
+
+
+def _escribir_rechazadas(skills_root: Path, nombres: set[str]) -> None:
+    archivo = skills_root / RECHAZADAS_ARCHIVO
+    if nombres:
+        archivo.write_text(json.dumps(sorted(nombres), ensure_ascii=False), encoding="utf-8")
+    elif archivo.exists():
+        archivo.unlink()
+
+
+def rechazar_skill_compartida(skills_root: Path, nombre: str) -> None:
+    _escribir_rechazadas(skills_root, leer_rechazadas(skills_root) | {nombre})
+
+
+def adoptar_skill_compartida(skills_root: Path, nombre: str) -> bool:
+    actuales = leer_rechazadas(skills_root)
+    if nombre not in actuales:
+        return False
+    _escribir_rechazadas(skills_root, actuales - {nombre})
+    return True
+
 
 def _protect_file(path: Path) -> None:
     """Set file permissions to owner-only read/write (0o600) for files containing secrets."""
@@ -70,6 +220,7 @@ class HermesInstallationManager:
     _WHATSAPP_BRIDGE_SOURCE = Path(__file__).resolve().parents[2] / "assets" / "whatsapp-bridge"
     _CUSTOM_OPENAI_PROVIDER_KEY = "hermeshq-openai-compatible"
     _CUSTOM_OPENAI_PROVIDER_NAME = "HermesHQ OpenAI-compatible"
+    _COMPRESSION_TIMEOUT_SECONDS = 120.0
     _VOICE_PRESET_DEFAULTS = {
         "es": {
             "edge_voice": "es-MX-JorgeNeural",
@@ -114,6 +265,7 @@ class HermesInstallationManager:
         active_skin = await self._sync_global_skin(hermes_home)
         app_name = await self._get_instance_app_name()
         installed_skills = await self._sync_managed_skills(agent, hermes_home, enabled_integrations)
+        self._sync_shared_library(hermes_home)
         system_prompt = await self._build_system_prompt(agent, installed_skills, app_name)
         messaging_channels = await self._load_messaging_channels(agent.id)
         self._sync_whatsapp_bridge_assets(hermes_home)
@@ -168,6 +320,7 @@ class HermesInstallationManager:
             **build_safe_env(extra_allow=aws_sdk_env_allow),
             "HERMES_HOME": str(hermes_home),
             "TERM": "xterm-256color",
+            "TZ": "America/Santiago",
         }
         env["HERMESHQ_AGENT_ID"] = agent.id
         env["HERMESHQ_AGENT_TOKEN"] = create_agent_service_token(agent.id, agent.service_token_version or 1)
@@ -335,7 +488,16 @@ class HermesInstallationManager:
                 expected_name = target_dir.name
                 agent.skills = [skill for skill in current_skills if skill.strip().split("/")[-1] != expected_name]
 
+        if "biblioteca" in target_dir.relative_to(skills_root).parts[:1]:
+            rechazar_skill_compartida(skills_root, target_dir.name)
         shutil.rmtree(target_dir)
+        _invalidate_install_cached(agent.id)
+        return await self.sync_agent_installation(agent)
+
+    async def adoptar_skill_compartida(self, agent: Agent, nombre: str) -> list[dict]:
+        hermes_home = self.build_hermes_home(agent.workspace_path)
+        if not adoptar_skill_compartida(hermes_home / "skills", nombre):
+            raise HermesInstallationError("Installed skill not found")
         _invalidate_install_cached(agent.id)
         return await self.sync_agent_installation(agent)
 
@@ -441,6 +603,19 @@ class HermesInstallationManager:
             return {}
         return {"chat_template_kwargs": {"enable_thinking": False}}
 
+    @classmethod
+    def _apply_compression_overrides(cls, entry: dict) -> None:
+        extra_body = entry.get("extra_body")
+        if not isinstance(extra_body, dict):
+            extra_body = {}
+        chat_template_kwargs = extra_body.get("chat_template_kwargs")
+        if not isinstance(chat_template_kwargs, dict):
+            chat_template_kwargs = {}
+        chat_template_kwargs["enable_thinking"] = False
+        extra_body["chat_template_kwargs"] = chat_template_kwargs
+        entry["extra_body"] = extra_body
+        entry.setdefault("timeout", cls._COMPRESSION_TIMEOUT_SECONDS)
+
     def _write_config(
         self,
         agent: Agent,
@@ -490,6 +665,18 @@ class HermesInstallationManager:
                 "memory_char_limit": get_settings().agent_memory_char_limit,
                 "user_char_limit": get_settings().user_memory_char_limit,
             },
+        }
+        config["compression"] = {
+            "enabled": True,
+            "threshold": get_settings().compression_threshold,
+            "target_ratio": get_settings().compression_target_ratio,
+            "protect_last_n": 20,
+        }
+        config["tool_loop_guardrails"] = {
+            "warnings_enabled": True,
+            "hard_stop_enabled": True,
+            "warn_after": {"exact_failure": 2, "same_tool_failure": 3, "idempotent_no_progress": 2},
+            "hard_stop_after": {"exact_failure": 5, "same_tool_failure": 8, "idempotent_no_progress": 5},
         }
         model_context_length = get_settings().model_context_length
         if model_context_length > 0:
@@ -604,7 +791,6 @@ class HermesInstallationManager:
         #
         # `model` must be set explicitly: without it, hermes-agent's
         # auxiliary client falls back to a hardcoded "gpt-4o-mini", which
-        # most custom/self-hosted providers (e.g. a self-hosted gateway) do
         # not serve, making vision/compression/web_extract fail with a 403
         # for every agent that doesn't have a manual auxiliary_models
         # override. Reusing the agent's own main model guarantees the same
@@ -623,10 +809,10 @@ class HermesInstallationManager:
                         entry["model"] = aux_model
                     aux_section[task_name] = entry
         thinking_extra_body = self._thinking_extra_body(agent)
-        if thinking_extra_body:
-            for task_name in ("compression", "web_extract"):
-                if task_name in aux_section:
-                    aux_section[task_name].setdefault("extra_body", json.loads(json.dumps(thinking_extra_body)))
+        if thinking_extra_body and "web_extract" in aux_section:
+            aux_section["web_extract"].setdefault("extra_body", json.loads(json.dumps(thinking_extra_body)))
+        if "compression" in aux_section:
+            self._apply_compression_overrides(aux_section["compression"])
         if aux_section:
             config["auxiliary"] = aux_section
         # ── Plugins: enable plugins installed in HERMES_HOME/plugins/ ───────
@@ -733,6 +919,49 @@ class HermesInstallationManager:
             encoding="utf-8",
         )
 
+    @staticmethod
+    def _sync_shared_library(hermes_home: Path) -> None:
+        try:
+            origen = get_settings().workspaces_root / "_biblioteca" / "skills"
+            destino_raiz = hermes_home / "skills" / "biblioteca"
+            carpeta = hermes_home.parent.name
+            agent_id = carpeta[len("agent-") :] if carpeta.startswith("agent-") else carpeta
+            publicadas: set[str] = set()
+            rechazadas = leer_rechazadas(hermes_home / "skills")
+            if origen.is_dir():
+                for p in origen.iterdir():
+                    if not (p / "SKILL.md").is_file() or p.name in rechazadas:
+                        continue
+                    alcance = _alcance_de_biblioteca(p)
+                    if alcance == TODOS or agent_id in alcance:
+                        publicadas.add(p.name)
+            if destino_raiz.is_dir():
+                for existente in list(destino_raiz.iterdir()):
+                    if existente.is_dir() and existente.name not in publicadas:
+                        if _es_fork(existente):
+                            _conservar_fork(existente, hermes_home / "skills")
+                        else:
+                            shutil.rmtree(existente)
+            for nombre in publicadas:
+                destino = destino_raiz / nombre
+                if destino.is_dir() and _es_fork(destino):
+                    continue
+                if destino.exists():
+                    shutil.rmtree(destino)
+                shutil.copytree(
+                    origen / nombre,
+                    destino,
+                    ignore=shutil.ignore_patterns("__pycache__", ALCANCE_ARCHIVO, PLANTILLA_MARCA, NO_COMPARTIDA_MARCA),
+                )
+                skill_md = destino / "SKILL.md"
+                if skill_md.is_file():
+                    texto = skill_md.read_text(encoding="utf-8")
+                    if "{RUTA}" in texto:
+                        skill_md.write_text(texto.replace("{RUTA}", str(destino)), encoding="utf-8")
+                _marcar_plantilla(destino)
+        except OSError:
+            logger.warning("No se pudo sincronizar la biblioteca compartida", exc_info=True)
+
     async def _sync_managed_skills(
         self, agent: Agent, hermes_home: Path, enabled_integration_slugs: list[str]
     ) -> list[dict]:
@@ -745,9 +974,12 @@ class HermesInstallationManager:
 
         for identifier in desired_ids:
             cached = self._load_cached_skill(managed_root, identifier)
-            if cached and identifier.startswith("local/"):
+            if identifier.startswith("local/"):
                 local_bundle = fetch_local_skill_bundle(identifier, enabled_integration_slugs=enabled_integration_slugs)
-                if local_bundle and not managed_skill_is_current(managed_root / cached["name"], local_bundle["files"]):
+                if local_bundle is None:
+                    logger.info("Skill administrada '%s' retirada: ya no existe en el servidor", identifier)
+                    continue
+                if cached and not managed_skill_is_current(managed_root / cached["name"], local_bundle["files"]):
                     cached = None
             if cached:
                 desired_names.add(cached["name"])

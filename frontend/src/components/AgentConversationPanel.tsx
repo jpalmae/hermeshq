@@ -1,5 +1,6 @@
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import { useConversationTaskDetails } from "../api/tasks";
 import { useI18n } from "../lib/i18n";
 import type { Task } from "../types/api";
 import { MarkdownText } from "./MarkdownText";
@@ -14,11 +15,11 @@ type ConversationEntry = {
   prompt?: string;
 };
 
-function buildAssistantContent(task: Task) {
+function buildAssistantContent(task: Task, messagesJson: Task["messages_json"]) {
   if (task.response?.trim()) {
     return task.response.trim();
   }
-  const streamed = task.messages_json
+  const streamed = (messagesJson ?? [])
     .filter((message) => message.role === "assistant")
     .map((message) => message.content)
     .join("")
@@ -63,6 +64,7 @@ export function AgentConversationPanel({
   const { t, formatDateTime } = useI18n();
   const [draftPrompt, setDraftPrompt] = useState("");
   const feedRef = useRef<HTMLDivElement | null>(null);
+  const conversationDetails = useConversationTaskDetails(tasks);
 
   const entries = useMemo(() => {
     const sortedTasks = [...tasks].sort(
@@ -82,7 +84,8 @@ export function AgentConversationPanel({
         },
       ];
 
-      const assistantContent = buildAssistantContent(task);
+      const messagesJson = conversationDetails[task.id]?.messages_json ?? task.messages_json;
+      const assistantContent = buildAssistantContent(task, messagesJson);
       if (assistantContent) {
         items.push({
           id: `${task.id}-assistant`,
@@ -97,7 +100,7 @@ export function AgentConversationPanel({
 
       return items;
     });
-  }, [tasks]);
+  }, [tasks, conversationDetails]);
 
   const userNearBottomRef = useRef(true);
 

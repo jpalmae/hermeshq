@@ -68,14 +68,26 @@ export function useRunScheduledTaskNow() {
   });
 }
 
+/** Formato tal como se guarda: vacío = sin formato (null), para no versionar una definición sin cambios. */
+export function formatoParaGuardar(texto: string | null | undefined): string | null {
+  const limpio = (texto ?? "").trim();
+  return limpio ? limpio : null;
+}
+
+/** Lo que se aprueba es exactamente lo que se vio: prompt, horario y formato (el backend rechaza un formato distinto). */
+export function cuerpoDeAprobacion(schedule: Pick<ScheduledTask, "cron_expression" | "prompt" | "output_format">) {
+  return {
+    cron_expression: schedule.cron_expression,
+    prompt: schedule.prompt,
+    output_format: formatoParaGuardar(schedule.output_format),
+  };
+}
+
 export function useApproveScheduledTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (schedule: Pick<ScheduledTask, "id" | "cron_expression" | "prompt">) => {
-      const { data } = await apiClient.post<ScheduledTask>(`/scheduled-tasks/${schedule.id}/approve`, {
-        cron_expression: schedule.cron_expression,
-        prompt: schedule.prompt,
-      });
+    mutationFn: async (schedule: Pick<ScheduledTask, "id" | "cron_expression" | "prompt" | "output_format">) => {
+      const { data } = await apiClient.post<ScheduledTask>(`/scheduled-tasks/${schedule.id}/approve`, cuerpoDeAprobacion(schedule));
       return data;
     },
     onSuccess: async () => {

@@ -75,6 +75,12 @@ COPY backend/hermeshq/assets/pi-runtime/package.json /app/pi-runtime/package.jso
 COPY backend/hermeshq/assets/pi-runtime/package-lock.json /app/pi-runtime/package-lock.json
 RUN cd /app/pi-runtime && npm ci --omit=dev --no-audit --no-fund
 
+RUN mkdir -p /app/hermeshq/assets/revisor-html
+COPY backend/hermeshq/assets/revisor-html/package.json /app/hermeshq/assets/revisor-html/package.json
+COPY backend/hermeshq/assets/revisor-html/package-lock.json /app/hermeshq/assets/revisor-html/package-lock.json
+RUN cd /app/hermeshq/assets/revisor-html \
+    && npm ci --omit=dev --no-audit --no-fund
+
 # ============================================================
 # Stage 2 – runtime: slim image, non-root user
 # ============================================================
@@ -99,6 +105,21 @@ RUN apt-get update && apt-get upgrade -y \
     libgdk-pixbuf-2.0-0 \
     libfreetype6 \
     libjpeg62-turbo \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libcairo2 \
+    libgdk-pixbuf-2.0-0 \
+    shared-mime-info \
+    fonts-liberation \
+    libreoffice-impress \
+    libreoffice-writer \
+    libreoffice-calc \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-spa \
+    tesseract-ocr-eng \
+    fonts-dejavu-core \
+    fonts-roboto \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
@@ -136,6 +157,8 @@ COPY --from=docker-cli /docker /usr/local/bin/docker
 COPY --from=builder /app/hermeshq/assets/whatsapp-bridge/node_modules \
      /app/hermeshq/assets/whatsapp-bridge/node_modules
 COPY --from=builder /app/pi-runtime/node_modules /app/node_modules
+COPY --from=builder /app/hermeshq/assets/revisor-html/node_modules \
+     /app/hermeshq/assets/revisor-html/node_modules
 
 # Copy application source
 COPY VERSION /app/VERSION
@@ -143,10 +166,10 @@ COPY backend/alembic.ini /app/alembic.ini
 COPY backend/hermeshq /app/hermeshq
 
 # Writable directories for appuser
-RUN mkdir -p /app/workspaces \
+RUN mkdir -p /app/workspaces /home/appuser/.local /home/appuser/lo \
     && chmod a+r /app/VERSION /app/alembic.ini \
     && chmod -R a+rX /app/hermeshq \
-    && chown -R appuser:appuser /app
+    && chown -R appuser:appuser /app /home/appuser/.local /home/appuser/lo
 
 ENV WORKSPACES_ROOT=/app/workspaces
 

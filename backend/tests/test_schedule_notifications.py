@@ -11,14 +11,16 @@ from hermeshq.services.public_chat_service import SimpleRateLimiter
 from hermeshq.services.schedule_notifications import (
     MAX_BODY_CHARS,
     _clip,
+    _failure_body_detail,
     enqueue_schedule_notification,
+    friendly_error_text,
 )
 
 
 def _task(**metadata):
-    base = {"scheduled": True, "scheduled_task_id": "s1"}
+    base = {"scheduled": True, "scheduled_task_id": "s1", "thread_user_id": "u1"}
     base.update(metadata)
-    return SimpleNamespace(id="t1", metadata_json=base)
+    return SimpleNamespace(id="t1", agent_id="a1", created_by_user_id="u1", metadata_json=base)
 
 
 def _schedule(**overrides):
@@ -72,16 +74,16 @@ class EnqueueNotificationTests(unittest.IsolatedAsyncioTestCase):
         await enqueue_schedule_notification(session, _task(), success=True, summary="x")
         self.assertEqual(session.add.call_args.args[0].sender_id, "29:abc")
 
-    async def test_nothing_is_queued_until_the_bridge_has_polled(self):
+    async def test_cron_is_queued_even_before_the_bridge_has_polled(self):
         session = _session(_schedule(), _user(), [_key(last_notification_poll_at=None)])
-        self.assertEqual(await enqueue_schedule_notification(session, _task(), success=True, summary="x"), 0)
-        session.add.assert_not_called()
+        self.assertEqual(await enqueue_schedule_notification(session, _task(), success=True, summary="x"), 1)
+        self.assertEqual(session.add.call_args.args[0].api_key_id, "k1")
 
-    async def test_nothing_is_queued_when_the_bridge_went_quiet(self):
+    async def test_cron_is_queued_when_the_bridge_went_quiet(self):
         stale = datetime.now(UTC) - timedelta(hours=13)
         session = _session(_schedule(), _user(), [_key(last_notification_poll_at=stale)])
-        self.assertEqual(await enqueue_schedule_notification(session, _task(), success=True, summary="x"), 0)
-        session.add.assert_not_called()
+        self.assertEqual(await enqueue_schedule_notification(session, _task(), success=True, summary="x"), 1)
+        self.assertEqual(session.add.call_args.args[0].api_key_id, "k1")
 
     async def test_only_live_keys_get_the_notification(self):
         live = _key(id="live")
@@ -94,6 +96,54 @@ class EnqueueNotificationTests(unittest.IsolatedAsyncioTestCase):
         session = _session(_schedule(), _user(), [_key()])
         await enqueue_schedule_notification(session, _task(), success=False, summary="boom")
         self.assertTrue(session.add.call_args.args[0].body.startswith("La tarea programada falló:"))
+
+    async def test_scheduled_failure_translates_runtime_error_to_spanish(self):
+        session = _session(_schedule(), _user(), [_key()])
+        await enqueue_schedule_notification(
+            session, _task(), success=False, summary="Hermes runtime exceeded the task timeout of 900s"
+        )
+        body = session.add.call_args.args[0].body
+        self.assertTrue(body.startswith("La tarea programada falló:"))
+        self.assertIn("tardó demasiado", body)
+        self.assertNotIn("exceeded the task timeout", body)
+
+    async def test_background_failure_body_is_spanish(self):
+        session = _session(_schedule(), _user(), [_key()])
+        task = SimpleNamespace(
+            id="t1",
+            agent_id="a1",
+            metadata_json={"background_job": True, "thread_user_id": "u1", "background_title": "Informe"},
+        )
+        await enqueue_schedule_notification(
+            session, task, success=False, summary="Hermes runtime exceeded the task timeout of 1800s"
+        )
+        body = session.add.call_args.args[0].body
+        self.assertIn("segundo plano", body)
+        self.assertIn("tardó demasiado", body)
+        self.assertNotIn("exceeded the task timeout", body)
+
+    async def test_scheduled_failure_keeps_curated_spanish_summary(self):
+        session = _session(_schedule(), _user(), [_key()])
+        curado = "el servidor se reinició mientras lo trabajaba; vuelve a pedirlo"
+        await enqueue_schedule_notification(session, _task(), success=False, summary=curado)
+        body = session.add.call_args.args[0].body
+        self.assertIn("vuelve a pedirlo", body)
+        self.assertNotIn("Hubo un problema", body)
+        self.assertNotIn("acótala o pídela por partes", body)
+
+    async def test_background_failure_keeps_curated_spanish_summary(self):
+        session = _session(_schedule(), _user(), [_key()])
+        task = SimpleNamespace(
+            id="t1",
+            agent_id="a1",
+            metadata_json={"background_job": True, "thread_user_id": "u1", "background_title": "Informe"},
+        )
+        curado = "el servidor se reinició mientras lo trabajaba; vuelve a pedirlo"
+        await enqueue_schedule_notification(session, task, success=False, summary=curado)
+        body = session.add.call_args.args[0].body
+        self.assertIn("segundo plano", body)
+        self.assertIn("vuelve a pedirlo", body)
+        self.assertNotIn("Hubo un problema", body)
 
     async def test_skips_when_schedule_does_not_notify(self):
         session = _session(_schedule(notify_public_chat=False), _user(), [_key()])
@@ -108,6 +158,49 @@ class EnqueueNotificationTests(unittest.IsolatedAsyncioTestCase):
         plain = SimpleNamespace(id="t2", metadata_json={})
         self.assertEqual(await enqueue_schedule_notification(session, plain, success=True, summary="x"), 0)
         session.add.assert_not_called()
+
+    async def test_manual_run_requested_from_chat_is_delivered(self):
+        session = _session(_schedule(), _user(), [_key()])
+        tarea = _task(manual_trigger=True, solicitado_desde_chat=True)
+        self.assertEqual(await enqueue_schedule_notification(session, tarea, success=True, summary="resumen"), 1)
+        aviso = session.add.call_args.args[0]
+        self.assertEqual(aviso.title, "Informe (ejecución manual)")
+        self.assertEqual(aviso.body, "resumen")
+
+    async def test_failed_manual_run_requested_from_chat_says_it_failed(self):
+        session = _session(_schedule(), _user(), [_key()])
+        tarea = _task(manual_trigger=True, solicitado_desde_chat=True)
+        await enqueue_schedule_notification(
+            session, tarea, success=False, summary="Hermes runtime exceeded the task timeout of 900s"
+        )
+        self.assertTrue(session.add.call_args.args[0].body.startswith("La tarea programada falló"))
+
+    async def test_admitted_failure_never_gets_a_check_mark(self):
+        texto = "No pude generar el enlace de solo lectura porque esta acción se está intentando desde segundo plano."
+        session = _session(_schedule(), _user(), [_key()])
+        await enqueue_schedule_notification(
+            session,
+            _task(scheduled=False, background_job=True, background_title="Compárteme"),
+            success=True,
+            summary=texto,
+        )
+        cuerpo = session.add.call_args.args[0].body
+        self.assertNotIn("✅", cuerpo)
+        self.assertTrue(cuerpo.startswith("⚠️"))
+        self.assertIn("sin hacer lo pedido", cuerpo)
+        session = _session(_schedule(), _user(), [_key()])
+        await enqueue_schedule_notification(session, _task(), success=True, summary=texto)
+        self.assertTrue(session.add.call_args.args[0].body.startswith("⚠️ La tarea programada terminó sin hacer"))
+
+    async def test_success_that_mentions_a_failure_later_keeps_the_check_mark(self):
+        session = _session(_schedule(), _user(), [_key()])
+        await enqueue_schedule_notification(
+            session,
+            _task(scheduled=False, background_job=True, background_title="Excel"),
+            success=True,
+            summary="Listo, subí el Excel. Nota: no pude leer la hoja oculta, pero no era necesaria.",
+        )
+        self.assertIn("✅", session.add.call_args.args[0].body)
 
     async def test_skips_without_owner_inactive_user_or_keys(self):
         for schedule, user, keys in (
@@ -178,7 +271,11 @@ class NotificationEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(api_key.last_notification_poll_at)
         self.assertEqual([item.id for item in items], ["n1"])
         self.assertEqual(items[0].body, "ok")
-        compiled = str(db.execute.await_args_list[-1].args[0].compile(dialect=postgresql.dialect()))
+        compiled = next(
+            str(c.args[0].compile(dialect=postgresql.dialect()))
+            for c in db.execute.await_args_list
+            if str(c.args[0]).startswith("SELECT public_chat_notifications")
+        )
         self.assertIn("api_key_id", compiled)
         self.assertIn("status", compiled)
         self.assertIn("created_at >", compiled)
@@ -224,6 +321,64 @@ class NotificationEndpointTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as ctx:
             await public_chat.list_notifications(request, 20, "key", db)
         self.assertEqual(ctx.exception.status_code, 429)
+
+
+class FriendlyErrorTextTests(unittest.TestCase):
+    def test_timeout_maps_to_spanish(self):
+        msg = friendly_error_text("Hermes runtime exceeded the task timeout of 900s")
+        self.assertIn("tardó demasiado", msg)
+        self.assertNotIn("timeout", msg.lower())
+
+    def test_no_output_maps_to_spanish(self):
+        self.assertIn("tardó demasiado", friendly_error_text("Hermes runtime produced no output for 600s"))
+
+    def test_invalid_tool_call_maps_to_spanish(self):
+        msg = friendly_error_text("Model generated invalid tool call")
+        self.assertIn("llamada inválida", msg)
+        self.assertIn("por partes", msg)
+
+    def test_unknown_error_is_generic_spanish_with_next_step(self):
+        msg = friendly_error_text("Traceback: KeyError 'x'")
+        self.assertIn("Hubo un problema", msg)
+        self.assertNotIn("Traceback", msg)
+        self.assertNotIn("KeyError", msg)
+
+    def test_none_and_empty_are_handled(self):
+        self.assertIn("Hubo un problema", friendly_error_text(None))
+        self.assertIn("Hubo un problema", friendly_error_text(""))
+
+    def test_sse_and_notification_paths_share_the_spanish_text(self):
+        from hermeshq.routers.public_chat import _friendly_task_error
+
+        raw = "Hermes runtime exceeded the task timeout of 900s"
+        self.assertEqual(_friendly_task_error({"error": raw}), friendly_error_text(raw))
+
+    def test_failure_body_detail_translates_runtime_error(self):
+        self.assertEqual(
+            _failure_body_detail("Hermes runtime exceeded the task timeout of 900s"),
+            friendly_error_text("Hermes runtime exceeded the task timeout of 900s"),
+        )
+
+    def test_failure_body_detail_preserves_curated_summary(self):
+        curado = "el servidor se reinició mientras lo trabajaba; vuelve a pedirlo"
+        self.assertEqual(_failure_body_detail(curado), curado)
+
+    def test_failure_body_detail_handles_empty(self):
+        self.assertEqual(_failure_body_detail(None), "error desconocido")
+        self.assertEqual(_failure_body_detail(""), "error desconocido")
+
+    def test_raw_typeerror_maps_to_spanish(self):
+        raw = "sequence item 0: expected str instance, NoneType found"
+        msg = friendly_error_text(raw)
+        self.assertIn("error interno", msg)
+        self.assertNotIn("sequence item", msg)
+        self.assertNotIn("NoneType", msg)
+
+    def test_failure_body_detail_translates_raw_typeerror(self):
+        raw = "sequence item 0: expected str instance, NoneType found"
+        detalle = _failure_body_detail(raw)
+        self.assertEqual(detalle, friendly_error_text(raw))
+        self.assertNotIn("sequence item", detalle)
 
 
 if __name__ == "__main__":

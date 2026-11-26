@@ -122,6 +122,44 @@ async def _require_admin_scope(current_agent: Agent = Depends(_get_control_agent
     return current_agent
 
 
+INTEGRACIONES_RESERVADAS_ADMIN = frozenset({"m365_graph"})
+CAMPOS_DE_PERMISO = frozenset(
+    {
+        "approval_mode",
+        "enabled_toolsets",
+        "disabled_toolsets",
+        "skills",
+        "integration_configs",
+        "mcp_servers",
+        "supervisor_agent_id",
+    }
+)
+
+
+def _prohibir_autoconcesion(current_agent: Agent, agent_id: str | None, campos: set[str]) -> None:
+    if agent_id is not None and agent_id == current_agent.id and campos & CAMPOS_DE_PERMISO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "codigo": "autoconcesion_prohibida",
+                "error": "Un agente no puede modificar sus propios permisos; lo hace un administrador.",
+            },
+        )
+
+
+def _prohibir_reservadas(actuales: dict | None, nuevas: dict | None) -> None:
+    actuales, nuevas = dict(actuales or {}), dict(nuevas or {})
+    for clave in INTEGRACIONES_RESERVADAS_ADMIN:
+        if actuales.get(clave) != nuevas.get(clave):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "codigo": "configuracion_reservada_al_administrador",
+                    "error": f"La configuración «{clave}» solo la cambia un administrador desde HermesHQ.",
+                },
+            )
+
+
 async def _load_admin_proxy(db: AsyncSession) -> User:
     result = await db.execute(
         select(User).where(User.role == "admin", User.is_active.is_(True)).order_by(User.created_at.asc())
@@ -176,6 +214,7 @@ async def control_create_agent(
     current_agent: Agent = Depends(_get_control_agent),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
+    _prohibir_reservadas({}, payload.integration_configs if "integration_configs" in payload.model_fields_set else {})
     admin_user = await _load_admin_proxy(db)
     created = await agents_router.create_agent(payload, request, admin_user, db)
     await _log_control_action(
@@ -194,11 +233,18 @@ async def control_update_agent(
     agent_id: str,
     payload: AgentUpdate,
     request: Request,
+    background_tasks: BackgroundTasks,
     current_agent: Agent = Depends(_get_control_agent),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
+    campos = set(payload.model_dump(exclude_unset=True))
+    _prohibir_autoconcesion(current_agent, agent_id, campos)
+    if "integration_configs" in campos:
+        objetivo = await db.get(Agent, agent_id)
+        if objetivo is not None:
+            _prohibir_reservadas(objetivo.integration_configs, payload.integration_configs)
     admin_user = await _load_admin_proxy(db)
-    updated = await agents_router.update_agent(agent_id, payload, request, BackgroundTasks(), admin_user, db)
+    updated = await agents_router.update_agent(agent_id, payload, request, background_tasks, admin_user, db)
     await _log_control_action(
         db,
         current_agent,
@@ -702,6 +748,9 @@ async def control_configure_agent_integration(
     current_agent: Agent = Depends(_get_control_agent),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
+    _prohibir_autoconcesion(current_agent, agent_id, {"integration_configs"})
+    if integration_slug in INTEGRACIONES_RESERVADAS_ADMIN:
+        _prohibir_reservadas({}, {integration_slug: True})
     agent = await db.get(Agent, agent_id)
     if not agent or agent.is_archived:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -872,11 +921,11 @@ async def resolve_channel_user_endpoint(
     agent_token = request.headers.get("X-HermesHQ-Agent-Token", "").strip()
     if not agent_id or not agent_token:
         raise HTTPException(status_code=401, detail="Missing agent credentials")
+    if not await credencial_valida(db, agent_id, agent_token, origen="resolve_channel_user"):
+        raise HTTPException(status_code=401, detail="Invalid agent credentials")
     agent = await db.get(Agent, agent_id)
     if not agent or agent.is_archived:
         raise HTTPException(status_code=401, detail="Unknown agent")
-    if not await credencial_valida(db, agent_id, agent_token, origen="resolve_channel_user"):
-        raise HTTPException(status_code=401, detail="Invalid agent credentials")
 
     user = await resolve_channel_user(db, platform, sender_id)
     if not user:

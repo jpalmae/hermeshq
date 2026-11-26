@@ -207,10 +207,12 @@ def _reemplazar_textos(lamina, reemplazos: dict, numero: int) -> None:
                         corrida.text = corrida.text.replace(clave, str(nuevo))
                         hecho = True
         if not hecho:
-            disponibles = [f"{f.name}: {' '.join(f.text_frame.text.split())[:30]}" for f in formas[:MAX_FORMAS_RESUMEN]]
+            disponibles = [f"{f.name}: {' '.join(f.text_frame.text.split())[:60]}" for f in formas[:MAX_FORMAS_RESUMEN]]
             raise ErrorPlantilla(
-                f"Lámina {numero}: no encuentro '{clave}' en la lámina base. Usa el nombre de la forma o su texto "
-                f"actual. Disponibles: {disponibles}"
+                f"Lámina {numero}: no encuentro '{clave}' en la lámina base: esa lámina no tiene una forma con ese "
+                f"nombre ni con ese texto, y no se inventa. Usa una de las disponibles (por su nombre o su texto "
+                f"actual), quita '{clave}' de replace o agrega el texto con boxes; para ver las formas de cada lámina "
+                f"llama con inspect=true. No repitas la llamada con los mismos datos. Disponibles: {disponibles}"
             )
 
 
@@ -310,9 +312,11 @@ def _escribir_parrafos(marco, elementos) -> None:
 
 
 def _imagen(ruta_texto: str, base: Path) -> Path:
+    raiz = Path(base).resolve()
     ruta = Path(ruta_texto)
-    if not ruta.is_absolute():
-        ruta = base / ruta
+    ruta = (ruta if ruta.is_absolute() else raiz / ruta).resolve()
+    if ruta != raiz and raiz not in ruta.parents:
+        raise ErrorPlantilla(f"La imagen '{ruta_texto}' está fuera del espacio de trabajo.")
     if not ruta.is_file():
         raise ErrorPlantilla(f"No encuentro la imagen: {ruta_texto}")
     if ruta.suffix.lower() not in IMAGENES:

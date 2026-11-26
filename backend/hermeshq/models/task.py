@@ -79,6 +79,12 @@ class Task(Base):
             unique=True,
             postgresql_where=text("status = 'running'"),
         ),
+        Index(
+            "uq_tasks_scheduled_fire_key",
+            text("(metadata->>'scheduled_fire_key')"),
+            unique=True,
+            postgresql_where=text("metadata->>'scheduled_fire_key' IS NOT NULL"),
+        ),
     )
 
     agent = relationship("Agent", back_populates="tasks", foreign_keys=[agent_id])

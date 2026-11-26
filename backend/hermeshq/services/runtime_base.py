@@ -14,7 +14,14 @@ class RuntimeExecutionResult:
     iterations: int
     engine: str
     response_attachments: list[dict]
+    usage: dict | None = None
     execution_echo: dict | None = None
+    exposicion: dict | None = None
+    compactacion: dict | None = None
+    accion_narrada: dict | None = None
+    generacion_desbocada: dict | None = None
+    correcciones_aplicadas: int | None = None
+    verificacion: dict | None = None
 
 
 class RuntimeExecutionError(RuntimeError):

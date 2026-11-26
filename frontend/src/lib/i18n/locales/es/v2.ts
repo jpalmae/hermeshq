@@ -348,6 +348,7 @@ const v2: Record<string, string> = {
   "v2.onRequest": "Bajo demanda",
   "v2.onFailure": "En fallo",
   "v2.on": "On",
+  "v2.adaptive": "Adaptativo",
   "v2.allOption": "Todos",
   "v2.resultOnly": "Solo resultado",
   "v2.apiKeyShort": "API key",

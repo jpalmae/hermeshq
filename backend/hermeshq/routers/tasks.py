@@ -3,32 +3,48 @@ import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import desc, false, func, or_, select
+from pydantic import BaseModel, Field
+from sqlalchemy import desc, false, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
-from hermeshq.core.security import ensure_agent_access, get_accessible_agent_ids, get_current_user, is_admin
+from hermeshq.core.security import (
+    ensure_agent_access,
+    get_accessible_agent_ids,
+    get_current_user,
+    is_admin,
+    require_admin,
+)
 from hermeshq.database import get_db_session
 from hermeshq.models.conversation_thread import ConversationThread
 from hermeshq.models.task import Task
 from hermeshq.models.user import User
-from hermeshq.schemas.task import TaskBoardUpdate, TaskCreate, TaskQueueStateRead, TaskRead
+from hermeshq.schemas.task import TaskBoardUpdate, TaskCreate, TaskListRead, TaskQueueStateRead, TaskRead
+from hermeshq.services.metadata_cliente import metadata_cliente_segura
 from hermeshq.services.task_board import is_valid_board_column, next_board_order, runtime_status_to_board_column
+from hermeshq.services.task_visibility import task_visibility_clause, task_visible_to_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
-@router.get("", response_model=list[TaskRead])
+@router.get("", response_model=list[TaskListRead])
 async def list_tasks(
     agent_id: str | None = None,
     limit: int = 200,
     offset: int = 0,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
-) -> list[TaskRead]:
+) -> list[TaskListRead]:
     limit = max(1, min(limit, 500))
     offset = max(0, offset)
-    statement = select(Task).order_by(desc(Task.queued_at)).limit(limit).offset(offset)
+    statement = (
+        select(Task)
+        .options(defer(Task.messages_json), defer(Task.tool_calls))
+        .order_by(desc(Task.queued_at))
+        .limit(limit)
+        .offset(offset)
+    )
     if agent_id:
         statement = statement.where(Task.agent_id == agent_id)
     if not is_admin(current_user):
@@ -40,13 +56,10 @@ async def list_tasks(
         else:
             statement = statement.where(
                 Task.agent_id.in_(accessible_ids),
-                or_(
-                    Task.created_by_user_id == current_user.id,
-                    Task.created_by_user_id.is_(None),  # scheduler-created tasks
-                ),
+                task_visibility_clause(current_user.id),
             )
     result = await db.execute(statement)
-    return [TaskRead.model_validate(t) for t in result.scalars().all()]
+    return [TaskListRead.model_validate(t) for t in result.scalars().all()]
 
 
 @router.post("", response_model=TaskRead, status_code=status.HTTP_201_CREATED)
@@ -60,12 +73,7 @@ async def create_task(
     if agent.is_archived:
         raise HTTPException(status_code=400, detail="Archived agents cannot receive new tasks")
     payload_data = payload.model_dump()
-    metadata = payload_data.pop("metadata", {}) or {}
-    # Security: never let the caller spoof the invoking identity. M365 plugins read
-    # thread_user_id / created_by_user_id from this metadata to fetch the user's
-    # delegated token, so pin them to the authenticated user and drop any
-    # client-supplied override.
-    metadata.pop("created_by_user_id", None)
+    metadata = metadata_cliente_segura(payload_data.pop("metadata", None))
     metadata["thread_user_id"] = current_user.id
     inferred_conversation = (payload.title or "").strip() == "Chat message"
     if inferred_conversation and not metadata.get("conversation"):
@@ -89,6 +97,10 @@ async def create_task(
             db.add(thread)
             await db.flush()
         metadata["thread_id"] = thread.id
+    elif metadata.get("thread_id"):
+        propio = await db.get(ConversationThread, metadata["thread_id"])
+        if not propio or propio.agent_id != payload.agent_id or propio.user_id != current_user.id:
+            metadata.pop("thread_id", None)
     task = Task(**payload_data, metadata_json=metadata, created_by_user_id=current_user.id)
     task.board_column = runtime_status_to_board_column(task.status)
     task.board_order = next_board_order()
@@ -114,7 +126,7 @@ async def get_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     await ensure_agent_access(db, current_user, task.agent_id)
-    if not is_admin(current_user) and task.created_by_user_id and task.created_by_user_id != current_user.id:
+    if not is_admin(current_user) and not task_visible_to_user(task, current_user.id):
         raise HTTPException(status_code=403, detail="Access denied")
     return TaskRead.model_validate(task)
 
@@ -130,7 +142,7 @@ async def cancel_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     await ensure_agent_access(db, current_user, task.agent_id)
-    if not is_admin(current_user) and task.created_by_user_id and task.created_by_user_id != current_user.id:
+    if not is_admin(current_user) and not task_visible_to_user(task, current_user.id):
         raise HTTPException(status_code=403, detail="Access denied")
     await request.app.state.supervisor.cancel_task(task_id)
     await db.refresh(task)
@@ -148,7 +160,7 @@ async def update_task_board(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     await ensure_agent_access(db, current_user, task.agent_id)
-    if not is_admin(current_user) and task.created_by_user_id and task.created_by_user_id != current_user.id:
+    if not is_admin(current_user) and not task_visible_to_user(task, current_user.id):
         raise HTTPException(status_code=403, detail="Access denied")
     if not is_valid_board_column(payload.board_column):
         raise HTTPException(status_code=400, detail="Invalid board column")
@@ -171,7 +183,7 @@ async def delete_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     await ensure_agent_access(db, current_user, task.agent_id)
-    if not is_admin(current_user) and task.created_by_user_id and task.created_by_user_id != current_user.id:
+    if not is_admin(current_user) and not task_visible_to_user(task, current_user.id):
         raise HTTPException(status_code=403, detail="Access denied")
     if task.status == "running":
         raise HTTPException(status_code=409, detail="Cannot delete a running task. Cancel it first.")
@@ -224,3 +236,45 @@ async def queue_state(
         "queued": queued_count,
         "running": running_count,
     }
+
+
+class ExternalActionReconcile(BaseModel):
+    ejecutada: bool
+    nota: str | None = Field(default=None, max_length=500)
+
+
+@router.get("/{task_id}/external-actions")
+async def list_external_actions(
+    task_id: str,
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db_session),
+) -> list[dict]:
+    rows = (
+        (
+            await db.execute(
+                text(
+                    "SELECT id, attempt_id, lease_generation, kind, state, detail, resolved_by, created_at, "
+                    "finished_at FROM external_action_records WHERE task_id = :t ORDER BY created_at"
+                ),
+                {"t": task_id},
+            )
+        )
+        .mappings()
+        .all()
+    )
+    return [dict(r) for r in rows]
+
+
+@router.post("/{task_id}/external-actions/{action_id}/reconcile")
+async def reconcile_task_external_action(
+    task_id: str,
+    action_id: str,
+    payload: ExternalActionReconcile,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from hermeshq.services.external_actions import reconcile_external_action
+
+    if not await reconcile_external_action(db, task_id, action_id, payload.ejecutada, admin.id, payload.nota):
+        raise HTTPException(status_code=409, detail="La acción no existe o ya está conciliada")
+    return {"id": action_id, "estado": "conciliada_ejecutada" if payload.ejecutada else "conciliada_no_ejecutada"}

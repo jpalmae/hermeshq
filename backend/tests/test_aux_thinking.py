@@ -35,7 +35,11 @@ def _config(thinking_mode, auxiliary_models=None):
             patch(
                 "hermeshq.services.hermes_installation.manager.get_settings",
                 return_value=SimpleNamespace(
-                    model_context_length=0, agent_memory_char_limit=3000, user_memory_char_limit=1800
+                    model_context_length=0,
+                    agent_memory_char_limit=3000,
+                    user_memory_char_limit=1800,
+                    compression_threshold=0.75,
+                    compression_target_ratio=0.50,
                 ),
             ),
         ):
@@ -62,11 +66,11 @@ class AuxiliaryThinkingTests(unittest.TestCase):
     def test_vision_is_left_untouched(self):
         self.assertNotIn("extra_body", _config("off")["auxiliary"]["vision"])
 
-    def test_default_and_explicit_on_add_nothing(self):
+    def test_default_and_explicit_on_leave_web_extract_and_vision_untouched(self):
         for mode in (None, "on"):
             with self.subTest(mode=mode):
                 aux = _config(mode)["auxiliary"]
-                for task in ("compression", "web_extract", "vision"):
+                for task in ("web_extract", "vision"):
                     self.assertNotIn("extra_body", aux[task])
 
     def test_manually_configured_task_also_gets_the_setting(self):
@@ -80,6 +84,26 @@ class AuxiliaryThinkingTests(unittest.TestCase):
         aux = _config("off")["auxiliary"]
         aux["compression"]["extra_body"]["chat_template_kwargs"]["enable_thinking"] = True
         self.assertFalse(aux["web_extract"]["extra_body"]["chat_template_kwargs"]["enable_thinking"])
+
+
+class CompressionAlwaysThinkingOffTests(unittest.TestCase):
+    def test_forces_thinking_off_and_timeout_regardless_of_mode(self):
+        for mode in (None, "on", "adaptive", "off"):
+            with self.subTest(mode=mode):
+                compression = _config(mode)["auxiliary"]["compression"]
+                self.assertEqual(compression["extra_body"], EXTRA)
+                self.assertFalse(compression["extra_body"]["chat_template_kwargs"]["enable_thinking"])
+                self.assertIn("timeout", compression)
+                self.assertIsInstance(compression["timeout"], (int, float))
+                self.assertGreater(compression["timeout"], 0)
+
+    def test_manually_configured_compression_also_gets_forced_off_and_timeout(self):
+        manual = {"compression": {"base_url": "https://aux.example/v1", "model": "qwen3.8-27b"}}
+        with patch("hermeshq.services.hermes_installation.manager.resolve_auxiliary_api_key", return_value="aux-key"):
+            compression = _config("on", manual)["auxiliary"]["compression"]
+        self.assertEqual(compression["base_url"], "https://aux.example/v1")
+        self.assertEqual(compression["extra_body"], EXTRA)
+        self.assertIn("timeout", compression)
 
 
 if __name__ == "__main__":

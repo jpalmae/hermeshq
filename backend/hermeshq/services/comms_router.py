@@ -7,6 +7,7 @@ from hermeshq.models.agent import Agent
 from hermeshq.models.message import AgentMessage
 from hermeshq.models.task import Task
 from hermeshq.schemas.message import BroadcastCreate, MessageCreate
+from hermeshq.services.metadata_delegacion import metadata_delegacion_segura
 
 
 class CommsRouter:
@@ -21,12 +22,14 @@ class CommsRouter:
     async def send_message(self, payload: MessageCreate) -> AgentMessage:
         async with self.session_factory() as session:
             dump = payload.model_dump()
+            es_delegacion = payload.message_type == "delegate"
+            metadata = metadata_delegacion_segura(dump["metadata"]) if es_delegacion else dump["metadata"]
             message = AgentMessage(
                 from_agent_id=dump["from_agent_id"],
                 to_agent_id=dump["to_agent_id"],
                 message_type=dump["message_type"],
                 content=dump["content"],
-                metadata_json=dump["metadata"],
+                metadata_json=metadata,
             )
             session.add(message)
             session.add(
@@ -37,19 +40,14 @@ class CommsRouter:
                     details={"message_type": payload.message_type, "from_agent_id": payload.from_agent_id},
                 )
             )
-            if payload.message_type == "delegate":
-                parent_task_id = None
-                if isinstance(payload.metadata, dict):
-                    raw_parent_task_id = payload.metadata.get("parent_task_id")
-                    if isinstance(raw_parent_task_id, str) and raw_parent_task_id.strip():
-                        parent_task_id = raw_parent_task_id.strip()
+            if es_delegacion:
                 delegated_task = Task(
                     agent_id=payload.to_agent_id,
                     source_agent_id=payload.from_agent_id,
-                    parent_task_id=parent_task_id,
-                    title=payload.metadata.get("title") if isinstance(payload.metadata, dict) else None,
+                    parent_task_id=metadata.get("parent_task_id"),
+                    title=metadata.get("title"),
                     prompt=payload.content,
-                    metadata_json={"delegated": True, **payload.metadata},
+                    metadata_json={**metadata, "delegated": True},
                 )
                 session.add(delegated_task)
                 await session.flush()

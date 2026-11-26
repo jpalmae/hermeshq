@@ -62,6 +62,8 @@ from hermeshq.routers import (
     webhooks,
 )
 from hermeshq.routers import settings as settings_router
+from hermeshq.routers.bot_channels import canales_router as bot_channels_router
+from hermeshq.routers.bot_channels import identidades_router as channel_identities_router
 from hermeshq.routers.cloud import router as cloud_router
 from hermeshq.routers.public_chat import management_router as public_chat_management_router
 from hermeshq.routers.public_chat import public_router as public_chat_router
@@ -87,7 +89,9 @@ from hermeshq.services.pty_manager import PTYManager
 from hermeshq.services.public_chat_service import PublicChatService
 from hermeshq.services.runtime_profiles import (
     STANDARD_ENABLED_TOOLSETS,
+    missing_standard_skills,
     normalize_runtime_profile_slug,
+    teams_for_mail_agents,
     terminal_allowed_for_profile,
 )
 from hermeshq.services.runtime_runner_client import RuntimeRunnerClient
@@ -237,6 +241,13 @@ async def bootstrap_defaults(secret_vault: SecretVault | None = None) -> None:
                     changed = True
             if changed:
                 agent.enabled_toolsets = current_toolsets
+            faltantes = missing_standard_skills(agent.enabled_toolsets, agent.skills)
+            if faltantes:
+                agent.skills = [*(agent.skills or []), *faltantes]
+            for campo, valor in teams_for_mail_agents(
+                agent.integration_configs, agent.enabled_toolsets, agent.disabled_toolsets, agent.skills
+            ).items():
+                setattr(agent, campo, valor)
         await session.commit()
 
 
@@ -414,6 +425,7 @@ async def lifespan(app: FastAPI):
         session_factory=AsyncSessionLocal,
         event_broker=app.state.event_broker,
         supervisor=app.state.supervisor,
+        secret_vault=app.state.secret_vault,
     )
     await app.state.public_chat_service.start_purge_loop()
 
@@ -508,6 +520,8 @@ app.include_router(capability_requests.router, prefix=settings.api_prefix)
 app.include_router(oidc_admin.router, prefix=settings.api_prefix)
 app.include_router(users.router, prefix=settings.api_prefix)
 app.include_router(permission_policies.router, prefix=settings.api_prefix)
+app.include_router(bot_channels_router, prefix=settings.api_prefix)
+app.include_router(channel_identities_router, prefix=settings.api_prefix)
 app.include_router(audit.router, prefix=settings.api_prefix)
 app.include_router(mcp_server.router)
 app.include_router(desktop_gateway.router)

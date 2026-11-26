@@ -107,7 +107,9 @@ class TestEditMany(_Base):
             )
         )
         self.assertTrue(r["success"])
-        self.assertEqual((self.dir / "work" / "a.txt").read_text(), "ALFA\nSEGUNDA\n")
+        self.assertEqual((self.dir / "work" / "a.txt").read_text(), "alfa uno\nsegunda\n")
+        self.assertEqual((self.dir / "work" / "a_v2.txt").read_text(), "ALFA\nSEGUNDA\n")
+        self.assertTrue(r["original_intacto"])
 
     def test_if_one_fails_nothing_changes(self):
         antes = (self.dir / "work" / "b.txt").read_text()
@@ -140,8 +142,37 @@ class TestEditMany(_Base):
         self.assertEqual((self.dir.parent / "agent-bbb" / "secreto.txt").read_text(), "CANARIO")
 
 
+class TestHtmlCapture(_Base):
+    def _html(self, nombre="informe.html"):
+        (self.dir / "work" / nombre).write_text(
+            "<html><body><h1>Resumen</h1><p>Texto uno</p><div style='page-break-before:always'><h2>Detalle</h2>"
+            "<p>Palabra clave aquí</p></div></body></html>",
+            encoding="utf-8",
+        )
+
+    def test_it_renders_pages_to_images_and_locates_texts(self):
+        self._html()
+        r = self._json(lote._html_capture_tool({"path": "work/informe.html", "find": ["clave", "inexistente"]}))
+        self.assertTrue(r["success"], r)
+        self.assertEqual(r["pages_total"], 2)
+        self.assertEqual([i["page"] for i in r["images"]], [1, 2])
+        for imagen in r["images"]:
+            self.assertGreater((self.dir / imagen["path"]).stat().st_size, 100)
+        self.assertEqual(r["found_on_pages"], {"clave": [2], "inexistente": []})
+        self.assertIn("JavaScript", r["note"])
+
+    def test_it_can_pick_pages_and_refuses_bad_paths(self):
+        self._html()
+        r = self._json(lote._html_capture_tool({"path": "work/informe.html", "pages": [2, 9]}))
+        self.assertEqual([i["page"] for i in r["images"]], [2])
+        self.assertFalse(self._json(lote._html_capture_tool({}))["success"])
+        self.assertFalse(self._json(lote._html_capture_tool({"path": "work/no-existe.html"}))["success"])
+        ajeno = str(self.dir.parent / "agent-bbb" / "secreto.txt")
+        self.assertFalse(self._json(lote._html_capture_tool({"path": ajeno}))["success"])
+
+
 class TestRegistration(unittest.TestCase):
-    def test_the_four_tools_are_registered_and_listed_in_the_manifest(self):
+    def test_the_five_tools_are_registered_and_listed_in_the_manifest(self):
         class Ctx:
             def __init__(self):
                 self.nombres = []
@@ -152,7 +183,7 @@ class TestRegistration(unittest.TestCase):
         ctx = Ctx()
         lote.register(ctx)
         manifiesto = (PLUGIN / "plugin.yaml").read_text(encoding="utf-8")
-        esperadas = ["hq_leer_varios", "hq_buscar_varios", "hq_skills_ver", "hq_editar_varios"]
+        esperadas = ["hq_leer_varios", "hq_buscar_varios", "hq_skills_ver", "hq_editar_varios", "hq_html_capturar"]
         self.assertEqual(sorted(ctx.nombres), sorted(esperadas))
         for nombre in esperadas:
             self.assertIn(nombre, manifiesto)
