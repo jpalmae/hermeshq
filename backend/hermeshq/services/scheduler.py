@@ -4,9 +4,11 @@ import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hermeshq.models.activity import ActivityLog
+from hermeshq.models.agent import Agent
 from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.task import Task
 from hermeshq.services.cron_schedule import build_scheduled_prompt, compute_next_run, scheduled_task_metadata
@@ -75,6 +77,23 @@ class SchedulerService:
                     if not schedule.next_run:
                         schedule.next_run = next_run
                     if schedule.next_run and schedule.next_run <= now:
+                        fire_at = schedule.next_run
+                        retraso = (now - fire_at).total_seconds()
+                        if retraso > self._misfire_grace():
+                            schedule.next_run = self._get_next_run(schedule.cron_expression, now, schedule.timezone)
+                            session.add(
+                                ActivityLog(
+                                    agent_id=schedule.agent_id,
+                                    event_type="schedule.skipped_misfire",
+                                    message=schedule.name,
+                                    details={
+                                        "schedule_id": schedule.id,
+                                        "fire_at": fire_at.isoformat(),
+                                        "retraso_segundos": int(retraso),
+                                    },
+                                )
+                            )
+                            continue
                         if await self._has_active_run(session, schedule.id):
                             schedule.next_run = self._get_next_run(schedule.cron_expression, now, schedule.timezone)
                             session.add(
@@ -86,15 +105,29 @@ class SchedulerService:
                                 )
                             )
                             continue
+                        fire_key = f"{schedule.id}@{fire_at.isoformat()}"
+                        workspace = await session.scalar(
+                            select(Agent.workspace_path).where(Agent.id == schedule.agent_id)
+                        )
                         task = Task(
                             agent_id=schedule.agent_id,
                             title=schedule.name,
                             prompt=build_scheduled_prompt(schedule, now),
                             created_by_user_id=schedule.owner_user_id,
-                            metadata_json=scheduled_task_metadata(schedule),
+                            metadata_json={
+                                **scheduled_task_metadata(schedule, workspace_path=workspace),
+                                "scheduled_fire_at": fire_at.isoformat(),
+                                "scheduled_fire_key": fire_key,
+                            },
                         )
-                        session.add(task)
-                        await session.flush()
+                        try:
+                            async with session.begin_nested():
+                                session.add(task)
+                                await session.flush()
+                        except IntegrityError:
+                            logger.warning("Scheduler: el disparo %s ya existe; no se duplica", fire_key)
+                            schedule.next_run = self._get_next_run(schedule.cron_expression, now, schedule.timezone)
+                            continue
                         created_task_ids.append(task.id)
                         schedule.last_run = now
                         schedule.next_run = self._get_next_run(schedule.cron_expression, now, schedule.timezone)
@@ -123,6 +156,12 @@ class SchedulerService:
             .limit(1)
         )
         return result.first() is not None
+
+    @staticmethod
+    def _misfire_grace() -> int:
+        from hermeshq.config import get_settings
+
+        return int(get_settings().scheduler_misfire_grace_seconds)
 
     def _get_next_run(self, expression: str, now: datetime, timezone_name: str | None = "UTC") -> datetime:
         return compute_next_run(expression, timezone_name, now)

@@ -1,5 +1,14 @@
+import json
+import os
 import shutil
+import uuid
 from pathlib import Path
+
+DIRECTORIO_PROPIETARIOS_ADJUNTOS = "_adjuntos_propietarios"
+
+
+def _has_protected_part(parts: tuple[str, ...]) -> bool:
+    return any(part.lower() == ".hermes" or part.lower().startswith(".env") for part in parts)
 
 
 class WorkspaceManager:
@@ -35,6 +44,7 @@ class WorkspaceManager:
         return str(workspace.resolve())
 
     def delete_workspace(self, agent_id: str) -> None:
+        self._borrar_registro_propietarios(agent_id)
         workspace = self.build_workspace_path(agent_id)
         pi_config = self.build_pi_config_path(agent_id)
         if workspace.exists():
@@ -77,7 +87,19 @@ class WorkspaceManager:
         )
         (workspace / "SOUL.md").write_text(soul_md or "# Soul\n\nOperational.", encoding="utf-8")
 
-    def list_workspace_files(self, agent_id: str, relative_path: str = ".") -> list[dict]:
+    def is_protected_path(self, agent_id: str, relative_path: str) -> bool:
+        workspace = self.build_workspace_path(agent_id).resolve()
+        if _has_protected_part(Path(os.path.normpath(relative_path)).parts):
+            return True
+        try:
+            resolved = (workspace / relative_path).resolve().relative_to(workspace)
+        except ValueError:
+            return False
+        return _has_protected_part(resolved.parts)
+
+    def list_workspace_files(
+        self, agent_id: str, relative_path: str = ".", include_protected: bool = True
+    ) -> list[dict]:
         workspace = self.build_editable_workspace_path(agent_id)
         workspace.mkdir(parents=True, exist_ok=True)
         target = (workspace / relative_path).resolve()
@@ -86,6 +108,8 @@ class WorkspaceManager:
             return []
         entries = []
         for path in sorted(target.iterdir(), key=lambda item: (item.is_file(), item.name.lower())):
+            if not include_protected and self.is_protected_path(agent_id, str(path.relative_to(workspace))):
+                continue
             entries.append(
                 {
                     "name": path.name,
@@ -120,6 +144,40 @@ class WorkspaceManager:
             if path.is_file():
                 total += path.stat().st_size
         return total
+
+    def _ruta_propietario_adjunto(self, agent_id: str, file_id: str) -> Path:
+        normalizado = str(uuid.UUID(file_id))
+        return self.root / DIRECTORIO_PROPIETARIOS_ADJUNTOS / f"agent-{agent_id}" / f"{normalizado}.json"
+
+    def registrar_propietario_adjunto(self, agent_id: str, file_id: str, user_id: str) -> None:
+        destino = self._ruta_propietario_adjunto(agent_id, file_id)
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        temporal = destino.with_suffix(".tmp")
+        temporal.write_text(json.dumps({"user_id": user_id}), encoding="utf-8")
+        temporal.replace(destino)
+
+    def propietario_adjunto(self, agent_id: str, file_id: str) -> str | None:
+        try:
+            datos = json.loads(self._ruta_propietario_adjunto(agent_id, file_id).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        valor = datos.get("user_id") if isinstance(datos, dict) else None
+        return str(valor) if valor else None
+
+    def borrar_propietario_adjunto(self, agent_id: str, file_id: str) -> None:
+        try:
+            self._ruta_propietario_adjunto(agent_id, file_id).unlink(missing_ok=True)
+        except ValueError:
+            return
+
+    def _borrar_registro_propietarios(self, agent_id: str) -> None:
+        directorio = self.root / DIRECTORIO_PROPIETARIOS_ADJUNTOS / f"agent-{agent_id}"
+        if not directorio.is_dir():
+            return
+        for path in directorio.iterdir():
+            if path.is_file() or path.is_symlink():
+                path.unlink()
+        directorio.rmdir()
 
     def _ensure_within_workspace(self, workspace: Path, target: Path) -> None:
         if workspace.resolve() not in [target, *target.parents]:

@@ -1,9 +1,10 @@
 name: hermeshq_lote
 version: "1.0.0"
-description: "Batch tools that do in one call what an agent would otherwise do in several steps: read several files, search several patterns, load several skills and apply several edits to one file."
+description: "Batch tools that do in one call what an agent would otherwise do in several steps: read several files, search several patterns, load several skills and apply several edits to one file, and capture an HTML file as page images."
 author: HermesHQ
 provides_tools:
   - hq_leer_varios
   - hq_buscar_varios
   - hq_skills_ver
   - hq_editar_varios
+  - hq_html_capturar

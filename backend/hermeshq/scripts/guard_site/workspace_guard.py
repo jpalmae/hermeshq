@@ -57,21 +57,39 @@ def _as_text(value) -> str | None:
     return value if isinstance(value, str) else None
 
 
+_PROC_AJENO = re.compile(
+    r"^/proc/(?P<pid>\d+|self|thread-self)(?:/task/\d+)?/(?P<que>environ|mem|root|cwd|fd|fdinfo|maps|map_files)(?:/|$)"
+)
+_AGENTE_EN_COMANDO = re.compile(r"(?<![A-Za-z0-9_-])(agent-[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}|agent-[A-Za-z0-9-]*\*)")
+
+
+def _proceso_ajeno(absolute: str) -> str | None:
+    m = _PROC_AJENO.match(absolute)
+    if not m or m.group("pid") in ("self", "thread-self") or m.group("pid") == str(os.getpid()):
+        return None
+    return f"proceso {m.group('pid')}"
+
+
 def blocked(value, root: str, own: str, cwd: str) -> str | None:
     text = _as_text(value)
     if not text:
         return None
     absolute = os.path.normpath(text if text.startswith("/") else os.path.join(cwd, text))
-    if absolute.startswith(_SYSTEM_PREFIXES) or not absolute.startswith(root):
-        return None
-    other = other_agent_dir(absolute, root, own)
-    if other:
-        return other
+    ajeno = _proceso_ajeno(absolute)
+    if ajeno:
+        return ajeno
     try:
         real = os.path.realpath(absolute)
     except OSError:
-        return None
-    return other_agent_dir(real, root, own)
+        real = absolute
+    for candidata in (absolute, real):
+        if candidata.startswith(root):
+            other = other_agent_dir(candidata, root, own)
+            if other:
+                return other
+    if real != absolute:
+        return _proceso_ajeno(real)
+    return None
 
 
 def command_mentions_other_agent(arguments, root: str, own: str) -> str | None:
@@ -81,6 +99,9 @@ def command_mentions_other_agent(arguments, root: str, own: str) -> str | None:
         if not text or "agent-" not in text:
             continue
         for match in pattern.finditer(text):
+            if match.group(1) != own:
+                return match.group(1)
+        for match in _AGENTE_EN_COMANDO.finditer(text):
             if match.group(1) != own:
                 return match.group(1)
     return None
@@ -115,7 +136,7 @@ def install(cwd: str) -> bool:
                 other = next((o for o in (blocked(a, root, own, current) for a in args[:paths]) if o), None)
             if other:
                 raise PermissionError(
-                    f"Access denied: the folder of another agent ({other}) is not available to this agent."
+                    f"Acceso denegado: la carpeta de otro agente ({other}) no está disponible para este agente."
                 )
         finally:
             busy["on"] = False

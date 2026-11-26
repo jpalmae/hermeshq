@@ -30,6 +30,12 @@ CORE_MANAGED_PLUGIN_CATALOG: list[dict] = [
         "standard_compatible": False,
     },
     {
+        "slug": "hermeshq_documentos",
+        "template_dir": "hermeshq_documentos",
+        "toolset": "hermeshq_documentos",
+        "standard_compatible": False,
+    },
+    {
         "slug": "hermeshq_pdf",
         "template_dir": "hermeshq_pdf",
         "toolset": "hermeshq_pdf",
@@ -405,14 +411,35 @@ def _normalize_actions(value: list[dict] | list) -> list[dict]:
     return actions
 
 
+_TEXT_SUFFIXES = {
+    ".md",
+    ".txt",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".py",
+    ".sh",
+    ".csv",
+    ".html",
+    ".css",
+    ".js",
+    ".ts",
+    ".toml",
+    ".xml",
+    ".svg",
+}
+
+
 def _skill_bundle_from_dir(skill_dir: Path, identifier: str) -> dict | None:
     skill_md = skill_dir / "SKILL.md"
     if not skill_md.exists():
         return None
-    files: dict[str, str] = {}
+    files: dict[str, str | bytes] = {}
     for path in sorted(skill_dir.rglob("*")):
-        if path.is_file():
-            files[str(path.relative_to(skill_dir))] = path.read_text(encoding="utf-8")
+        if not path.is_file() or "__pycache__" in path.parts:
+            continue
+        key = str(path.relative_to(skill_dir))
+        files[key] = path.read_text(encoding="utf-8") if path.suffix.lower() in _TEXT_SUFFIXES else path.read_bytes()
     return {
         "name": skill_dir.name,
         "files": files,

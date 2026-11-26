@@ -4,7 +4,17 @@ from unittest.mock import MagicMock, patch
 
 from hermeshq.config import Settings
 from hermeshq.routers.public_chat import _friendly_task_error
+from hermeshq.services.agent_supervisor import AgentSupervisor
 from hermeshq.services.hermes_runtime import HermesRuntime
+
+
+def _supervisor(slots=2):
+    sup = AgentSupervisor.__new__(AgentSupervisor)
+    sup._agent_locks = {}
+    sup.cancelaciones_pedidas = set()
+    sup._configurar_admision(slots)
+    sup.active_tasks = {}
+    return sup
 
 
 class TestPublicChatDeadlines(unittest.TestCase):
@@ -29,7 +39,11 @@ class TestPublicChatDeadlines(unittest.TestCase):
 
 class TestFriendlyErrors(unittest.TestCase):
     def test_queue_timeout(self):
-        self.assertIn("ocupados", _friendly_task_error({"error_type": "QueueTimeout"}))
+        msg = _friendly_task_error({"error_type": "QueueTimeout"})
+        self.assertNotIn("ocupados", msg)
+        self.assertIn("sigue en curso", msg)
+        self.assertIn("no se procesó", msg)
+        self.assertIn("cancela", msg)
 
     def test_runtime_timeout(self):
         msg = _friendly_task_error({"error": "Hermes runtime exceeded the task timeout of 540s"})
@@ -40,9 +54,9 @@ class TestFriendlyErrors(unittest.TestCase):
         self.assertIn("tardó demasiado", msg)
 
     def test_other_errors_stay_generic(self):
-        self.assertEqual(
-            _friendly_task_error({"error": "boom"}), "The agent encountered an error processing your message."
-        )
+        msg = _friendly_task_error({"error": "boom"})
+        self.assertIn("Hubo un problema al procesar tu solicitud", msg)
+        self.assertNotIn("The agent encountered", msg)
 
     def test_unused(self):
         self.assertIsNotNone(MagicMock)

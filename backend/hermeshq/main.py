@@ -17,6 +17,7 @@ from starlette.websockets import WebSocketState
 from hermeshq.config import get_settings
 from hermeshq.core.csrf import CSRFMiddleware
 from hermeshq.core.events import EventAudience, EventBroker
+from hermeshq.core.proceso_seguro import comando_protegido, proteger_proceso
 from hermeshq.core.public_chat_cors import PublicChatCORSMiddleware
 from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
 from hermeshq.database import AsyncSessionLocal, init_database
@@ -61,6 +62,8 @@ from hermeshq.routers import (
     webhooks,
 )
 from hermeshq.routers import settings as settings_router
+from hermeshq.routers.bot_channels import canales_router as bot_channels_router
+from hermeshq.routers.bot_channels import identidades_router as channel_identities_router
 from hermeshq.routers.cloud import router as cloud_router
 from hermeshq.routers.public_chat import management_router as public_chat_management_router
 from hermeshq.routers.public_chat import public_router as public_chat_router
@@ -86,7 +89,9 @@ from hermeshq.services.pty_manager import PTYManager
 from hermeshq.services.public_chat_service import PublicChatService
 from hermeshq.services.runtime_profiles import (
     STANDARD_ENABLED_TOOLSETS,
+    missing_standard_skills,
     normalize_runtime_profile_slug,
+    teams_for_mail_agents,
     terminal_allowed_for_profile,
 )
 from hermeshq.services.runtime_runner_client import RuntimeRunnerClient
@@ -98,6 +103,7 @@ from hermeshq.versioning import get_app_version
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+proteger_proceso()
 DEFAULT_ENABLED_INTEGRATION_PACKAGES = (
     "voice-edge",
     "voice-local",
@@ -235,6 +241,13 @@ async def bootstrap_defaults(secret_vault: SecretVault | None = None) -> None:
                     changed = True
             if changed:
                 agent.enabled_toolsets = current_toolsets
+            faltantes = missing_standard_skills(agent.enabled_toolsets, agent.skills)
+            if faltantes:
+                agent.skills = [*(agent.skills or []), *faltantes]
+            for campo, valor in teams_for_mail_agents(
+                agent.integration_configs, agent.enabled_toolsets, agent.disabled_toolsets, agent.skills
+            ).items():
+                setattr(agent, campo, valor)
         await session.commit()
 
 
@@ -412,6 +425,7 @@ async def lifespan(app: FastAPI):
         session_factory=AsyncSessionLocal,
         event_broker=app.state.event_broker,
         supervisor=app.state.supervisor,
+        secret_vault=app.state.secret_vault,
     )
     await app.state.public_chat_service.start_purge_loop()
 
@@ -506,6 +520,8 @@ app.include_router(capability_requests.router, prefix=settings.api_prefix)
 app.include_router(oidc_admin.router, prefix=settings.api_prefix)
 app.include_router(users.router, prefix=settings.api_prefix)
 app.include_router(permission_policies.router, prefix=settings.api_prefix)
+app.include_router(bot_channels_router, prefix=settings.api_prefix)
+app.include_router(channel_identities_router, prefix=settings.api_prefix)
 app.include_router(audit.router, prefix=settings.api_prefix)
 app.include_router(mcp_server.router)
 app.include_router(desktop_gateway.router)
@@ -665,7 +681,7 @@ async def pty_stream(websocket: WebSocket, agent_id: str) -> None:
         cwd = str(app.state.installation_manager.resolve_workspace_path(agent.workspace_path))
         env = await app.state.installation_manager.build_process_env(agent)
         runtime_selection = await app.state.installation_manager.resolve_hermes_runtime(agent)
-        command = [runtime_selection.hermes_bin]
+        command = comando_protegido(runtime_selection.hermes_bin)
     pty_session = await app.state.pty_manager.create_session(agent_id, mode, cwd, command=command, env=env)
     await app.state.pty_manager.attach(pty_session, websocket)
     try:

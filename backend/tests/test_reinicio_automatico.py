@@ -45,7 +45,7 @@ class TestRacha(unittest.TestCase):
         self.assertEqual((racha["consecutivos"], racha["ventana"]), (1, 3))
         self.assertFalse(PublicChatService.debe_reiniciar(racha))
 
-    def test_four_timeouts_between_steps_that_worked_trigger_a_reset(self):
+    def test_reported_pattern_four_timeouts_between_steps_that_worked(self):
         tareas = [
             _t(5),
             _t(20, "completed", 25, iteraciones=2),
@@ -84,9 +84,24 @@ class TestRacha(unittest.TestCase):
         ]
         self.assertEqual(self._racha(tareas)["ventana"], 3)
 
+    def test_four_timeouts_between_steps_that_worked_trigger_a_reset(self):
+        tareas = [
+            _t(5),
+            _t(20, "completed", 25, iteraciones=2),
+            _t(40),
+            _t(60, "completed", 197, iteraciones=10),
+            _t(70),
+            _t(90, "completed", 60, iteraciones=3),
+            _t(100),
+            _t(120),
+        ]
+        racha = self._racha(tareas)
+        self.assertEqual(racha["ventana"], 5)
+        self.assertTrue(PublicChatService.debe_reiniciar(racha))
+
 
 class TestAvisoParaElAgente(unittest.TestCase):
-    def test_the_notice_tells_the_agent_to_say_it_and_check_the_catalog(self):
+    def test_the_notice_tells_the_agent_to_say_it_check_the_catalog_and_offer_background(self):
         nota = HermesRuntime._nota_reinicio_automatico(
             {"auto_reset_aviso": {"fallos": 4, "minutos": 58}}, Path("/no/existe")
         )
@@ -95,6 +110,7 @@ class TestAvisoParaElAgente(unittest.TestCase):
             "58 min",
             "contexto limpio",
             "catalogo-de-capacidades",
+            "hq_trabajo_largo",
             "NO retomes",
         ):
             self.assertIn(esperado, nota)
@@ -113,10 +129,24 @@ class TestAvisoParaElAgente(unittest.TestCase):
         self.assertTrue(con_hora.startswith("¿qué hora es?\n\n[Hora actual:"))
         self.assertIn("America/Santiago", con_hora)
         self.assertIn("UTC-0", con_hora)
-        programada = HermesRuntime._prompt_with_notices(
-            "x", {"conversation": True, "scheduled": True}, Path("/no/existe")
+        programada = HermesRuntime._prompt_with_notices("x", {"scheduled": True}, Path("/no/existe"))
+        self.assertTrue(programada.startswith("x\n\n[Hora actual:"))
+        self.assertIn("America/Santiago", programada)
+
+    def test_the_notice_tells_the_agent_to_say_it_and_check_the_catalog(self):
+        nota = HermesRuntime._nota_reinicio_automatico(
+            {"auto_reset_aviso": {"fallos": 4, "minutos": 58}}, Path("/no/existe")
         )
-        self.assertEqual(programada, "x")
+        for esperado in (
+            "4 solicitudes",
+            "58 min",
+            "contexto limpio",
+            "catalogo-de-capacidades",
+            "NO retomes",
+        ):
+            self.assertIn(esperado, nota)
+        self.assertEqual(HermesRuntime._nota_reinicio_automatico({}, Path("/no/existe")), "")
+        self.assertEqual(HermesRuntime._nota_reinicio_automatico(None, Path("/no/existe")), "")
 
 
 class TestMarcador(unittest.TestCase):

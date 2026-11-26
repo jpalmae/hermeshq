@@ -61,3 +61,53 @@ class TestApproveByCode(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDeleteByCode(unittest.IsolatedAsyncioTestCase):
+    def _aprobado(self, schedule_id="020c565d", owner="u1"):
+        return SimpleNamespace(
+            id=schedule_id,
+            name="Resumen semanal de correos no leídos",
+            definition_version=1,
+            approval_status="approved",
+            owner_user_id=owner,
+        )
+
+    def _db(self, items):
+        db = _db(items)
+        db.delete = AsyncMock()
+        return db
+
+    def test_parsing(self):
+        from hermeshq.services.schedule_approval import deletion_code_from
+
+        self.assertEqual(deletion_code_from("eliminar N65MHE"), "N65MHE")
+        self.assertEqual(deletion_code_from(" Eliminar n65mhe. "), "N65MHE")
+        for texto in ("elimina la reunión", "eliminar", "eliminar N65MHE y algo más", "quiero eliminar N65MHE"):
+            self.assertIsNone(deletion_code_from(texto), texto)
+
+    async def test_caso_real_el_codigo_correcto_elimina_el_cron(self):
+        from hermeshq.services.cron_schedule import codigo_eliminacion
+        from hermeshq.services.schedule_approval import delete_by_code
+
+        item = self._aprobado()
+        db = self._db([item])
+        respuesta = await delete_by_code(db, "a1", "u1", codigo_eliminacion(item), "public_chat")
+        self.assertIn("Eliminé la programación «Resumen semanal de correos no leídos»", respuesta)
+        db.delete.assert_awaited_once_with(item)
+        db.commit.assert_awaited_once()
+
+    async def test_codigo_ajeno_no_elimina_nada(self):
+        from hermeshq.services.schedule_approval import delete_by_code
+
+        db = self._db([self._aprobado()])
+        respuesta = await delete_by_code(db, "a1", "u1", "ZZZZZZ", "public_chat")
+        self.assertIn("no eliminé nada", respuesta)
+        db.delete.assert_not_awaited()
+
+    async def test_sin_crons_aprobados_sigue_el_flujo_normal(self):
+        from hermeshq.services.schedule_approval import delete_by_code
+
+        db = self._db([])
+        self.assertIsNone(await delete_by_code(db, "a1", "u1", "N65MHE", "public_chat"))
+        db.delete.assert_not_awaited()

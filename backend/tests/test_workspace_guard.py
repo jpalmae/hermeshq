@@ -79,7 +79,7 @@ class TestInterpreter(unittest.TestCase):
         ruta = self.other / "secreto.txt"
         prueba = self._correr(f"print(open({str(ruta)!r}).read())")
         self.assertNotIn("CANARIO", prueba.stdout)
-        self.assertIn("Access denied", prueba.stderr)
+        self.assertIn("Acceso denegado", prueba.stderr)
         propio = self._correr("print(open('propio.txt').read())")
         self.assertIn("PROPIO", propio.stdout)
 
@@ -113,6 +113,52 @@ class TestInterpreter(unittest.TestCase):
         self.assertIn("CANARIO", self._correr(f"print(open({str(ruta)!r}).read())", guardia=False).stdout)
         fuera = self._correr(f"print(open({str(ruta)!r}).read())", cwd=self.root)
         self.assertIn("CANARIO", fuera.stdout)
+
+
+class TestElusionesConocidas(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(os.path.realpath(self.tmp.name)) / "workspaces"
+        self.own = self.root / "agent-aaaaaaaa-1111-2222-3333-444444444444"
+        self.other = self.root / "agent-bbbbbbbb-1111-2222-3333-444444444444"
+        self.own.mkdir(parents=True)
+        self.other.mkdir()
+        (self.other / "secreto.txt").write_text("CANARIO")
+        self.raiz = str(self.root) + "/"
+
+    def _bloq(self, ruta):
+        return guard.blocked(str(ruta), self.raiz, self.own.name, str(self.own))
+
+    def test_proc_self_root_lleva_a_otro_agente(self):
+        self.assertEqual(self._bloq(f"/proc/self/root{self.other}/secreto.txt"), self.other.name)
+
+    def test_symlink_fuera_de_la_raiz_hacia_otro_agente(self):
+        atajo = Path(self.tmp.name) / "atajo"
+        atajo.symlink_to(self.other)
+        self.assertEqual(self._bloq(atajo / "secreto.txt"), self.other.name)
+
+    def test_archivos_sensibles_de_otros_procesos(self):
+        self.assertTrue(self._bloq("/proc/1/environ"))
+        self.assertTrue(self._bloq("/proc/1/root/etc/hostname"))
+        self.assertIsNone(self._bloq(f"/proc/{os.getpid()}/status"))
+        self.assertIsNone(self._bloq("/proc/self/status"))
+        self.assertIsNone(self._bloq("/proc/cpuinfo"))
+
+    def test_comandos_con_ruta_relativa_o_comodin(self):
+        mencion = guard.command_mentions_other_agent
+        self.assertTrue(mencion(["sh", "-c", f"cd .. && cat {self.other.name}/secreto.txt"], self.raiz, self.own.name))
+        self.assertTrue(mencion(["sh", "-c", "cat ../agent-*/secreto.txt"], self.raiz, self.own.name))
+        self.assertIsNone(mencion(["sh", "-c", f"cat {self.own.name}/a.txt; ls"], self.raiz, self.own.name))
+
+    def test_por_el_interprete_proc_self_root_no_lee_al_otro(self):
+        entorno = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "HERMES_SESSION_CWD")}
+        entorno["PYTHONPATH"] = str(GUARD_DIR)
+        codigo = f"print(open('/proc/self/root{self.other}/secreto.txt').read())"
+        r = subprocess.run(
+            [sys.executable, "-c", codigo], cwd=str(self.own), env=entorno, capture_output=True, text=True
+        )
+        self.assertNotIn("CANARIO", r.stdout)
 
 
 class TestRunnerSwitch(unittest.TestCase):

@@ -22,6 +22,9 @@ class _Result:
     def scalars(self):
         return SimpleNamespace(all=lambda: self._items)
 
+    def scalar(self):
+        return 0
+
 
 def _service(tasks, active=("t1",)):
     service = PublicChatService.__new__(PublicChatService)
@@ -88,3 +91,84 @@ class TestHandleCancelRequest(unittest.IsolatedAsyncioTestCase):
         reply = await service.handle_cancel_request("s1", "tok", "para", db)
         self.assertIn("2 tareas", reply)
         self.assertEqual(service.supervisor.cancel_task.await_count, 2)
+
+
+def _corrida(task_id, user_id="u1", manual=True, desde_chat=True):
+    return SimpleNamespace(
+        id=task_id,
+        status="running",
+        completed_at=None,
+        board_column=None,
+        metadata_json={
+            "scheduled": True,
+            "scheduled_task_id": "cron-1",
+            "thread_user_id": user_id,
+            **({"manual_trigger": True} if manual else {}),
+            **({"solicitado_desde_chat": True} if desde_chat else {}),
+        },
+    )
+
+
+class TestCancelaCorridaPedidaDesdeElChat(unittest.IsolatedAsyncioTestCase):
+    async def test_cancela_detiene_la_corrida_manual_que_pidio_este_usuario(self):
+        service, db = _service([_corrida("t1")])
+        reply = await service.handle_cancel_request("s1", "tok", "cancela", db)
+        service.supervisor.cancel_task.assert_awaited_once_with("t1")
+        self.assertIn("cancelé la tarea en curso", reply)
+
+    async def test_la_corrida_automatica_del_cron_no_se_toca(self):
+        service, db = _service([_corrida("t1", manual=False)])
+        reply = await service.handle_cancel_request("s1", "tok", "cancela", db)
+        service.supervisor.cancel_task.assert_not_called()
+        self.assertIn("No tengo ninguna tarea", reply)
+
+    async def test_corrida_manual_lanzada_desde_el_panel_no_se_toca(self):
+        service, db = _service([_corrida("t1", desde_chat=False)])
+        await service.handle_cancel_request("s1", "tok", "cancela", db)
+        service.supervisor.cancel_task.assert_not_called()
+
+    async def test_corrida_de_otro_usuario_no_se_toca(self):
+        service, db = _service([_corrida("t1", user_id="u2")])
+        await service.handle_cancel_request("s1", "tok", "cancela", db)
+        service.supervisor.cancel_task.assert_not_called()
+
+    async def test_usuario_anonimo_no_cancela_corridas(self):
+        service, db = _service([_corrida("t1", user_id=PUBLIC_CHAT_USER_ID)])
+        service._resolve_identity = AsyncMock(return_value=(PUBLIC_CHAT_USER_ID, None))
+        await service.handle_cancel_request("s1", "tok", "cancela", db)
+        service.supervisor.cancel_task.assert_not_called()
+
+    async def test_reset_no_cancela_la_corrida_pero_si_la_conversacion(self):
+        service, db = _service([_corrida("t1"), _task("t2")], active=("t1", "t2"))
+        reply = await service.handle_cancel_request("s1", "tok", "/reset", db)
+        service.supervisor.cancel_task.assert_awaited_once_with("t2")
+        self.assertIn("Cancelé 1 tarea", reply)
+
+
+class TestCancelaUnObjetoSinNadaEnCurso(unittest.IsolatedAsyncioTestCase):
+    async def test_caso_real_ahora_cancelala_sin_tareas_va_al_agente(self):
+        service, db = _service([], active=())
+        self.assertIsNone(await service.handle_cancel_request("s1", "tok", "Ahora cancélala.", db))
+        service.supervisor.cancel_task.assert_not_called()
+        db.add.assert_not_called()
+
+    async def test_cancelala_con_una_tarea_en_curso_la_detiene(self):
+        service, db = _service([_task("t1")])
+        reply = await service.handle_cancel_request("s1", "tok", "cancélala", db)
+        service.supervisor.cancel_task.assert_awaited_once_with("t1")
+        self.assertIn("cancelé", reply)
+
+    async def test_cancela_a_secas_sin_tareas_sigue_respondiendo(self):
+        service, db = _service([], active=())
+        reply = await service.handle_cancel_request("s1", "tok", "cancela", db)
+        self.assertIn("No tengo ninguna tarea", reply)
+
+
+class TestApuntaAUnObjeto(unittest.TestCase):
+    def test_formas(self):
+        from hermeshq.services.cancel_intent import apunta_a_un_objeto
+
+        for texto in ("Ahora cancélala.", "cancélalo", "olvídala", "cancela la reunión", "borra ese cron"):
+            self.assertTrue(apunta_a_un_objeto(texto), texto)
+        for texto in ("cancela", "para", "stop", "basta ya", "detente"):
+            self.assertFalse(apunta_a_un_objeto(texto), texto)

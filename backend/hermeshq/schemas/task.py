@@ -19,7 +19,7 @@ class TaskBoardUpdate(BaseModel):
     board_order: int | None = None
 
 
-class TaskRead(ORMModel):
+class TaskListRead(ORMModel):
     id: str
     agent_id: str
     created_by_user_id: str | None = None
@@ -32,14 +32,17 @@ class TaskRead(ORMModel):
     priority: int
     response: str | None
     error_message: str | None
-    messages_json: list[dict]
-    tool_calls: list[dict]
     tokens_used: int
     iterations: int
     queued_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
     metadata: dict = Field(validation_alias="metadata_json", serialization_alias="metadata")
+
+
+class TaskRead(TaskListRead):
+    messages_json: list[dict]
+    tool_calls: list[dict]
 
 
 class TaskQueueStateRead(BaseModel):

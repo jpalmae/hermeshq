@@ -60,7 +60,7 @@ async def start_agent(
 async def stop_agent(
     agent_id: str,
     request: Request,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
     await ensure_agent_access(db, current_user, agent_id)
@@ -74,7 +74,7 @@ async def stop_agent(
 async def restart_agent(
     agent_id: str,
     request: Request,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
     await ensure_agent_access(db, current_user, agent_id)
@@ -154,7 +154,7 @@ async def set_agent_mode(
     agent_id: str,
     payload: AgentModeUpdate,
     request: Request,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> AgentRead:
     agent = await ensure_agent_access(db, current_user, agent_id)

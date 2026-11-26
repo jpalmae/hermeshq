@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hermeshq.core.security import ensure_agent_access, get_current_user
+from hermeshq.core.security import ensure_agent_access, get_current_user, is_admin
 from hermeshq.database import get_db_session
 from hermeshq.models.user import User
 from hermeshq.schemas.agent import (
@@ -21,6 +21,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 
+def _solo_admin(current_user: User) -> None:
+    if not is_admin(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Acceso denegado: el workspace del agente es compartido y solo lo administran los administradores.",
+        )
+
+
 @router.get("/{agent_id}/workspace", response_model=WorkspaceListingRead)
 async def list_workspace(
     agent_id: str,
@@ -30,9 +38,10 @@ async def list_workspace(
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     await ensure_agent_access(db, current_user, agent_id)
+    _solo_admin(current_user)
     try:
         return {
-            "entries": request.app.state.workspace_manager.list_workspace_files(agent_id, path),
+            "entries": request.app.state.workspace_manager.list_workspace_files(agent_id, path, include_protected=True),
             "size": request.app.state.workspace_manager.get_workspace_size(agent_id),
         }
     except ValueError as exc:
@@ -48,6 +57,7 @@ async def read_workspace_file(
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     await ensure_agent_access(db, current_user, agent_id)
+    _solo_admin(current_user)
     try:
         content = request.app.state.workspace_manager.read_workspace_file(agent_id, file_path)
     except FileNotFoundError as exc:
@@ -67,6 +77,7 @@ async def write_workspace_file(
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     await ensure_agent_access(db, current_user, agent_id)
+    _solo_admin(current_user)
     try:
         request.app.state.workspace_manager.write_workspace_file(agent_id, file_path, payload.content)
     except ValueError as exc:

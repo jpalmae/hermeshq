@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import base64
 import json
+import mimetypes
 import os
+import re
 import socket
+import urllib.request
 from datetime import datetime
+from html import escape as html_escape
+from html import unescape as html_unescape
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -82,6 +88,25 @@ code {
 """
 
 
+BASE_CSS = """
+img {
+    display: block;
+    max-width: 100%;
+    max-height: 14cm;
+    width: auto;
+    height: auto;
+    margin: 12px auto;
+    page-break-inside: avoid;
+}
+"""
+
+_H1_INICIAL = re.compile(r"^\s*<h1\b[^>]*>(.*?)</h1>", re.I | re.S)
+
+
+def _sin_etiquetas(texto: str) -> str:
+    return " ".join(re.sub(r"<[^>]+>", " ", html_unescape(texto)).split()).casefold()
+
+
 def _check_requirements():
     try:
         import weasyprint  # noqa: F401
@@ -130,7 +155,7 @@ def _sanitize_html(html: str) -> str:
                 "a",
             },
             attributes={
-                "img": {"src"},
+                "img": {"src", "alt", "width", "height"},
                 "a": {"href"},
                 "td": {"colspan", "rowspan"},
                 "th": {"colspan", "rowspan"},
@@ -141,34 +166,149 @@ def _sanitize_html(html: str) -> str:
         return html
 
 
-def _is_private_ip(hostname: str) -> bool:
+MAX_BYTES_RECURSO = 5 * 1024 * 1024
+
+
+def _ip_publica(hostname: str) -> bool:
+    import ipaddress
+
     try:
-        ip = socket.gethostbyname(hostname)
-        parts = [int(p) for p in ip.split(".")]
-        if len(parts) != 4:
-            return False
-        if parts[0] == 10:
-            return True
-        if parts[0] == 172 and 16 <= parts[1] <= 31:
-            return True
-        if parts[0] == 192 and parts[1] == 168:
-            return True
-        if parts[0] == 127:
-            return True
-        return bool(parts[0] == 169 and parts[1] == 254)
-    except (socket.gaierror, ValueError):
+        direcciones = {info[4][0] for info in socket.getaddrinfo(hostname, 443)}
+    except (socket.gaierror, UnicodeError):
         return False
+    if not direcciones:
+        return False
+    for direccion in direcciones:
+        ip = ipaddress.ip_address(direccion.split("%", 1)[0])
+        if not ip.is_global or ip.is_multicast:
+            return False
+    return True
+
+
+def _is_private_ip(hostname: str) -> bool:
+    return not _ip_publica(hostname)
+
+
+class _SinRedirecciones(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def _como_fetcher(funcion):
+    try:
+        from weasyprint.urls import URLFetcher, URLFetcherResponse
+    except ImportError:
+        return funcion
+
+    class _Fetcher(URLFetcher):
+        def fetch(self, url, headers=None):
+            if urlparse(url).scheme == "data":
+                return super().fetch(url, headers)
+            recurso = funcion(url)
+            return URLFetcherResponse(
+                recurso.get("redirected_url") or url,
+                body=recurso.get("string") or b"",
+                headers={"Content-Type": recurso.get("mime_type") or "application/octet-stream"},
+            )
+
+    return _Fetcher()
 
 
 def _safe_url_fetcher(url: str, timeout: int = 10, ssl_context=None):
     parsed = urlparse(url)
-    if parsed.scheme == "file":
-        return {"string": "", "mime_type": "text/plain"}
-    if parsed.hostname and _is_private_ip(parsed.hostname):
-        return {"string": "", "mime_type": "text/plain"}
-    from weasyprint import default_url_fetcher
+    vacio = {"string": b"", "mime_type": "text/plain"}
+    if parsed.scheme == "data":
+        try:
+            from weasyprint import default_url_fetcher
+        except ImportError:
+            return vacio
+        return default_url_fetcher(url, timeout=timeout, ssl_context=ssl_context)
+    if parsed.scheme != "https" or not parsed.hostname or not _ip_publica(parsed.hostname):
+        return vacio
+    abridor = urllib.request.build_opener(_SinRedirecciones())
+    try:
+        with abridor.open(urllib.request.Request(url, headers={"User-Agent": "HermesHQ-PDF"}), timeout=timeout) as r:
+            if r.status != 200:
+                return vacio
+            datos = r.read(MAX_BYTES_RECURSO + 1)
+            if len(datos) > MAX_BYTES_RECURSO:
+                return vacio
+            return {"string": datos, "mime_type": r.headers.get_content_type(), "redirected_url": url}
+    except Exception:  # noqa: BLE001
+        return vacio
 
-    return default_url_fetcher(url, timeout=timeout, ssl_context=ssl_context)
+
+_IMG_SRC = re.compile(r"(<img\b[^>]*?\bsrc\s*=\s*)([\"'])(.*?)\2", re.I | re.S)
+MAX_BYTES_IMAGEN_LOCAL = 8 * 1024 * 1024
+
+
+def _incrustar_imagenes_locales(html: str, carpeta: Path) -> tuple[str, list[str], list[str]]:
+    no_incluidas: list[str] = []
+    remotas: list[str] = []
+
+    def reemplazar(m):
+        src = html_unescape(m.group(3)).strip()
+        if src.lower().startswith("data:"):
+            return m.group(0)
+        if src.lower().startswith(("https://", "http://")):
+            remotas.append(src)
+            return m.group(0)
+        ruta = src[7:] if src.lower().startswith("file://") else src
+        candidato = (Path(ruta) if ruta.startswith("/") else carpeta / ruta).resolve()
+        tipo = mimetypes.guess_type(candidato.name)[0] or ""
+        try:
+            candidato.relative_to(carpeta)
+            valido = (
+                candidato.is_file() and tipo.startswith("image/") and candidato.stat().st_size <= MAX_BYTES_IMAGEN_LOCAL
+            )
+        except (ValueError, OSError):
+            valido = False
+        if not valido:
+            no_incluidas.append(src)
+            return m.group(0)
+        datos = base64.b64encode(candidato.read_bytes()).decode("ascii")
+        return f"{m.group(1)}{m.group(2)}data:{tipo};base64,{datos}{m.group(2)}"
+
+    return _IMG_SRC.sub(reemplazar, html), no_incluidas, remotas
+
+
+def _nombre_seguro(nombre: str, ext: str, por_defecto: str) -> str:
+    base = os.path.basename(str(nombre or "").replace("\\", "/")).strip()
+    if base.lower().endswith("." + ext):
+        base = base[: -(len(ext) + 1)]
+    limpio = "".join(c if c.isalnum() or c in ("-", "_", ".") else "-" for c in base).strip(".-")[:80]
+    return f"{limpio or por_defecto}.{ext}"
+
+
+def _reservar_salida(carpeta: Path, nombre: str) -> Path:
+    carpeta.mkdir(parents=True, exist_ok=True)
+    raiz, ext = os.path.splitext(nombre)
+    for n in range(1, 1000):
+        candidato = carpeta / (nombre if n == 1 else f"{raiz}-{n}{ext}")
+        try:
+            os.close(os.open(candidato, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644))
+            return candidato
+        except FileExistsError:
+            continue
+    raise ValueError("Hay demasiadas versiones con ese nombre; usa otro filename.")
+
+
+def _guardar_seguro(destino: Path, escribir, verificar) -> None:
+    temporal = destino.with_name(f".tmp-{os.getpid()}-{destino.name}")
+    try:
+        escribir(temporal)
+        verificar(temporal)
+        os.replace(temporal, destino)
+    except BaseException:
+        temporal.unlink(missing_ok=True)
+        destino.unlink(missing_ok=True)
+        raise
+
+
+def _verificar_pdf(ruta: Path) -> None:
+    datos = ruta.read_bytes()
+    if not datos.startswith(b"%PDF-") or b"%%EOF" not in datos[-2048:]:
+        raise ValueError("el PDF generado está incompleto")
 
 
 def _handle_generate_pdf(args, **_kwargs):
@@ -182,24 +322,41 @@ def _handle_generate_pdf(args, **_kwargs):
     except (ImportError, OSError):
         return json.dumps({"success": False, "error": "weasyprint is not installed. PDF generation is unavailable."})
 
-    if not filename:
-        safe_title = "".join(c if c.isalnum() or c in ("-_",) else "-" for c in title.lower())[:60]
-        filename = f"{safe_title}.pdf"
+    filename = _nombre_seguro(filename or title.lower(), "pdf", "documento")
+    work_dir = Path(os.environ.get("HERMES_SESSION_CWD", os.getcwd())).resolve()
+    html_content, no_incluidas, remotas = _incrustar_imagenes_locales(html_content, work_dir)
+    if no_incluidas:
+        return json.dumps(
+            {
+                "success": False,
+                "error": "No se generó el PDF: estas imágenes no existen en tu espacio de trabajo o no son imágenes "
+                f"válidas: {', '.join(no_incluidas)}. Usa la ruta que devolvió la herramienta (por ejemplo "
+                "uploads/archivo.png) o quítalas.",
+            },
+            ensure_ascii=False,
+        )
+    fallidas: list[str] = []
 
-    work_dir = Path(os.environ.get("HERMES_SESSION_CWD", os.getcwd()))
+    def _buscar(url, *a, **kw):
+        recurso = _safe_url_fetcher(url, *a, **kw)
+        if url in remotas and not recurso.get("string"):
+            fallidas.append(url)
+        return recurso
+
     output_dir = work_dir / "output"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    filepath = output_dir / filename
+    titulo_html = html_escape(str(title))
+    inicial = _H1_INICIAL.match(html_content)
+    repite_titulo = bool(inicial) and _sin_etiquetas(inicial.group(1)) == _sin_etiquetas(str(title))
+    encabezado = "" if repite_titulo else f"<h1>{titulo_html}</h1>"
 
     full_html = f"""<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>{title}</title>
+    <title>{titulo_html}</title>
 </head>
 <body>
-    <h1>{title}</h1>
+    {encabezado}
     {html_content}
     <div class="footer">
         Generado el {datetime.now().strftime("%d/%m/%Y %H:%M")} por HermesHQ
@@ -207,23 +364,47 @@ def _handle_generate_pdf(args, **_kwargs):
 </body>
 </html>"""
 
-    combined_css = css_content if css_content.strip() else DEFAULT_CSS
+    combined_css = BASE_CSS + (css_content if css_content.strip() else DEFAULT_CSS)
 
     try:
-        HTML(string=full_html, url_fetcher=_safe_url_fetcher).write_pdf(
-            str(filepath), stylesheets=[CSS(string=combined_css)]
+        filepath = _reservar_salida(output_dir, filename)
+        _guardar_seguro(
+            filepath,
+            lambda t: HTML(string=full_html, url_fetcher=_como_fetcher(_buscar)).write_pdf(
+                str(t), stylesheets=[CSS(string=combined_css, url_fetcher=_como_fetcher(_safe_url_fetcher))]
+            ),
+            _verificar_pdf,
         )
     except Exception as exc:
         return json.dumps({"success": False, "error": f"PDF generation failed: {exc}"})
+    if fallidas:
+        filepath.unlink(missing_ok=True)
+        return json.dumps(
+            {
+                "success": False,
+                "error": "No se generó el PDF: no se pudieron descargar estas imágenes y el PDF saldría sin ellas: "
+                f"{', '.join(fallidas)}. Descárgalas al espacio de trabajo y usa su ruta, o quítalas.",
+            },
+            ensure_ascii=False,
+        )
 
     return json.dumps(
         {
             "success": True,
-            "filename": filename,
+            "filename": filepath.name,
             "path": str(filepath),
             "size_bytes": filepath.stat().st_size,
+            "adjuntar_en_la_respuesta": _linea_media(filepath),
         }
     )
+
+
+def _linea_media(ruta: Path) -> list[str]:
+    base = Path(os.environ.get("HERMES_SESSION_CWD", os.getcwd())).resolve()
+    try:
+        return [f"MEDIA:{ruta.resolve().relative_to(base)}"]
+    except ValueError:
+        return [f"MEDIA:{ruta}"]
 
 
 def register(ctx):

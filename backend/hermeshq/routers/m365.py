@@ -428,7 +428,6 @@ async def get_agent_m365_token(
     """Called by managed integration plugins running inside an agent runtime.
     Validates agent credentials, verifies the agent is assigned to the user,
     checks allowed scopes, and returns a fresh access token."""
-    from hermeshq.core.security import verify_agent_service_token
     from hermeshq.models.agent import Agent
     from hermeshq.models.agent_assignment import AgentAssignment
 
@@ -439,7 +438,9 @@ async def get_agent_m365_token(
     agent = await db.get(Agent, agent_id)
     if not agent or agent.is_archived:
         raise HTTPException(status_code=401, detail="Unknown agent")
-    if not verify_agent_service_token(agent_token, agent_id, agent.service_token_version or 1):
+    from hermeshq.services.credencial_agente import credencial_valida
+
+    if not await credencial_valida(db, agent_id, agent_token, origen="m365_agent_token", cabeceras=request.headers):
         raise HTTPException(status_code=401, detail="Invalid agent credentials")
 
     assignment_result = await db.execute(

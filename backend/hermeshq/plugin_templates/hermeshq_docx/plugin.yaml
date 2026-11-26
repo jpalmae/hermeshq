@@ -4,3 +4,4 @@ description: Word document (.docx) generation tool for agents. Create structured
 author: HermesHQ
 provides_tools:
   - hq_docx_generate
+  - hq_versiones_documento
