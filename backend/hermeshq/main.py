@@ -17,6 +17,7 @@ from starlette.websockets import WebSocketState
 from hermeshq.config import get_settings
 from hermeshq.core.csrf import CSRFMiddleware
 from hermeshq.core.events import EventAudience, EventBroker
+from hermeshq.core.proceso_seguro import comando_protegido, proteger_proceso
 from hermeshq.core.public_chat_cors import PublicChatCORSMiddleware
 from hermeshq.core.security import get_accessible_agent_ids, get_websocket_user, hash_password, is_admin
 from hermeshq.database import AsyncSessionLocal, init_database
@@ -98,6 +99,7 @@ from hermeshq.versioning import get_app_version
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+proteger_proceso()
 DEFAULT_ENABLED_INTEGRATION_PACKAGES = (
     "voice-edge",
     "voice-local",
@@ -665,7 +667,7 @@ async def pty_stream(websocket: WebSocket, agent_id: str) -> None:
         cwd = str(app.state.installation_manager.resolve_workspace_path(agent.workspace_path))
         env = await app.state.installation_manager.build_process_env(agent)
         runtime_selection = await app.state.installation_manager.resolve_hermes_runtime(agent)
-        command = [runtime_selection.hermes_bin]
+        command = comando_protegido(runtime_selection.hermes_bin)
     pty_session = await app.state.pty_manager.create_session(agent_id, mode, cwd, command=command, env=env)
     await app.state.pty_manager.attach(pty_session, websocket)
     try:
