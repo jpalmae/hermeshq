@@ -1480,7 +1480,9 @@ def _huella_adjuntos(adjuntos: list[dict] | None) -> list[list[str]]:
 
 
 APROBACION_TEXTUAL = re.compile(
-    r"^\s*(s[ií][,.]?\s*)?(env[ií]a|env[ií]alo|env[ií]ala|enviar|manda(lo|la)?)\b", re.IGNORECASE
+    r"^\s*(s[ií][,.]?\s*)?(env[ií]a|env[ií]alo|env[ií]ala|enviar|manda(lo|la)?|reenv[ií]a(lo|la|le)?|reenviar|"
+    r"resp[oó]nde(lo|le)?|contesta(lo|le)?)\b",
+    re.IGNORECASE,
 )
 
 
@@ -1523,6 +1525,27 @@ _PALABRAS_APROBACION = {
     "mandala",
     "mandar",
     "yes",
+    "procede",
+    "hazlo",
+    "autorizo",
+    "apruebo",
+    "aprobado",
+    "reenvia",
+    "reenvialo",
+    "reenviala",
+    "reenviale",
+    "reenviar",
+    "reenviarlo",
+    "reenviarla",
+    "responde",
+    "respondelo",
+    "respondele",
+    "responder",
+    "contesta",
+    "contestalo",
+    "contestale",
+    "enviale",
+    "mandale",
 }
 _PALABRAS_RELLENO = {
     "de",
@@ -1539,6 +1562,10 @@ _PALABRAS_RELLENO = {
     "el",
     "correo",
     "ahora",
+    "con",
+    "todo",
+    "todos",
+    "igual",
 }
 
 

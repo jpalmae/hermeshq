@@ -1085,6 +1085,22 @@ _PALABRAS_APROBACION = {
     "procede",
     "hazlo",
     "yes",
+    "reenvia",
+    "reenvialo",
+    "reenviala",
+    "reenviale",
+    "reenviar",
+    "reenviarlo",
+    "reenviarla",
+    "responde",
+    "respondelo",
+    "respondele",
+    "responder",
+    "contesta",
+    "contestalo",
+    "contestale",
+    "enviale",
+    "mandale",
 }
 _PALABRAS_RELLENO = {
     "de",
@@ -1101,6 +1117,10 @@ _PALABRAS_RELLENO = {
     "el",
     "correo",
     "ahora",
+    "con",
+    "todo",
+    "todos",
+    "igual",
 }
 
 
