@@ -2920,6 +2920,7 @@ _HERRAMIENTAS_POR_PEDIDO = (
         ("sharepoint_upload_file",),
         ("sharepoint_upload_file",),
     ),
+    (r"\bzip\b|comprim|descomprim", ("execute_code", "terminal"), ("execute_code", "terminal")),
 )
 
 
@@ -3186,6 +3187,12 @@ _MOTIVO_VERIFICACION = {
         "sharepoint_list_files en la carpeta que pidió, y responde con la ubicación y el enlace reales; si no está, "
         "dilo"
     ),
+    "entrega_sin_archivo": (
+        "el usuario pidió que le entregues un archivo y no lo adjuntaste ni ejecutaste ninguna herramienta. Si el "
+        "archivo existe en tu workspace, adjúntalo con su línea MEDIA:; si no existe, créalo ahora (un .zip con "
+        "execute_code y el módulo zipfile, dentro de outputs/) y adjúntalo; si no puedes, dilo claramente sin "
+        "describirlo como si existiera"
+    ),
     "adjunto_pc": (
         "esa es una ruta del PC del usuario: no puedes escribir ahí ni adjuntarla; súbelo a su OneDrive con "
         "sharepoint_upload_file y adjunta el archivo del workspace"
@@ -3222,6 +3229,7 @@ _MOTIVO_VERIFICACION = {
     ),
 }
 _AVISO_VERIFICACION = {
+    "entrega_sin_archivo": "No te adjunté ningún archivo: en esta respuesta no se generó ni se adjuntó nada.",
     "subida": "No se guardó ni subió ningún archivo a OneDrive o SharePoint.",
     "subida_pendiente": "El archivo no se guardó ni subió todavía: la subida espera tu aprobación.",
     "correo": "No se envió ningún correo ni mensaje.",
@@ -3974,6 +3982,25 @@ def carpetas_pedidas_sin_subida(mensaje: str, resultados: list) -> list[str]:
 _SOLO_MUEVEN_ARCHIVOS = ("sharepoint_", "ms365_", "teams_", "hq_schedule_")
 
 
+_PIDE_ENTREGA_DE_ARCHIVO = re.compile(
+    r"\b(?:enviame\w*|mandame\w*|pasame\w*|adjunta\w*|entregame\w*|dame|comparteme\w*)\b[^.?!\n]{0,60}"
+    r"\b(?:zip|archivo|excel|xlsx|pdf|word|docx|pptx|powerpoint|presentacion|html|csv|documento|planilla|descargable)\b"
+    r"|\bno (?:tengo|veo|me llego|recibi|aparece|encuentro)\b[^.?!\n]{0,30}"
+    r"\b(?:descargable|archivo|adjunto|zip)\b"
+)
+_ENTREGA_POR_OTRO_CANAL = re.compile(r"\b(?:correo|mail|teams|onedrive|sharepoint|whatsapp|carpeta|enlace|link)\b")
+
+
+def entrega_de_archivo_sin_adjunto(propio: str, respuesta: str, resultados) -> bool:
+    plano = _sin_tildes_runner(propio or "").lower()
+    texto = respuesta or ""
+    if resultados or len(plano) > 300 or _LINEA_MEDIA.search(texto):
+        return False
+    if not _PIDE_ENTREGA_DE_ARCHIVO.search(plano) or _ENTREGA_POR_OTRO_CANAL.search(plano):
+        return False
+    return not (_RECONOCE_QUE_NO.search(texto) or "?" in texto or "segundo plano" in texto.lower())
+
+
 def verificar_afirmaciones(
     respuesta: str,
     mensajes: list,
@@ -4079,7 +4106,9 @@ def verificar_afirmaciones(
             continue
         if not _archivo_existe(ruta, cwd):
             tipo = "adjunto_pc" if _RUTA_DE_PC.match(ruta.strip("`'\"")) else "adjunto"
-            pendientes.append({"tipo": tipo, "frase": ruta[:300]})
+            pendientes.append({"tipo": tipo, "frase": ruta[:300], "sin_herramientas": not resultados})
+    if entrega_de_archivo_sin_adjunto(propio, texto, resultados):
+        pendientes.append({"tipo": "entrega_sin_archivo", "frase": propio.strip()[:160], "sin_herramientas": True})
     pendientes.extend(errores_js_de_adjuntos(texto, cwd))
     pendientes.extend(html_dado_por_corregido(sin_media, texto, mensajes, inicio, cwd))
     pendientes.extend(funciones_prometidas_sin_html(sin_media, texto, mensajes, inicio, cwd))
@@ -4125,6 +4154,9 @@ def nota_verificacion(pendientes: list[dict]) -> str:
     ejemplo = (
         "por ejemplo, sharepoint_upload_file para guardar en la carpeta que pidió el usuario"
         if any(p["tipo"] in _PENDIENTES_DE_SUBIDA for p in pendientes)
+        else "por ejemplo, crear el .zip con execute_code y el módulo zipfile dentro de outputs/ y adjuntarlo con su "
+        "línea MEDIA:"
+        if any(p["tipo"] in ("adjunto", "entrega_sin_archivo") and ".zip" in p["frase"].lower() for p in pendientes)
         else "por ejemplo, generar el archivo con su herramienta antes de adjuntarlo"
     )
     return (
@@ -4219,6 +4251,10 @@ def respuesta_verificada(respuesta: str, pendientes: list[dict]) -> str:
         any(p["tipo"] == "archivo" for p in pendientes)
         and all(p["tipo"] in ("archivo", "adjunto") for p in pendientes)
         and len(_LINEA_MEDIA.sub("", texto)) < 600
+    ):
+        return aviso
+    if all(p["tipo"] in ("archivo", "adjunto", "entrega_sin_archivo") for p in pendientes) and any(
+        p.get("sin_herramientas") for p in pendientes
     ):
         return aviso
     if sin_entregar and not _LINEA_MEDIA.search(texto):
