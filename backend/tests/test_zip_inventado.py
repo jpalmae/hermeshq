@@ -88,3 +88,36 @@ class TestRechazoDeComprimir:
 
     def test_control_negativo_sin_execute_code_no_se_sugiere(self):
         assert runner.herramientas_negadas_disponibles("envíame un zip", RECHAZO_ZIP, {"read_file"}) == []
+
+
+class TestAdjuntoFueraDelEspacio:
+    def _rutas(self, tmp_path):
+        espacio = tmp_path / "agente"
+        (espacio / "outputs").mkdir(parents=True)
+        afuera = tmp_path / "compartida"
+        afuera.mkdir()
+        (afuera / "skills.zip").write_bytes(b"PK")
+        return espacio, afuera / "skills.zip"
+
+    def test_prueba_en_vivo_zip_creado_fuera_del_workspace(self, tmp_path):
+        espacio, zip_afuera = self._rutas(tmp_path)
+        respuesta = f"Listo, aquí está el ZIP.\n\nMEDIA: {zip_afuera}"
+        pendientes = _verificar(respuesta, "envíame el ZIP", cwd=str(espacio))
+        assert [p["tipo"] for p in pendientes] == ["adjunto_fuera"]
+        nota = runner.nota_verificacion(pendientes)
+        assert "outputs/" in nota and "shutil.copy" in nota
+        final = runner.respuesta_verificada(respuesta, pendientes)
+        assert "quedó fuera de mi espacio de trabajo" in final and "MEDIA:" not in final
+
+    def test_control_negativo_dentro_del_workspace(self, tmp_path):
+        espacio, _ = self._rutas(tmp_path)
+        (espacio / "outputs" / "skills.zip").write_bytes(b"PK")
+        respuesta = f"Aquí está.\n\nMEDIA: {espacio / 'outputs' / 'skills.zip'}"
+        assert _verificar(respuesta, "envíame el ZIP", cwd=str(espacio)) == []
+
+    def test_control_negativo_rutas_internas_de_skills(self, tmp_path):
+        espacio, _ = self._rutas(tmp_path)
+        interna = tmp_path / "otro" / ".hermes" / "skills" / "x" / "SKILL.md"
+        interna.parent.mkdir(parents=True)
+        interna.write_text("x", encoding="utf-8")
+        assert not runner._fuera_del_espacio(str(interna), str(espacio))

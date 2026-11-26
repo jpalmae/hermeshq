@@ -3182,6 +3182,10 @@ _MOTIVO_VERIFICACION = {
     "archivo": "no se ejecutó ninguna herramienta que genere o modifique archivos en esta tarea",
     "enlace": "ese enlace no salió de ninguna herramienta ni del usuario: es inventado",
     "adjunto": "ese archivo no existe en tu workspace, así que no se puede adjuntar",
+    "adjunto_fuera": (
+        "ese archivo existe pero quedó fuera de tu espacio de trabajo y no se puede adjuntar: cópialo a outputs/ "
+        "dentro de tu workspace (por ejemplo con execute_code y shutil.copy) y adjunta esa copia con su línea MEDIA:"
+    ),
     "ubicacion": (
         "el usuario preguntó dónde está el archivo y no lo revisaste: búscalo con sharepoint_search o "
         "sharepoint_list_files en la carpeta que pidió, y responde con la ubicación y el enlace reales; si no está, "
@@ -3489,6 +3493,17 @@ def enlace_respaldado(url: str, respaldo: str) -> bool:
     if exacta:
         return clave in texto or clave.rsplit("/", 1)[-1] in texto
     return clave in texto
+
+
+def _fuera_del_espacio(ruta: str, cwd: str | None) -> bool:
+    ruta = ruta.strip().strip("`'\"")
+    if not cwd or not ruta.startswith("/") or "/.hermes/skills/" in ruta or "/_branding/" in ruta:
+        return False
+    candidato = Path(ruta)
+    try:
+        return candidato.is_file() and Path(cwd).resolve() not in candidato.resolve().parents
+    except OSError:
+        return False
 
 
 def _archivo_existe(ruta: str, cwd: str | None) -> bool:
@@ -4107,6 +4122,8 @@ def verificar_afirmaciones(
         if not _archivo_existe(ruta, cwd):
             tipo = "adjunto_pc" if _RUTA_DE_PC.match(ruta.strip("`'\"")) else "adjunto"
             pendientes.append({"tipo": tipo, "frase": ruta[:300], "sin_herramientas": not resultados})
+        elif _fuera_del_espacio(ruta, cwd):
+            pendientes.append({"tipo": "adjunto_fuera", "frase": ruta[:300]})
     if entrega_de_archivo_sin_adjunto(propio, texto, resultados):
         pendientes.append({"tipo": "entrega_sin_archivo", "frase": propio.strip()[:160], "sin_herramientas": True})
     pendientes.extend(errores_js_de_adjuntos(texto, cwd))
@@ -4157,6 +4174,8 @@ def nota_verificacion(pendientes: list[dict]) -> str:
         else "por ejemplo, crear el .zip con execute_code y el módulo zipfile dentro de outputs/ y adjuntarlo con su "
         "línea MEDIA:"
         if any(p["tipo"] in ("adjunto", "entrega_sin_archivo") and ".zip" in p["frase"].lower() for p in pendientes)
+        else "por ejemplo, copiar el archivo a outputs/ con execute_code (shutil.copy) y adjuntar la copia"
+        if any(p["tipo"] == "adjunto_fuera" for p in pendientes)
         else "por ejemplo, generar el archivo con su herramienta antes de adjuntarlo"
     )
     return (
@@ -4231,10 +4250,11 @@ def respuesta_verificada(respuesta: str, pendientes: list[dict]) -> str:
                 )
             )
             continue
-        if p["tipo"] in ("adjunto", "adjunto_pc"):
+        if p["tipo"] in ("adjunto", "adjunto_pc", "adjunto_fuera"):
             texto = _LINEA_MEDIA.sub(lambda m, f=p["frase"]: "" if m.group(1)[:300] == f else m.group(0), texto)
             nombre = re.split(r"[\\/]", p["frase"].strip())[-1] or p["frase"]
-            avisos.append(f"No pude adjuntar «{nombre}»: el archivo no existe.")
+            motivo = "quedó fuera de mi espacio de trabajo" if p["tipo"] == "adjunto_fuera" else "el archivo no existe"
+            avisos.append(f"No pude adjuntar «{nombre}»: {motivo}.")
             continue
         texto = texto.replace(p["frase"], "")
         if p["tipo"] == "renombre":
