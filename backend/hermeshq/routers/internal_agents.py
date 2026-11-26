@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hermeshq.core.security import can_access_agent, verify_agent_service_token
+from hermeshq.core.security import can_access_agent
 from hermeshq.database import get_db_session
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
@@ -19,6 +19,7 @@ from hermeshq.routers.agents_shared import _load_agent_map
 from hermeshq.schemas.internal_agent import InternalDelegateRead, InternalDirectRead, InternalRosterRead
 from hermeshq.schemas.message import MessageCreate
 from hermeshq.services.agent_hierarchy import delegate_route, route_label, validate_delegate_hierarchy
+from hermeshq.services.credencial_agente import credencial_valida
 from hermeshq.services.cron_schedule import (
     APPROVAL_CODE_TTL,
     DEFAULT_TIMEZONE,
@@ -57,11 +58,11 @@ async def _get_internal_agent(
 ) -> Agent:
     if not agent_id or not agent_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing agent credentials")
+    if not await credencial_valida(db, agent_id, agent_token, origen="internal_agents"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid agent credentials")
     agent = await db.get(Agent, agent_id)
     if not agent or agent.is_archived:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown agent")
-    if not verify_agent_service_token(agent_token, agent_id, agent.service_token_version or 1):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid agent credentials")
     return agent
 
 

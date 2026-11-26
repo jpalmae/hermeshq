@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     # Max concurrent agent task executions.
     # Each isolated runtime is limited independently by Docker in production.
     concurrency_semaphore: int = 8
+    concurrency_interactive_reserve: int = 0
+    concurrency_background_max: int = 0
+    concurrency_aging_seconds: int = 300
+    task_parallel_lanes: bool = False
     # Max wall-clock seconds a single task execution may run.
     task_timeout_seconds: int = 3600
     task_queue_poll_seconds: float = Field(default=1.0, gt=0, le=60)
@@ -83,6 +87,13 @@ class Settings(BaseSettings):
     model_call_timeout_seconds: int = 120
     model_context_length: int = 0
     enrollment_llm_proxy: bool = True
+    execution_lease_ttl_seconds: int = 120
+    execution_lease_renew_interval_seconds: int = 30
+    runner_heartbeat_interval_seconds: int = 10
+    runner_heartbeat_stale_seconds: int = 60
+    execution_reconcile_interval_seconds: int = 60
+    execution_reconcile_grace_seconds: int = 120
+    agent_token_mode: str = "dual"
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -14,6 +14,7 @@ class RuntimeExecutionResult:
     iterations: int
     engine: str
     response_attachments: list[dict]
+    execution_echo: dict | None = None
 
 
 class RuntimeExecutionError(RuntimeError):

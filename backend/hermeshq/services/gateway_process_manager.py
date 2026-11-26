@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hermeshq.core.events import EventAudience, EventBroker
+from hermeshq.core.proceso_seguro import comando_protegido
 from hermeshq.models.activity import ActivityLog
 from hermeshq.models.agent import Agent
 from hermeshq.models.base import utcnow
@@ -532,7 +533,7 @@ class GatewayProcessManager:
                 )
             else:
                 process = subprocess.Popen(
-                    [runtime_selection.hermes_bin, "gateway", "run", "--replace"],
+                    comando_protegido(runtime_selection.hermes_bin, "gateway", "run", "--replace"),
                     cwd=str(workspace_path),
                     env=env,
                     stdin=subprocess.DEVNULL,

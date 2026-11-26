@@ -30,6 +30,7 @@ from hermeshq.models.scheduled_task import ScheduledTask
 from hermeshq.models.secret import Secret
 from hermeshq.models.ssh_destination import SshDestination
 from hermeshq.models.task import Task
+from hermeshq.models.task_execution import ExternalActionRecord, TaskExecutionAttempt
 from hermeshq.models.template import AgentTemplate
 from hermeshq.models.terminal_session import TerminalSession
 from hermeshq.models.user import User
@@ -50,11 +51,12 @@ __all__ = [
     "CloudTenant",
     "ConversationThread",
     "EnrolledDevice",
+    "ExternalActionRecord",
     "HermesVersion",
     "IntegrationDraft",
     "McpAccessToken",
-    "MfaCode",
     "MessagingChannel",
+    "MfaCode",
     "Node",
     "OidcProvider",
     "PasswordResetToken",
@@ -69,6 +71,7 @@ __all__ = [
     "Secret",
     "SshDestination",
     "Task",
+    "TaskExecutionAttempt",
     "TerminalSession",
     "User",
     "UserM365Token",

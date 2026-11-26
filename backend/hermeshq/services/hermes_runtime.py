@@ -2,15 +2,26 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hermeshq.models.agent import Agent
 from hermeshq.models.task import Task
 from hermeshq.services.credentials import require_secret_value
+from hermeshq.services.execution_lease import (
+    ExecutionLeaseError,
+    ExecutionLeaseStore,
+    IdentityUnconfirmedError,
+    Lease,
+    LeaseLostError,
+    LocalRunnerRegistry,
+    lease_settings,
+)
 from hermeshq.services.hermes_installation import HermesInstallationManager
 from hermeshq.services.permission_enforcer import PermissionEnforcer, enforceable_egress_domains, llm_egress_hosts
 from hermeshq.services.provider_catalog import normalize_runtime_provider
+from hermeshq.services.runner_heartbeat import HeartbeatChannel
 from hermeshq.services.runtime_base import RuntimeBase, RuntimeExecutionError, RuntimeExecutionResult
 from hermeshq.services.runtime_profiles import resolve_effective_toolsets
 from hermeshq.services.runtime_runner_client import RuntimeRunnerClient
@@ -124,6 +135,8 @@ class HermesRuntime(RuntimeBase):
         self.secret_vault = secret_vault
         self.installation_manager = installation_manager
         self.runtime_runner_client = runtime_runner_client
+        self.leases = ExecutionLeaseStore(session_factory)
+        self.local_runners = LocalRunnerRegistry()
 
     @property
     def available(self) -> bool:
@@ -341,6 +354,7 @@ class HermesRuntime(RuntimeBase):
         await self.installation_manager.sync_agent_installation(agent)
         runtime_system_prompt = await self.installation_manager.get_runtime_system_prompt(agent)
         runtime_selection = await self.installation_manager.resolve_hermes_runtime(agent)
+        execution_id = str(uuid4())
         try:
             return await self._run_real(
                 agent,
@@ -352,7 +366,11 @@ class HermesRuntime(RuntimeBase):
                 runtime_selection.effective_version if runtime_selection.source == "managed" else None,
                 conversation_history=conversation_history,
                 session_id=session_id,
+                execution_id=execution_id,
+                attempt_number=1,
             )
+        except ExecutionLeaseError:
+            raise
         except RuntimeExecutionError as primary_exc:
             # ── Fallback provider retry ────────────────────────────────
             if not self._has_fallback(agent):
@@ -370,6 +388,8 @@ class HermesRuntime(RuntimeBase):
                     runtime_selection.effective_version if runtime_selection.source == "managed" else None,
                     conversation_history=conversation_history,
                     session_id=session_id,
+                    execution_id=execution_id,
+                    attempt_number=2,
                     fallback_override={
                         "model": agent.fallback_model,
                         "provider": fallback_provider_normalized,
@@ -378,6 +398,8 @@ class HermesRuntime(RuntimeBase):
                     },
                 )
             except Exception as fallback_exc:  # noqa: BLE001  # fallback failed — chain both errors
+                if isinstance(fallback_exc, ExecutionLeaseError):
+                    raise
                 raise RuntimeExecutionError(f"Primary and fallback providers failed: {fallback_exc}") from primary_exc
         except Exception as exc:  # noqa: BLE001  # runtime execution catch-all → RuntimeExecutionError
             raise RuntimeExecutionError(str(exc)) from exc
@@ -390,10 +412,147 @@ class HermesRuntime(RuntimeBase):
         api_key: str | None,
         runtime_system_prompt: str,
         runtime_python_bin: str,
+        runtime_version: str | None = None,
+        conversation_history: list[dict] | None = None,
+        session_id: str | None = None,
+        fallback_override: dict | None = None,
+        execution_id: str | None = None,
+        attempt_number: int = 1,
+    ) -> RuntimeExecutionResult:
+        lease = await self.leases.begin(
+            str(task.id),
+            execution_id or str(uuid4()),
+            attempt_number,
+            lease_settings()["ttl"],
+        )
+        try:
+            result = await self._run_runner(
+                agent,
+                task,
+                stream_callback,
+                api_key,
+                runtime_system_prompt,
+                runtime_python_bin,
+                conversation_history=conversation_history,
+                session_id=session_id,
+                fallback_override=fallback_override,
+                lease=lease,
+                runtime_version=runtime_version,
+            )
+        except asyncio.CancelledError:
+            await self.leases.close_quietly(lease, "cancelled", end_reason="cancelled")
+            raise
+        except LeaseLostError:
+            await self.leases.mark_lost(lease, "lease_perdido")
+            raise
+        except BaseException as exc:
+            await self.leases.close_quietly(
+                lease, "failed", end_reason=getattr(exc, "hq_end_reason_hint", None) or "runtime_error"
+            )
+            raise
+        if not lease.matches(result.execution_echo):
+            await self.leases.close_quietly(lease, "failed", end_reason="identidad_no_confirmada")
+            raise IdentityUnconfirmedError(
+                f"El resultado no confirma la identidad del intento {lease.attempt_id} (generación {lease.generation})"
+            )
+        await self.leases.transition(lease, "running", "completed", runner_confirmed=True, end_reason="completed")
+        return result
+
+    async def _supervise_lease(self, lease: Lease, process, channel: HeartbeatChannel, traza: dict) -> None:
+        cfg = lease_settings()
+        loop = asyncio.get_running_loop()
+        last_seq = 0
+        last_change = loop.time()
+        entry = self.local_runners.get(lease.attempt_id)
+        while process.returncode is None:
+            await asyncio.sleep(cfg["renew_interval"])
+            if process.returncode is not None:
+                return
+            seq = channel.last_seq
+            now = loop.time()
+            if seq > last_seq:
+                last_seq = seq
+                last_change = now
+            elif now - last_change > cfg["heartbeat_stale"]:
+                logger.warning("Intento %s: el runner dejó de latir; se detiene por su handle", lease.attempt_id)
+                self.local_runners.fence(lease.attempt_id, "runner_sin_latido")
+                return
+            else:
+                continue
+            tool_events = int(sum((traza.get("eventos") or {}).get(k, 0) for k in ("tool",)))
+            try:
+                await self.leases.renew(lease, cfg["ttl"], last_seq, tool_events)
+            except LeaseLostError:
+                logger.warning("Intento %s: renovación rechazada; se detiene el runner por su handle", lease.attempt_id)
+                self.local_runners.fence(lease.attempt_id, "lease_perdido")
+                return
+            except Exception:  # noqa: BLE001
+                logger.exception("Intento %s: fallo al renovar el lease", lease.attempt_id)
+            if entry is not None and entry.fenced_reason:
+                return
+
+    async def _renew_remote_lease(self, lease: Lease, traza: dict) -> None:
+        cfg = lease_settings()
+        seq = 0
+        while True:
+            await asyncio.sleep(cfg["renew_interval"])
+            seq += 1
+            tool_events = int((traza.get("eventos") or {}).get("tool", 0))
+            try:
+                await self.leases.renew(lease, cfg["ttl"], seq, tool_events)
+            except LeaseLostError:
+                logger.warning("Attempt %s: remote runner lease renewal rejected", lease.attempt_id)
+                return
+            except Exception:  # noqa: BLE001
+                logger.exception("Attempt %s: remote runner lease renewal failed", lease.attempt_id)
+
+    async def _registrar_inicio_herramienta(self, lease: Lease | None, agent: Agent, nombre: str) -> None:
+        if lease is None:
+            return
+        try:
+            await self.leases.registrar_inicio_herramienta(lease, agent.id, nombre)
+        except Exception:  # noqa: BLE001
+            logger.exception("Intento %s: no se pudo registrar el inicio de %s", lease.attempt_id, nombre)
+
+    async def _registrar_fin_herramienta(
+        self,
+        lease: Lease | None,
+        agent: Agent,
+        nombre: str,
+        clase: str,
+        duracion_ms: int,
+        auditoria: dict | None = None,
+    ) -> None:
+        if lease is None:
+            return
+        try:
+            await self.leases.registrar_fin_herramienta(
+                lease, agent.id, nombre, clase, duracion_ms, auditoria=auditoria
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("Intento %s: no se pudo registrar el fin de %s", lease.attempt_id, nombre)
+
+    async def _registrar_activacion_herramienta(self, lease: Lease | None, agent: Agent, nombre: str) -> None:
+        if lease is None:
+            return
+        try:
+            await self.leases.registrar_activacion_herramienta(lease, agent.id, nombre)
+        except Exception:  # noqa: BLE001
+            logger.exception("Intento %s: no se pudo registrar la activación de %s", lease.attempt_id, nombre)
+
+    async def _run_runner(
+        self,
+        agent: Agent,
+        task: Task,
+        stream_callback,
+        api_key: str | None,
+        runtime_system_prompt: str,
+        runtime_python_bin: str,
         runtime_version: str | None,
         conversation_history: list[dict] | None = None,
         session_id: str | None = None,
         fallback_override: dict | None = None,
+        lease: Lease | None = None,
     ) -> RuntimeExecutionResult:
         workspace_path = self.installation_manager.resolve_workspace_path(agent.workspace_path)
         process_env = await self.installation_manager.build_process_env(agent)
@@ -476,6 +635,34 @@ class HermesRuntime(RuntimeBase):
             "metadata": task.metadata_json or {},
         }
 
+        channel: HeartbeatChannel | None = None
+        if lease is not None:
+            cfg_latido = lease_settings()
+            payload["execution"] = lease.identity()
+            if self.runtime_runner_client is None:
+                channel = HeartbeatChannel(
+                    lease.execution_id,
+                    lease.attempt_id,
+                    lease.generation,
+                    max_age_seconds=cfg_latido["heartbeat_stale"],
+                )
+                channel.open()
+                payload["execution"].update(channel.runner_config(cfg_latido["heartbeat_interval"]))
+            process_env = {
+                **process_env,
+                "HERMESHQ_EXECUTION_ID": lease.execution_id,
+                "HERMESHQ_ATTEMPT_ID": lease.attempt_id,
+                "HERMESHQ_LEASE_GENERATION": str(lease.generation),
+            }
+            from hermeshq.services import credencial_agente
+
+            if credencial_agente.emision_activa():
+                payload["execution"]["agent_token"] = credencial_agente.emitir(
+                    agent.id, task.id, lease.attempt_id, lease.generation, self._task_timeout_for(task) + 900
+                )
+                process_env.pop("HERMESHQ_AGENT_TOKEN", None)
+
+        host_hermes_home = self.installation_manager.build_hermes_home(agent.workspace_path)
         host_hermes_home = self.installation_manager.build_hermes_home(agent.workspace_path)
         request_overrides = self._build_request_overrides(agent, host_hermes_home, task)
         if request_overrides:
@@ -505,21 +692,37 @@ class HermesRuntime(RuntimeBase):
                     network_policy = {"deny_all": True, "allow_domains": allow}
 
         process: asyncio.subprocess.Process | None = None
-        if self.runtime_runner_client is None:
-            process = await asyncio.create_subprocess_exec(
-                runtime_python_bin,
-                str(Path(__file__).resolve().parents[1] / "scripts" / "hermes_task_runner.py"),
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                limit=1024 * 1024,
-                cwd=str(Path(__file__).resolve().parents[2]),
-                env=process_env,
-            )
+        try:
+            if self.runtime_runner_client is None:
+                process = await asyncio.create_subprocess_exec(
+                    runtime_python_bin,
+                    str(Path(__file__).resolve().parents[1] / "scripts" / "hermes_task_runner.py"),
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    limit=1024 * 1024,
+                    cwd=str(Path(__file__).resolve().parents[2]),
+                    env=process_env,
+                    pass_fds=(channel.runner_config(0)["heartbeat_fd"],) if channel is not None else (),
+                )
+            if channel is not None:
+                await channel.start()
+        except BaseException:
+            if channel is not None:
+                await channel.close()
+            raise
 
         final_result: dict | None = None
         segmentos: list[str] = [""]
         traza: dict = {"lineas": 0, "eventos": {}, "no_json": 0, "ultima_no_json": "", "mayor_linea": 0}
+        identidad_runner: dict = {}
+        supervisor_lease: asyncio.Task | None = None
+        local_entry = None
+        if lease is not None and channel is not None and process is not None:
+            local_entry = self.local_runners.register(lease, process)
+            supervisor_lease = asyncio.create_task(self._supervise_lease(lease, process, channel, traza))
+        elif lease is not None and self.runtime_runner_client is not None:
+            supervisor_lease = asyncio.create_task(self._renew_remote_lease(lease, traza))
 
         async def _entregar(texto: str) -> None:
             segmentos[-1] += texto
@@ -549,6 +752,21 @@ class HermesRuntime(RuntimeBase):
                 elif event.get("event") == "segment_break":
                     if segmentos[-1].strip():
                         segmentos.append("")
+                elif event.get("event") == "tool_started":
+                    await self._registrar_inicio_herramienta(lease, agent, str(event.get("name") or "tool"))
+                elif event.get("event") == "tool_activated":
+                    await self._registrar_activacion_herramienta(lease, agent, str(event.get("name") or "tool"))
+                elif event.get("event") == "tool_finished":
+                    await self._registrar_fin_herramienta(
+                        lease,
+                        agent,
+                        str(event.get("name") or "tool"),
+                        str(event.get("clase") or "sin_clasificar"),
+                        int(event.get("ms") or 0),
+                    )
+                elif event.get("event") == "attempt_started":
+                    if not identidad_runner and isinstance(event.get("execution"), dict):
+                        identidad_runner.update(event["execution"])
                 elif event.get("event") == "result":
                     result = event
                 elif event.get("event") == "error":
@@ -594,6 +812,25 @@ class HermesRuntime(RuntimeBase):
                     await asyncio.wait_for(process.wait(), timeout=10)
                 except TimeoutError:
                     logger.warning("Task runner subprocess %s did not exit after kill", process.pid)
+            if supervisor_lease is not None:
+                supervisor_lease.cancel()
+                try:
+                    await supervisor_lease
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
+            if lease is not None:
+                self.local_runners.unregister(lease.attempt_id)
+            if channel is not None:
+                traza["latidos"] = {"aceptados": channel.accepted, "rechazados": channel.rejected}
+                await channel.close()
+
+        fenced_reason = local_entry.fenced_reason if local_entry is not None else None
+        if fenced_reason in ("lease_perdido", "sin_titularidad"):
+            raise LeaseLostError(f"Attempt {lease.attempt_id} lost its lease ({fenced_reason}); result discarded")
+        if fenced_reason == "runner_sin_latido":
+            error = RuntimeExecutionError("The runner stopped sending heartbeats and was stopped")
+            error.hq_end_reason_hint = "runner_sin_latido"
+            raise error
 
         stderr_output = ""
         return_code: int | None = None
@@ -612,6 +849,8 @@ class HermesRuntime(RuntimeBase):
                 stderr_output[-1500:] or "<empty>",
             )
             final_result = self._recover_result_from_stream(segmentos, return_code)
+            if final_result and identidad_runner:
+                final_result["execution"] = dict(identidad_runner)
             if not final_result:
                 raise RuntimeExecutionError("Hermes runtime returned no result payload")
             logger.warning("Recovered the final answer of task %s from the streamed text", task.id)
@@ -807,6 +1046,7 @@ class HermesRuntime(RuntimeBase):
             iterations=int(final_result.get("iterations") or 0),
             engine=str(final_result.get("engine") or "hermes-agent"),
             response_attachments=all_attachments,
+            execution_echo=final_result.get("execution") if isinstance(final_result.get("execution"), dict) else None,
         )
 
     async def _resolve_api_key(self, api_key_ref: str | None) -> str | None:

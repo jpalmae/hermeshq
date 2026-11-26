@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 import traceback
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -15,6 +15,7 @@ from sqlalchemy.orm import aliased
 logger = logging.getLogger(__name__)
 
 PROGRESS_NOTICE_SECONDS = 180
+SCHEDULED_RETRY_WINDOW_MINUTES = 45
 
 HISTORY_USER_MARKER = "[Mensaje anterior, ya respondido; no lo repitas] "
 
@@ -60,12 +61,14 @@ class _StreamBuffer:
         flush_interval: float = 0.5,
         user_id: str | None = None,
         claim_token: str | None = None,
+        audience: EventAudience | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._task_id = task_id
         self._agent_id = agent_id
         self._user_id = user_id
         self._claim_token = claim_token
+        self._audience = audience
         self._log_func = log_func
         self._event_broker = event_broker
         self._flush_interval = flush_interval
@@ -102,7 +105,7 @@ class _StreamBuffer:
             event["created_by_user_id"] = self._user_id
         await self._event_broker.publish(
             event,
-            audience=EventAudience.for_agent(self._agent_id, user_id=self._user_id),
+            audience=self._audience or EventAudience.for_agent(self._agent_id, user_id=self._user_id),
         )
 
     async def flush(self) -> None:
@@ -185,12 +188,26 @@ from hermeshq.models.message import AgentMessage
 from hermeshq.models.messaging_channel import MessagingChannel
 from hermeshq.models.node import Node
 from hermeshq.models.secret import Secret
-from hermeshq.models.task import Task
+from hermeshq.models.task import DEFAULT_EXECUTION_LANE, Task
+from hermeshq.services import admision
 from hermeshq.services.auto_background import create_continuation
+from hermeshq.services.execution_lease import (
+    INSTANCE_OWNER,
+    ExecutionLeaseError,
+    ExecutionReconciler,
+    IdentityUnconfirmedError,
+    ReconciliationRequiredError,
+    clasificar_interrupcion,
+    entrega_tras_reencolar,
+    lease_settings,
+    mensaje_de_fallo,
+)
 from hermeshq.services.hermes_runtime import HermesRuntime
 from hermeshq.services.schedule_notifications import enqueue_progress_notice, enqueue_schedule_notification
 from hermeshq.services.secret_vault import SecretVault
 from hermeshq.services.task_board import sync_board_with_runtime
+from hermeshq.services.task_lanes import task_class, task_class_expression
+from hermeshq.services.task_visibility import task_event_audience
 
 
 class AgentSupervisor:
@@ -219,15 +236,42 @@ class AgentSupervisor:
         self._dispatcher_task: asyncio.Task | None = None
         self._dispatch_wakeup = asyncio.Event()
         self._active_claims: dict[str, str] = {}
+        self._active_classes: dict[str, str] = {}
         self._requeue_on_cancel: set[str] = set()
         self._stopping = False
+        self._reconcile_task: asyncio.Task | None = None
+        self._configurar_admision(settings.concurrency_semaphore)
+
+    @property
+    def runtime(self) -> Any:
+        return self.runtimes["hermes"]
 
     def register_runtime(self, runtime_type: str, runtime: object) -> None:
         """Register an additional runtime (e.g. 'pi' for PiRuntime)."""
         self.runtimes[runtime_type] = runtime
 
+    def _limites_admision(self, total_slots: int) -> tuple[admision.Limites, list[str]]:
+        settings = get_settings()
+        return admision.normalizar(
+            total_slots,
+            settings.concurrency_interactive_reserve,
+            settings.concurrency_background_max,
+            settings.concurrency_aging_seconds,
+        )
+
+    def _configurar_admision(self, total_slots: int) -> None:
+        limites, avisos = self._limites_admision(total_slots)
+        for aviso in avisos:
+            logger.warning("Concurrencia: %s", aviso)
+        control = getattr(self, "_admision", None)
+        if control is None:
+            self._admision = admision.ControlAdmision(limites)
+        else:
+            control.configurar(limites)
+
     async def update_semaphore(self, new_value: int) -> None:
         self._semaphore_value = new_value
+        self._configurar_admision(new_value)
         await self._concurrency_limiter.resize(new_value)
         self._dispatch_wakeup.set()
 
@@ -291,10 +335,16 @@ class AgentSupervisor:
         self._stopping = False
         if self._dispatcher_task is None or self._dispatcher_task.done():
             self._dispatcher_task = asyncio.create_task(self._dispatch_loop())
+        self.start_reconcile_loop()
         self._dispatch_wakeup.set()
 
     async def shutdown_runtime(self) -> None:
         self._stopping = True
+        if self._reconcile_task is not None:
+            self._reconcile_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._reconcile_task
+            self._reconcile_task = None
         if self._dispatcher_task is not None:
             self._dispatcher_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -311,6 +361,96 @@ class AgentSupervisor:
         except Exception:
             logger.exception("Failed to release task claims during shutdown")
 
+    def _reconciler(self) -> ExecutionReconciler:
+        reconciler = getattr(self, "_execution_reconciler", None)
+        if reconciler is None:
+            leases = getattr(self.runtime, "leases", None)
+            reconciler = ExecutionReconciler(
+                self.session_factory,
+                getattr(self.runtime, "local_runners", None),
+                owner=leases.owner if leases is not None else INSTANCE_OWNER,
+            )
+            self._execution_reconciler = reconciler
+        return reconciler
+
+    async def reconcile_executions(self) -> dict | None:
+        try:
+            return await self._reconciler().reconcile()
+        except Exception:  # noqa: BLE001
+            logger.exception("Execution attempt reconciliation failed")
+            return None
+
+    def start_reconcile_loop(self) -> None:
+        if self._reconcile_task is not None and not self._reconcile_task.done():
+            return
+
+        async def _loop() -> None:
+            while True:
+                await asyncio.sleep(lease_settings()["reconcile_interval"])
+                await self.reconcile_executions()
+
+        self._reconcile_task = asyncio.create_task(_loop())
+
+    @staticmethod
+    def _release_claim(task: Task) -> None:
+        task.claimed_by = None
+        task.claim_token = None
+        task.claimed_at = None
+        task.lease_expires_at = None
+
+    async def _interrupted_outcome(self, session: AsyncSession, task: Task, now) -> tuple[str, list[dict]]:
+        clase, acciones = await clasificar_interrupcion(session, task)
+        if clase == "interrumpida" and not self._scheduled_retry_in_window(task, now):
+            clase = "programada_vencida"
+        return clase, acciones
+
+    @staticmethod
+    def _scheduled_retry_in_window(task: Task, now: datetime) -> bool:
+        metadata = task.metadata_json or {}
+        if not metadata.get("scheduled") or metadata.get("manual_trigger") or task.queued_at is None:
+            return True
+        queued_at = task.queued_at if task.queued_at.tzinfo else task.queued_at.replace(tzinfo=now.tzinfo)
+        return bool((now - queued_at).total_seconds() <= SCHEDULED_RETRY_WINDOW_MINUTES * 60)
+
+    async def _settle_interrupted(
+        self, session: AsyncSession, task: Task, now, motivo: str, *, attempts_used: int
+    ) -> tuple[str, str]:
+        clase, acciones = await self._interrupted_outcome(session, task, now)
+        self._release_claim(task)
+        metadata = dict(task.metadata_json or {})
+        if clase == "interrumpida" and attempts_used < self._max_attempts:
+            task.status = "queued"
+            task.started_at = None
+            task.completed_at = None
+            task.error_message = None
+            task.cancel_requested_at = None
+            task.metadata_json = entrega_tras_reencolar(metadata)
+            await sync_board_with_runtime(session, task.id, task.status)
+            return "task.requeued", "queued"
+        task.status = "failed"
+        task.completed_at = now
+        task.cancel_requested_at = None
+        if clase == "interrumpida":
+            task.error_message = f"Task lease expired after {task.attempt_count} execution attempts."
+        else:
+            task.error_message = mensaje_de_fallo(clase)
+        task.metadata_json = {
+            **metadata,
+            "recovery": {
+                "estado": clase,
+                "motivo": motivo,
+                "reintentable": clase in ("interrumpida", "programada_vencida"),
+                **(
+                    {"acciones": acciones, "requiere_conciliacion": any(a["estado"] == "iniciada" for a in acciones)}
+                    if acciones
+                    else {}
+                ),
+            },
+        }
+        await sync_board_with_runtime(session, task.id, task.status)
+        await self._on_execution_settled(session, task, clase)
+        return "task.failed", "failed"
+
     async def _requeue_worker_claims(self) -> None:
         async with self.session_factory() as session:
             result = await session.execute(
@@ -319,27 +459,30 @@ class AgentSupervisor:
                 .with_for_update(skip_locked=True)
             )
             tasks = list(result.scalars().all())
+            now = utcnow()
             for task in tasks:
-                cancelled = task.cancel_requested_at is not None
-                task.status = "cancelled" if cancelled else "queued"
-                task.started_at = task.started_at if cancelled else None
-                task.completed_at = utcnow() if cancelled else None
-                task.claimed_by = None
-                task.claim_token = None
-                task.claimed_at = None
-                task.lease_expires_at = None
-                if not cancelled:
-                    task.cancel_requested_at = None
+                if task.cancel_requested_at is not None:
+                    task.status = "cancelled"
+                    task.completed_at = now
+                    self._release_claim(task)
+                    await sync_board_with_runtime(session, task.id, task.status)
+                    event_type, message = "task.cancelled", "Task cancelled during shutdown"
+                else:
                     task.attempt_count = max(0, task.attempt_count - 1)
-                await sync_board_with_runtime(session, task.id, task.status)
+                    event_type, estado = await self._settle_interrupted(
+                        session, task, now, "apagado_del_servicio", attempts_used=task.attempt_count
+                    )
+                    message = (
+                        "Task returned to queue during shutdown"
+                        if estado == "queued"
+                        else "Task interrupted during shutdown after possible external actions"
+                    )
                 session.add(
                     ActivityLog(
                         agent_id=task.agent_id,
                         task_id=task.id,
-                        event_type="task.cancelled" if cancelled else "task.requeued",
-                        message="Task cancelled during shutdown"
-                        if cancelled
-                        else "Task returned to queue during shutdown",
+                        event_type=event_type,
+                        message=message,
                         details={"attempt_count": task.attempt_count},
                     )
                 )
@@ -365,35 +508,19 @@ class AgentSupervisor:
                 if task.cancel_requested_at is not None:
                     task.status = "cancelled"
                     task.completed_at = now
+                    self._release_claim(task)
+                    await sync_board_with_runtime(session, task.id, task.status)
                     event_type = "task.cancelled"
                     message = "Expired execution cancelled"
-                elif task.attempt_count >= self._max_attempts:
-                    task.status = "failed"
-                    task.completed_at = now
-                    task.error_message = f"Task lease expired after {task.attempt_count} execution attempts."
-                    event_type = "task.failed"
-                    message = "Task exceeded recovery attempts"
-                    if (task.metadata_json or {}).get("background_job"):
-                        await enqueue_schedule_notification(
-                            session,
-                            task,
-                            success=False,
-                            summary="el servidor se reinició mientras lo trabajaba; vuelve a pedirlo",
-                        )
                 else:
-                    task.status = "queued"
-                    task.started_at = None
-                    task.completed_at = None
-                    task.error_message = None
-                    event_type = "task.requeued"
-                    message = "Expired execution returned to queue"
-                task.claimed_by = None
-                task.claim_token = None
-                task.claimed_at = None
-                task.lease_expires_at = None
-                if task.status != "cancelled":
-                    task.cancel_requested_at = None
-                await sync_board_with_runtime(session, task.id, task.status)
+                    event_type, estado = await self._settle_interrupted(
+                        session, task, now, "lease_vencido", attempts_used=task.attempt_count
+                    )
+                    message = (
+                        "Expired execution returned to queue"
+                        if estado == "queued"
+                        else "Task exceeded recovery attempts or may have run external actions"
+                    )
                 session.add(
                     ActivityLog(
                         agent_id=task.agent_id,
@@ -407,6 +534,19 @@ class AgentSupervisor:
             await session.commit()
             logger.warning("Recovered %d tasks with expired execution leases", len(expired))
             return len(expired)
+
+    async def _on_execution_settled(self, session: AsyncSession, task: Task, clase: str) -> None:
+        metadata = task.metadata_json or {}
+        if metadata.get("background_job"):
+            await enqueue_schedule_notification(
+                session,
+                task,
+                success=False,
+                summary="el servidor se reinició mientras lo trabajaba; vuelve a pedirlo",
+            )
+            return
+        if metadata.get("scheduled"):
+            await enqueue_schedule_notification(session, task, success=False, summary=mensaje_de_fallo(clase))
 
     async def start_agent(self, agent_id: str) -> Agent:
         async with self.session_factory() as session:
@@ -503,6 +643,9 @@ class AgentSupervisor:
             if execution_task is not None and not execution_task.done():
                 execution_task.cancel()
                 await asyncio.gather(execution_task, return_exceptions=True)
+            clase = self._active_classes.pop(task_id, None)
+            if clase is not None:
+                self._admision.liberar(clase)
             await self._concurrency_limiter.release()
             self.active_tasks.pop(task_id, None)
             self._active_claims.pop(task_id, None)
@@ -598,7 +741,7 @@ class AgentSupervisor:
         if timeout <= 0:
             return
         cutoff = utcnow() - timedelta(seconds=timeout)
-        events: list[dict] = []
+        events: list[tuple[dict, EventAudience | None]] = []
         async with self.session_factory() as session:
             result = await session.execute(select(Task).where(Task.status == "queued", Task.queued_at < cutoff))
             stale = [
@@ -611,6 +754,11 @@ class AgentSupervisor:
                 task.status = "failed"
                 task.completed_at = utcnow()
                 task.error_message = message
+                task.metadata_json = {
+                    **(task.metadata_json or {}),
+                    "end_reason": "queue_timeout",
+                    "error_type": "QueueTimeout",
+                }
                 await sync_board_with_runtime(session, task.id, task.status)
                 agent = await session.get(Agent, task.agent_id)
                 if agent:
@@ -631,26 +779,40 @@ class AgentSupervisor:
                 }
                 if task.created_by_user_id:
                     event["created_by_user_id"] = task.created_by_user_id
-                events.append(event)
+                events.append((event, task_event_audience(task)))
             await session.commit()
-        for event in events:
-            await self.event_broker.publish(event)
+        for event, audience in events:
+            await self.event_broker.publish(event, audience=audience)
+
+    def _admitted_classes(self) -> list[str]:
+        return [clase for clase in admision.CLASES if self._admision.cabe(clase)]
 
     async def _claim_next_task(self) -> tuple[str, str] | None:
+        admitted = self._admitted_classes()
+        if not admitted:
+            return None
+        parallel_lanes = bool(get_settings().task_parallel_lanes)
         queued_task = aliased(Task)
         running_task = aliased(Task)
+        queued_class = task_class_expression(queued_task)
+
+        def lane_is_busy(candidate):
+            condition = [running_task.agent_id == candidate.agent_id, running_task.status == "running"]
+            if parallel_lanes:
+                condition.append(running_task.execution_lane == task_class_expression(candidate))
+            return exists(select(running_task.id).where(*condition))
+
         head_queued_at = (
             select(queued_task.queued_at)
-            .where(queued_task.agent_id == Agent.id, queued_task.status == "queued")
+            .where(
+                queued_task.agent_id == Agent.id,
+                queued_task.status == "queued",
+                queued_class.in_(admitted),
+                ~lane_is_busy(queued_task),
+            )
             .order_by(queued_task.queued_at.asc(), queued_task.id.asc())
             .limit(1)
             .scalar_subquery()
-        )
-        has_running_task = exists(
-            select(running_task.id).where(
-                running_task.agent_id == Agent.id,
-                running_task.status == "running",
-            )
         )
         async with self.session_factory() as session:
             agent = (
@@ -660,7 +822,6 @@ class AgentSupervisor:
                         Agent.status == "running",
                         Agent.is_archived.is_(False),
                         head_queued_at.is_not(None),
-                        ~has_running_task,
                     )
                     .order_by(head_queued_at.asc(), Agent.id.asc())
                     .with_for_update(of=Agent, skip_locked=True)
@@ -670,21 +831,31 @@ class AgentSupervisor:
             if agent is None:
                 return None
 
+            candidate = aliased(Task)
             task = (
                 await session.execute(
-                    select(Task)
-                    .where(Task.agent_id == agent.id, Task.status == "queued")
-                    .order_by(Task.queued_at.asc(), Task.id.asc())
-                    .with_for_update(of=Task)
+                    select(candidate)
+                    .where(
+                        candidate.agent_id == agent.id,
+                        candidate.status == "queued",
+                        task_class_expression(candidate).in_(admitted),
+                        ~lane_is_busy(candidate),
+                    )
+                    .order_by(candidate.queued_at.asc(), candidate.id.asc())
+                    .with_for_update(of=candidate)
                     .limit(1)
                 )
             ).scalar_one_or_none()
             if task is None:
                 return None
+            clase = task_class(task)
+            if not self._admision.cabe(clase):
+                return None
 
             now = utcnow()
             claim_token = str(uuid4())
             task.status = "running"
+            task.execution_lane = clase if parallel_lanes else DEFAULT_EXECUTION_LANE
             task.claimed_by = self._worker_id
             task.claim_token = claim_token
             task.claimed_at = now
@@ -696,6 +867,14 @@ class AgentSupervisor:
             task.error_message = None
             task.messages_json = []
             task.tool_calls = []
+            task.metadata_json = {
+                **(task.metadata_json or {}),
+                "admision": {
+                    "clase": clase,
+                    "en_cola_at": task.queued_at.isoformat() if task.queued_at else None,
+                    "admitida_at": now.isoformat(),
+                },
+            }
             await sync_board_with_runtime(session, task.id, task.status)
             await self._log(
                 session,
@@ -706,6 +885,8 @@ class AgentSupervisor:
                 details={"attempt_count": task.attempt_count, "worker_id": self._worker_id},
             )
             await session.commit()
+            self._admision.ocupar(clase)
+            self._active_classes[task.id] = clase
             return task.id, claim_token
 
     async def _heartbeat_claim(
@@ -778,21 +959,22 @@ class AgentSupervisor:
         except Exception:  # noqa: BLE001  # the heads-up is best-effort and must never touch the task
             logger.exception("Could not send the progress notice for task %s", task_id)
 
+    def _claimed(self, task_id: str, claim_token: str, *, lock: bool = True):
+        statement = select(Task).where(
+            Task.id == task_id,
+            Task.status == "running",
+            Task.claim_token == claim_token,
+        )
+        return statement.with_for_update() if lock else statement
+
     async def _run_task(self, task_id: str, claim_token: str) -> None:
         callbacks: list = []
+        task: Task | None = None
         try:
             conversation_history: list[dict] = []
             session_id: str | None = None
             async with self.session_factory() as session:
-                task = (
-                    await session.execute(
-                        select(Task).where(
-                            Task.id == task_id,
-                            Task.status == "running",
-                            Task.claim_token == claim_token,
-                        )
-                    )
-                ).scalar_one_or_none()
+                task = (await session.execute(self._claimed(task_id, claim_token, lock=False))).scalar_one_or_none()
                 if task is None:
                     return
                 if task.cancel_requested_at is not None:
@@ -804,10 +986,7 @@ class AgentSupervisor:
                     task.status = "cancelled" if agent.is_archived else "queued"
                     task.started_at = None
                     task.completed_at = utcnow() if agent.is_archived else None
-                    task.claimed_by = None
-                    task.claim_token = None
-                    task.claimed_at = None
-                    task.lease_expires_at = None
+                    self._release_claim(task)
                     task.cancel_requested_at = None
                     if task.status == "queued":
                         task.attempt_count = max(0, task.attempt_count - 1)
@@ -816,6 +995,7 @@ class AgentSupervisor:
                     self._dispatch_wakeup.set()
                     return
                 task_owner_id = task.created_by_user_id
+                task_audience = task_event_audience(task)
                 conversation_history = await self._build_conversation_history(session, task)
                 metadata = task.metadata_json or {}
                 if metadata.get("conversation"):
@@ -830,10 +1010,7 @@ class AgentSupervisor:
             }
             if task_owner_id:
                 event["created_by_user_id"] = task_owner_id
-            await self.event_broker.publish(
-                event,
-                audience=EventAudience.for_agent(task.agent_id, user_id=task_owner_id),
-            )
+            await self.event_broker.publish(event, audience=task_audience)
 
             stream_buffer = _StreamBuffer(
                 session_factory=self.session_factory,
@@ -843,6 +1020,7 @@ class AgentSupervisor:
                 event_broker=self.event_broker,
                 user_id=task_owner_id,
                 claim_token=claim_token,
+                audience=task_audience,
             )
             stream_buffer.start_flush_loop()
 
@@ -863,19 +1041,10 @@ class AgentSupervisor:
                 progress_timer.cancel()
                 await stream_buffer.stop_flush_loop()
             async with self.session_factory() as session:
-                task = (
-                    await session.execute(
-                        select(Task)
-                        .where(
-                            Task.id == task_id,
-                            Task.status == "running",
-                            Task.claim_token == claim_token,
-                        )
-                        .with_for_update()
-                    )
-                ).scalar_one_or_none()
+                task = (await session.execute(self._claimed(task_id, claim_token))).scalar_one_or_none()
                 agent = await session.get(Agent, task.agent_id) if task else None
                 if not task or not agent:
+                    logger.warning("Task %s: result discarded, the claim is no longer held", task_id)
                     return
                 task.status = "completed"
                 await sync_board_with_runtime(session, task.id, task.status)
@@ -885,10 +1054,7 @@ class AgentSupervisor:
                 task.iterations = max(task.iterations, execution.iterations)
                 task.messages_json = execution.messages or task.messages_json
                 task.tool_calls = execution.tool_calls
-                task.claimed_by = None
-                task.claim_token = None
-                task.claimed_at = None
-                task.lease_expires_at = None
+                self._release_claim(task)
                 task.cancel_requested_at = None
 
                 response_attachments = getattr(execution, "response_attachments", [])
@@ -939,92 +1105,92 @@ class AgentSupervisor:
             }
             if task_owner_id:
                 completed_event["created_by_user_id"] = task_owner_id
-            await self.event_broker.publish(
-                completed_event,
-                audience=EventAudience.for_agent(task.agent_id, user_id=task_owner_id),
-            )
+            await self.event_broker.publish(completed_event, audience=task_audience)
 
             await self._run_post_task_hooks(task_id)
 
         except asyncio.CancelledError:
             publish_event: dict | None = None
+            audience = None
             async with self.session_factory() as session:
-                task = (
-                    await session.execute(
-                        select(Task)
-                        .where(
-                            Task.id == task_id,
-                            Task.status == "running",
-                            Task.claim_token == claim_token,
-                        )
-                        .with_for_update()
-                    )
-                ).scalar_one_or_none()
+                task = (await session.execute(self._claimed(task_id, claim_token))).scalar_one_or_none()
                 agent = await session.get(Agent, task.agent_id) if task else None
                 if task:
                     requeue = task_id in self._requeue_on_cancel and task.cancel_requested_at is None
-                    task.status = "queued" if requeue else "cancelled"
-                    await sync_board_with_runtime(session, task.id, task.status)
-                    task.started_at = None if requeue else task.started_at
-                    task.completed_at = None if requeue else utcnow()
-                    task.claimed_by = None
-                    task.claim_token = None
-                    task.claimed_at = None
-                    task.lease_expires_at = None
                     if requeue:
-                        task.cancel_requested_at = None
                         task.attempt_count = max(0, task.attempt_count - 1)
+                        event_type, _ = await self._settle_interrupted(
+                            session, task, utcnow(), "apagado_del_servicio", attempts_used=task.attempt_count
+                        )
+                    else:
+                        task.status = "cancelled"
+                        await sync_board_with_runtime(session, task.id, task.status)
+                        task.completed_at = utcnow()
+                        self._release_claim(task)
+                        event_type = "task.cancelled"
                 if task and agent:
                     agent.last_activity = utcnow()
                     await self._log(
                         session,
-                        "task.requeued" if task.status == "queued" else "task.cancelled",
+                        event_type,
                         agent=agent,
                         task=task,
-                        message=task.title or ("Task requeued" if task.status == "queued" else "Task cancelled"),
+                        message=task.title
+                        or {"task.requeued": "Task requeued", "task.failed": "Task interrupted"}.get(
+                            event_type, "Task cancelled"
+                        ),
                     )
                 await session.commit()
-                if task and task.status == "cancelled":
+                if task and task.status in ("cancelled", "failed"):
                     publish_event = {
-                        "type": "task.cancelled",
+                        "type": "task.cancelled" if task.status == "cancelled" else "task.failed",
                         "task_id": task_id,
                         "agent_id": task.agent_id,
                     }
+                    if task.status == "failed":
+                        publish_event["error"] = task.error_message
+                        publish_event["error_type"] = "Interrupted"
                     if task.created_by_user_id:
                         publish_event["created_by_user_id"] = task.created_by_user_id
+                    audience = task_event_audience(task)
             if publish_event is not None:
-                await self.event_broker.publish(
-                    publish_event,
-                    audience=EventAudience.for_agent(
-                        publish_event["agent_id"],
-                        user_id=publish_event.get("created_by_user_id"),
-                    ),
-                )
+                await self.event_broker.publish(publish_event, audience=audience)
+        except (IdentityUnconfirmedError, ReconciliationRequiredError) as uncertain_exc:
+            estado, motivo = (
+                ("resultado_incierto", "identidad_no_confirmada")
+                if isinstance(uncertain_exc, IdentityUnconfirmedError)
+                else ("conciliacion_requerida", "acciones_externas_inciertas")
+            )
+            async with self.session_factory() as session:
+                task = (await session.execute(self._claimed(task_id, claim_token))).scalar_one_or_none()
+                if task:
+                    task.status = "failed"
+                    await sync_board_with_runtime(session, task.id, task.status)
+                    task.completed_at = utcnow()
+                    task.error_message = str(uncertain_exc)
+                    self._release_claim(task)
+                    task.metadata_json = {
+                        **(task.metadata_json or {}),
+                        "recovery": {"estado": estado, "motivo": motivo, "reintentable": False},
+                    }
+                    await session.commit()
+        except ExecutionLeaseError as lease_exc:
+            logger.warning(
+                "Task %s: the execution attempt lost its lease; task left untouched (%s)", task_id, lease_exc
+            )
         except Exception as exc:  # noqa: BLE001  # task cancellation catch-all
             failed_event: dict | None = None
+            audience = None
             auto_job_id = None
             async with self.session_factory() as session:
-                task = (
-                    await session.execute(
-                        select(Task)
-                        .where(
-                            Task.id == task_id,
-                            Task.status == "running",
-                            Task.claim_token == claim_token,
-                        )
-                        .with_for_update()
-                    )
-                ).scalar_one_or_none()
+                task = (await session.execute(self._claimed(task_id, claim_token))).scalar_one_or_none()
                 agent = await session.get(Agent, task.agent_id) if task else None
                 if task:
                     task.status = "failed"
                     await sync_board_with_runtime(session, task.id, task.status)
                     task.completed_at = utcnow()
                     task.error_message = str(exc)
-                    task.claimed_by = None
-                    task.claim_token = None
-                    task.claimed_at = None
-                    task.lease_expires_at = None
+                    self._release_claim(task)
                     task.cancel_requested_at = None
                     try:
                         auto_job = await create_continuation(session, task, str(exc))
@@ -1078,14 +1244,9 @@ class AgentSupervisor:
                         failed_event["auto_background"] = True
                     if task.created_by_user_id:
                         failed_event["created_by_user_id"] = task.created_by_user_id
+                    audience = task_event_audience(task)
             if failed_event is not None:
-                await self.event_broker.publish(
-                    failed_event,
-                    audience=EventAudience.for_agent(
-                        failed_event["agent_id"],
-                        user_id=failed_event.get("created_by_user_id"),
-                    ),
-                )
+                await self.event_broker.publish(failed_event, audience=audience)
 
     async def _log(
         self,

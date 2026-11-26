@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
 import re
 import sys
+import threading
+import time
 import traceback
 from pathlib import Path
 
@@ -30,7 +34,72 @@ def _escribir(linea: str) -> None:
     destino.flush()
 
 
+_IDENTIDAD_EJECUCION: dict | None = None
+SOLO_DEL_RUNNER = (
+    "HERMESHQ_AGENT_TOKEN",
+    "HERMESHQ_ATTEMPT_ID",
+    "HERMESHQ_LEASE_GENERATION",
+    "HERMESHQ_EXECUTION_ID",
+    "HERMESHQ_TASK_PAYLOAD",
+)
+
+
+def _iniciar_latido(fd, clave, intervalo) -> None:
+    if not _IDENTIDAD_EJECUCION or not isinstance(fd, int) or not clave:
+        return
+    try:
+        espera = max(0.2, float(intervalo or 10))
+        os.set_inheritable(fd, False)
+    except (OSError, TypeError, ValueError) as exc:
+        _diag(f"no se pudo preparar el canal de latido: {exc}")
+        return
+    identidad = dict(_IDENTIDAD_EJECUCION)
+    base = f"{identidad['execution_id']}|{identidad['attempt_id']}|{identidad['lease_generation']}"
+    llave = str(clave).encode()
+
+    def _latir() -> None:
+        seq = 0
+        while True:
+            seq += 1
+            ts = f"{time.time():.3f}"
+            mac = hmac.new(llave, f"{base}|{seq}|{ts}".encode(), hashlib.sha256).hexdigest()
+            linea = json.dumps({**identidad, "seq": seq, "ts": ts, "mac": mac}) + "\n"
+            try:
+                os.write(fd, linea.encode("utf-8"))
+            except OSError:
+                return
+            time.sleep(espera)
+
+    threading.Thread(target=_latir, name="hq-latido", daemon=True).start()
+
+
+def _proteger_proceso() -> None:
+    try:
+        import ctypes
+
+        ctypes.CDLL(None, use_errno=True).prctl(4, 0, 0, 0, 0)
+    except (OSError, AttributeError):
+        _diag("no se pudo marcar el runner como no volcable")
+
+
+def _ocultar_token_a_los_comandos() -> None:
+    try:
+        import tools.environments.local as entorno_local
+
+        entorno_local._HERMES_PROVIDER_ENV_BLOCKLIST = frozenset(
+            entorno_local._HERMES_PROVIDER_ENV_BLOCKLIST | set(SOLO_DEL_RUNNER)
+        )
+    except ImportError:
+        _diag("no se pudo quitar el token del agente del entorno de los comandos")
+
+
+def _herramienta_terminada(tool_call_id, nombre, args, resultado) -> None:
+    _emit({"event": "tool_finished", "name": str(nombre or "tool"), "clase": "sin_clasificar", "ms": 0})
+
+
 def _emit(payload: dict) -> None:
+    if _IDENTIDAD_EJECUCION and payload.get("event") in ("result", "error"):
+        payload = {**payload, "execution": dict(_IDENTIDAD_EJECUCION)}
     try:
         _escribir(json.dumps(payload, ensure_ascii=False))
     except (UnicodeEncodeError, ValueError) as exc:
@@ -117,6 +186,7 @@ def _activar_pensamiento_adaptativo() -> None:
 
 
 def main() -> int:
+    _proteger_proceso()
     _abrir_salida()
     # Payload arrives via stdin (keeps the API key out of the process
     # environment, where it would be visible via /proc/<pid>/environ).
@@ -134,6 +204,25 @@ def main() -> int:
         return 1
 
     payload = json.loads(payload_raw)
+    global _IDENTIDAD_EJECUCION
+    identidad = payload.get("execution")
+    if isinstance(identidad, dict) and identidad.get("attempt_id"):
+        _IDENTIDAD_EJECUCION = {
+            "execution_id": identidad.get("execution_id"),
+            "attempt_id": identidad.get("attempt_id"),
+            "lease_generation": identidad.get("lease_generation"),
+        }
+        _iniciar_latido(
+            identidad.get("heartbeat_fd"), identidad.pop("heartbeat_key", None), identidad.get("heartbeat_interval")
+        )
+        _emit({"event": "attempt_started", "execution": dict(_IDENTIDAD_EJECUCION)})
+        os.environ["HERMESHQ_EXECUTION_ID"] = str(identidad.get("execution_id") or "")
+        os.environ["HERMESHQ_ATTEMPT_ID"] = str(identidad.get("attempt_id") or "")
+        os.environ["HERMESHQ_LEASE_GENERATION"] = str(identidad.get("lease_generation") or "")
+        credencial = identidad.pop("agent_token", None)
+        if credencial:
+            os.environ["HERMESHQ_AGENT_TOKEN"] = str(credencial)
+    _ocultar_token_a_los_comandos()
     os.environ["HERMES_HOME"] = payload["hermes_home"]
     os.environ["HERMES_QUIET"] = "1"
     os.environ["HERMESHQ_TASK_PAYLOAD"] = json.dumps(
@@ -210,6 +299,10 @@ def main() -> int:
             emitted_chunks.append(delta)
             _emit({"event": "delta", "data": delta})
 
+        def on_tool_progress(status, name=None, *rest, **kwargs) -> None:
+            if status == "tool.started":
+                _emit({"event": "tool_started", "name": str(name or "tool")})
+
         agent = AIAgent(
             model=payload["model"],
             provider=payload.get("provider"),
@@ -226,6 +319,8 @@ def main() -> int:
             skip_memory=False,
             platform="hermeshq",
             stream_delta_callback=on_delta,
+            tool_progress_callback=on_tool_progress,
+            tool_complete_callback=_herramienta_terminada,
         )
 
         result = agent.run_conversation(
