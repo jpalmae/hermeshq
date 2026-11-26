@@ -32,11 +32,8 @@ CON_EFECTOS = (
     "hq_delegate_task",
     "delegate_task",
     "hq_solicitar_capacidad",
-    "hq_skill_crear",
     "skill_manage",
     "memory",
-    "hq_ajustes_diseno",
-    "hq_imagen_generar",
     "browser_navigate",
     "clarify",
 )
